@@ -1,70 +1,65 @@
-use std::{collections::HashMap, fs::File, io::Write};
-use interpreter::Context;
-use ast::{Expr, Statement};
+use daggy::Dag;
+use ef3r::ast::{Expr, Statement};
+use ef3r::interpreter::{evaluate, Context};
+use ef3r::stdlib::{ef3r_stdlib, MUL_ID, PRINT_ID};
+use std::{collections::HashMap, env, fs::File, io::Write};
 
-pub mod ast;
-pub mod frp;
-pub mod debugging;
-pub mod interpreter;
+const UNKNOWN_COMMAND: &str = "Unknown sub-command";
 
-fn main() {
-    // Examples
+fn main() -> Result<(), String> {
+    let args: Vec<String> = env::args().collect();
 
-    let mulID = 0;
-    let addID = 1;
-    let divID = 2;
+    let sub_command = args.get(1).ok_or(UNKNOWN_COMMAND)?.as_str();
 
-    let printID = 0;
+    match sub_command {
+        "execute" => {
+            // Executes an ef3r bytecode file.
+        }
+        "pack" => {
+            // Parses ef3r source code and converts it into a ef3r bytecode file.
+        }
+        "debug" => {
+            // Debug a running ef3r process.
+        }
+        "example" => {
+            // Runs a built-in example.
+            let context = ef3r_stdlib();
 
-    // Placeholder implementation.
-    let id: fn(&[Expr]) -> Expr = |x| { 
-        x.first().unwrap().clone()
-    };
+            // Example expression.
+            let expression = Expr::Apply(
+                Box::new(Expr::BuiltinFunction(MUL_ID)),
+                Box::new([Expr::Int(2), Expr::Int(3)]),
+            );
 
-    // Lookup table for the interpreter
-    let context = Context {
-        functions: HashMap::from([
-            (mulID, id),
-            (addID, id),
-            (divID, id)
-        ]),
-        actions: HashMap::new(),
-        variables: HashMap::new()
-    };
+            // Example program
+            let program = [
+                Statement::Var("x".to_string(), Expr::Int(42)),
+                Statement::Execute(
+                    None,
+                    Expr::Apply(
+                        Box::new(Expr::Action(PRINT_ID)),
+                        Box::new([Expr::Var("x".to_string())]),
+                    ),
+                ),
+            ];
 
-    // Example expression.
-    let expression = Expr::Apply(
-        Box::new(
-            Expr::BuiltinFunction(mulID)
-        ),
-        Box::new(
-            [
-              Expr::Int(1), 
-              Expr::Int(2)
-            ]
-        )
-    );
+            println!("Before evaluate: {:?}", expression);
 
-    // Example program
-    let program = [
-        Statement::Var("x".to_string(), Expr::Int(42)),
-        Statement::Execute(
-            Expr::Apply(
-                Box::new(
-                    Expr::Action(printID)
-                ), 
-                Box::new(
-                    [Expr::Var("x".to_string())]
-                )
-            )
-        )
-    ];
+            println!(
+                "After evaluate: {:?}",
+                evaluate(&context.expressionContext, expression)
+            );
 
-    // Write the bytecode of the example to a file.
+            // Write the bytecode of the example to a file.
 
-    let mut out_file = File::create("out.efr3").unwrap();
+            let mut out_file = File::create("target/out.ef3r").unwrap();
 
-    let encoded: Vec<u8> = bincode::serialize(&program).unwrap();
+            let encoded: Vec<u8> = bincode::serialize(&program).unwrap();
 
-    out_file.write(&encoded).unwrap();
+            out_file.write(&encoded).unwrap();
+        }
+        _ => Err(UNKNOWN_COMMAND)?,
+    }
+
+    Ok(())
 }
