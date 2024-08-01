@@ -28,16 +28,14 @@ fn test_map_node() {
 
     let graph = &mut context.graph;
 
-    let node_index = context.graph.add_node(node);
-
-    let node = context.graph.node_weight(node_index).unwrap();
+    let node_index = graph.add_node(node);
 
     let mapped_context = context.expressionContext.clone();
 
-    let mapped_node = map_node(
+    let mapped_node_index = map_node(
         on_update,
         is_traced,
-        node.value.read().unwrap().clone(),
+        graph,
         node_index,
         Box::new(move |x| {
             apply_traced(
@@ -47,13 +45,6 @@ fn test_map_node() {
             )
         }),
     );
-
-    let mapped_node_index = context.graph.add_node(mapped_node);
-
-    context
-        .graph
-        .add_edge(node_index, mapped_node_index, ())
-        .unwrap();
 
     let node = context.graph.node_weight(node_index).unwrap();
 

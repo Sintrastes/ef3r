@@ -8,7 +8,7 @@ use daggy::{
         algo::toposort,
         visit::{IntoNeighbors, NodeRef},
     },
-    NodeIndex,
+    Dag, NodeIndex,
 };
 
 use crate::{ast::TracedExpr, interpreter::Context};
@@ -102,11 +102,13 @@ impl<T: Clone> Node<T> {
 pub fn map_node<T: 'static + Clone>(
     on_update: fn(T),
     traced: Arc<AtomicBool>,
-    parent_node_initial_value: T,
+    graph: &mut Dag<Node<T>, (), u32>,
     parent_index: NodeIndex,
     transform: Box<dyn Fn(T) -> T>,
-) -> Node<T> {
-    let initial = transform(parent_node_initial_value);
+) -> NodeIndex {
+    let parent = graph.node_weight(parent_index).unwrap();
+
+    let initial = transform(parent.value.read().unwrap().clone());
 
     let value = Arc::new(RwLock::new(initial));
 
@@ -121,13 +123,19 @@ pub fn map_node<T: 'static + Clone>(
         }
     });
 
-    Node {
+    let new_node = Node {
         value: value.clone(),
         dirty,
         traced,
         on_update,
         on_dependency_update,
-    }
+    };
+
+    let new_node_index = graph.add_node(new_node);
+
+    graph.add_edge(parent_index, new_node_index, ()).unwrap();
+
+    new_node_index
 }
 
 pub fn fold_node<A, B>(
