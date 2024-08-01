@@ -141,6 +141,47 @@ pub fn map_node<T: 'static + Clone>(
     new_node_index
 }
 
+///
+/// Build a variant of a node whose values are filtered by the given predicate.
+///
+pub fn filter_node<T: 'static + Clone>(
+    on_update: fn(T),
+    traced: Arc<AtomicBool>,
+    graph: &mut Dag<Node<T>, (), u32>,
+    parent_index: NodeIndex,
+    predicate: Box<dyn Fn(T) -> bool>,
+) -> NodeIndex {
+    let parent = graph.node_weight(parent_index).unwrap();
+
+    let initial = parent.value.read().unwrap().clone();
+
+    let value = Arc::new(RwLock::new(initial));
+
+    let dirty = Arc::new(AtomicBool::new(false));
+
+    let cloned = value.clone();
+
+    let on_dependency_update = Box::new(move |id, new_value: T| {
+        if id == parent_index && predicate(new_value.clone()) {
+            *cloned.write().unwrap() = new_value;
+        }
+    });
+
+    let new_node = Node {
+        value: value.clone(),
+        dirty,
+        traced,
+        on_update,
+        on_dependency_update,
+    };
+
+    let new_node_index = graph.add_node(new_node);
+
+    graph.add_edge(parent_index, new_node_index, ()).unwrap();
+
+    new_node_index
+}
+
 pub fn fold_node<A, B>(
     event_index: NodeIndex,
     event: Node<Option<A>>,
