@@ -14,6 +14,8 @@ pub type VariableID = String;
 ///
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Expr {
+    /// Null symbol.
+    None,
     /// Integer literal
     Int(i32),
     /// String literal
@@ -42,6 +44,7 @@ impl Expr {
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Expr::None => f.write_str("None"),
             Expr::Int(x) => x.fmt(f),
             Expr::String(x) => x.fmt(f),
             Expr::Float(x) => x.fmt(f),

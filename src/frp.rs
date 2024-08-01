@@ -182,6 +182,11 @@ pub fn filter_node<T: 'static + Clone>(
     new_node_index
 }
 
+///
+/// Build a node combining the value of two dependent nodes.
+///
+/// The resultant node will update whenever either of the input nodes updates.
+///
 pub fn combined_node<T: 'static + Clone>(
     on_update: fn(T),
     traced: Arc<AtomicBool>,
@@ -244,12 +249,40 @@ pub fn combined_node<T: 'static + Clone>(
     new_node_index
 }
 
-pub fn fold_node<A, B>(
+pub fn fold_node(
+    on_update: fn(TracedExpr),
+    traced: Arc<AtomicBool>,
+    graph: &mut Dag<Node<TracedExpr>, (), u32>,
     event_index: NodeIndex,
-    event: Node<Option<A>>,
-    initial: B,
-    fold: fn(A, B) -> B,
-) -> Node<B> {
+    initial: TracedExpr,
+    fold: fn(TracedExpr, TracedExpr) -> TracedExpr,
+) -> Node<TracedExpr> {
+    let event = graph.node_weight(event_index);
+
+    let value = Arc::new(RwLock::new(initial));
+
+    let dirty = Arc::new(AtomicBool::new(false));
+
+    let cloned = value.clone();
+
+    let on_dependency_update = Box::new(move |id, event| {
+        if id == event_index {
+            // Update the value to transform of new_value.
+            *cloned.write().unwrap() =
+                fold(event, cloned.read().unwrap().clone());
+        }
+    });
+
+    let new_node = Node {
+        value: value.clone(),
+        dirty,
+        traced,
+        on_update,
+        on_dependency_update,
+    };
+
+    let new_node_index = graph.add_node(new_node);
+
     todo!()
 }
 

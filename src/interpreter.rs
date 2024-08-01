@@ -81,6 +81,7 @@ pub fn evaluate_traced(
 pub fn evaluate(ctx: &ExpressionContext, expr: Expr) -> Expr {
     match expr {
         // Literals evaluate to themselves.
+        Expr::None => expr,
         Expr::Int(_) => expr,
         Expr::String(_) => expr,
         Expr::Float(_) => expr,
