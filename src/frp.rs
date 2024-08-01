@@ -182,6 +182,68 @@ pub fn filter_node<T: 'static + Clone>(
     new_node_index
 }
 
+pub fn combined_node<T: 'static + Clone>(
+    on_update: fn(T),
+    traced: Arc<AtomicBool>,
+    graph: &mut Dag<Node<T>, (), u32>,
+    first_node_index: NodeIndex,
+    second_node_index: NodeIndex,
+    transform: Box<dyn Fn(T, T) -> T>,
+) -> NodeIndex {
+    let first_node = graph.node_weight(first_node_index).unwrap();
+
+    let second_node = graph.node_weight(second_node_index).unwrap();
+
+    let initial = transform(
+        first_node.value.read().unwrap().clone(),
+        second_node.value.read().unwrap().clone(),
+    );
+
+    let value = Arc::new(RwLock::new(initial));
+
+    let dirty = Arc::new(AtomicBool::new(false));
+
+    let cloned = value.clone();
+
+    let first_value_ref =
+        graph.node_weight(first_node_index).unwrap().value.clone();
+
+    let second_value_ref =
+        graph.node_weight(second_node_index).unwrap().value.clone();
+
+    let on_dependency_update = Box::new(move |id, new_value: T| match id {
+        x if x == first_node_index => {
+            let second_value = second_value_ref.read().unwrap().clone();
+            *cloned.write().unwrap() = transform(new_value, second_value);
+        }
+        x if x == second_node_index => {
+            let first_value = first_value_ref.read().unwrap().clone();
+            *cloned.write().unwrap() = transform(first_value, new_value);
+        }
+        _ => (),
+    });
+
+    let new_node = Node {
+        value: value.clone(),
+        dirty,
+        traced,
+        on_update,
+        on_dependency_update,
+    };
+
+    let new_node_index = graph.add_node(new_node);
+
+    graph
+        .add_edge(first_node_index, new_node_index, ())
+        .unwrap();
+
+    graph
+        .add_edge(second_node_index, new_node_index, ())
+        .unwrap();
+
+    new_node_index
+}
+
 pub fn fold_node<A, B>(
     event_index: NodeIndex,
     event: Node<Option<A>>,
