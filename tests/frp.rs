@@ -15,20 +15,19 @@ fn test_map_node() {
 
     // Setup our FRP graph with two nodes: An input node and a mapped node.
 
-    let node = Node::new(
+    let mut context = ef3r_stdlib();
+
+    let graph = &mut context.graph;
+
+    let node_index = Node::new(
         on_update,
         is_traced.clone(),
+        graph,
         TracedExpr {
             evaluated: Expr::Int(20),
             trace: None,
         },
     );
-
-    let mut context = ef3r_stdlib();
-
-    let graph = &mut context.graph;
-
-    let node_index = graph.add_node(node);
 
     let mapped_context = context.expressionContext.clone();
 

@@ -65,13 +65,14 @@ impl<T: Clone> Node<T> {
     pub fn new(
         on_update: fn(T),
         traced: Arc<AtomicBool>,
+        graph: &mut Dag<Node<T>, (), u32>,
         initial: T,
-    ) -> Node<T> {
+    ) -> NodeIndex {
         let value = Arc::new(RwLock::new(initial));
 
         let dirty = Arc::new(AtomicBool::new(false));
 
-        Node {
+        let node = Node {
             value,
             dirty,
             traced,
@@ -80,7 +81,9 @@ impl<T: Clone> Node<T> {
                 // A new node does not depend on any other nodes,
                 // so this should never be called.
             }),
-        }
+        };
+
+        graph.add_node(node)
     }
 
     ///
