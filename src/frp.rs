@@ -59,6 +59,9 @@ pub struct Node<T> {
 }
 
 impl<T: Clone> Node<T> {
+    ///
+    /// Get the current value of the node.
+    ///
     pub fn current(&self) -> T {
         self.value.read().unwrap().clone()
     }
@@ -99,7 +102,9 @@ impl<T: Clone> Node<T> {
 
         *value = new_value.clone();
         self.dirty.store(true, Ordering::SeqCst);
-        (self.on_update)(new_value);
+        if self.traced.load(Ordering::SeqCst) {
+            (self.on_update)(new_value)
+        };
     }
 }
 
