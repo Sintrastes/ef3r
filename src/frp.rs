@@ -40,7 +40,7 @@ use crate::{ast::TracedExpr, interpreter::Context};
 ///  
 pub struct Node<T> {
     /// The underlying value held by this node.
-    pub value: Arc<RwLock<T>>,
+    value: Arc<RwLock<T>>,
     /// Flag to check if the value has been changed since the last event loop.
     dirty: Arc<AtomicBool>,
     /// Flag to check if this node is currently being traced or not.
@@ -59,6 +59,10 @@ pub struct Node<T> {
 }
 
 impl<T: Clone> Node<T> {
+    pub fn current(&self) -> T {
+        self.value.read().unwrap().clone()
+    }
+
     ///
     /// Builds a new mutable node whose value can manually be updated externally.
     ///
@@ -216,16 +220,21 @@ pub fn combined_node<T: 'static + Clone>(
     let second_value_ref =
         graph.node_weight(second_node_index).unwrap().value.clone();
 
-    let on_dependency_update = Box::new(move |id, new_value: T| match id {
-        x if x == first_node_index => {
-            let second_value = second_value_ref.read().unwrap().clone();
-            *cloned.write().unwrap() = transform(new_value, second_value);
+    let on_dependency_update = Box::new(move |id, new_value: T| {
+        println!("Updating node {:?}", id);
+        match id {
+            x if x == first_node_index => {
+                println!("Updating first node");
+                let second_value = second_value_ref.read().unwrap().clone();
+                *cloned.write().unwrap() = transform(new_value, second_value);
+            }
+            x if x == second_node_index => {
+                println!("Updating second node");
+                let first_value = first_value_ref.read().unwrap().clone();
+                *cloned.write().unwrap() = transform(first_value, new_value);
+            }
+            _ => (),
         }
-        x if x == second_node_index => {
-            let first_value = first_value_ref.read().unwrap().clone();
-            *cloned.write().unwrap() = transform(first_value, new_value);
-        }
-        _ => (),
     });
 
     let new_node = Node {
@@ -321,6 +330,17 @@ pub fn process_event_frame(ctx: &Context) {
     let mut nodes = toposort(&ctx.graph, None).unwrap();
 
     for node_id in nodes {
+        println!(
+            "Updating values for node {:?} with value {:?}",
+            node_id,
+            &ctx.graph
+                .node_weight(node_id)
+                .unwrap()
+                .value
+                .read()
+                .unwrap()
+        );
+
         // Check if any of the values have been changed.
         let node = ctx.graph.node_weight(node_id).unwrap();
 
@@ -328,9 +348,12 @@ pub fn process_event_frame(ctx: &Context) {
 
         let dirty = node.dirty.load(Ordering::SeqCst);
 
+        println!("Node was dirty: {}", dirty);
+
         if dirty {
             // If so, notify dependent nodes.
             for dependent_id in derived_nodes {
+                println!("Checking dependent node: {:?}", dependent_id);
                 let dependent_node =
                     &ctx.graph.node_weight(dependent_id).unwrap();
 

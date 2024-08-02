@@ -2,7 +2,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 
 use ef3r::{
     ast::{Expr, TracedExpr},
-    frp::{event_loop, filter_node, map_node, process_event_frame, Node},
+    frp::{combined_node, filter_node, map_node, process_event_frame, Node},
     interpreter::apply_traced,
     stdlib::{ef3r_stdlib, MUL_ID},
 };
@@ -53,15 +53,7 @@ fn test_map_node() {
 
     let mapped_node = context.graph.node_weight(mapped_node_index).unwrap();
 
-    let expected = Expr::Int(40);
-    let actual = mapped_node.value.read().unwrap().evaluated.clone();
-
-    assert!(
-        expected == actual,
-        "Expected {}, actual {}",
-        expected,
-        actual
-    );
+    assert_eq!(Expr::Int(40), mapped_node.current().evaluated.clone());
 
     // Update the input value and step through a single frame of the event loop.
 
@@ -69,15 +61,7 @@ fn test_map_node() {
 
     // Check that the mapped node has updated.
 
-    let actual = mapped_node.value.read().unwrap().evaluated.clone();
-    let expected = Expr::Int(42);
-
-    assert!(
-        expected == actual,
-        "Expected {}, actual {}",
-        expected,
-        actual
-    );
+    assert_eq!(Expr::Int(42), mapped_node.current().evaluated.clone());
 }
 
 #[test]
@@ -102,8 +86,6 @@ fn test_filter_node() {
         },
     );
 
-    let mapped_context = context.expressionContext.clone();
-
     let filtered_node_index = filter_node(
         on_update,
         is_traced,
@@ -123,15 +105,7 @@ fn test_filter_node() {
 
     let filtered_node = context.graph.node_weight(filtered_node_index).unwrap();
 
-    let expected = Expr::Int(1);
-    let actual = filtered_node.value.read().unwrap().evaluated.clone();
-
-    assert!(
-        expected == actual,
-        "Expected {}, actual {}",
-        expected,
-        actual
-    );
+    assert_eq!(Expr::Int(1), filtered_node.current().evaluated.clone());
 
     // Update the input value and step through a single frame of the event loop.
 
@@ -139,15 +113,7 @@ fn test_filter_node() {
 
     // Check that the mapped node has not updated, since we are filtering out even values..
 
-    let actual = filtered_node.value.read().unwrap().evaluated.clone();
-    let expected = Expr::Int(1);
-
-    assert!(
-        expected == actual,
-        "Expected {}, actual {}",
-        expected,
-        actual
-    );
+    assert_eq!(Expr::Int(1), filtered_node.current().evaluated.clone());
 
     node.update(Expr::Int(3).traced());
 
@@ -155,13 +121,69 @@ fn test_filter_node() {
 
     // Check that the mapped node has updated, since now we have updated to an odd value.
 
-    let actual = filtered_node.value.read().unwrap().evaluated.clone();
-    let expected = Expr::Int(3);
+    assert_eq!(Expr::Int(3), filtered_node.current().evaluated.clone());
+}
 
-    assert!(
-        expected == actual,
-        "Expected {}, actual {}",
-        expected,
-        actual
+#[test]
+fn test_combined_node() {
+    let on_update = |new_value| println!("New value is: {:?}", new_value);
+
+    let is_traced = Arc::new(AtomicBool::new(false));
+
+    // Setup our FRP graph with three nodes: Two input nodes, and a combined output node.
+
+    let mut context = ef3r_stdlib();
+
+    let first_node_index = Node::new(
+        on_update,
+        is_traced.clone(),
+        &mut context.graph,
+        TracedExpr {
+            evaluated: Expr::Int(2),
+            trace: None,
+        },
     );
+
+    let second_node_index = Node::new(
+        on_update,
+        is_traced.clone(),
+        &mut context.graph,
+        TracedExpr {
+            evaluated: Expr::Int(3),
+            trace: None,
+        },
+    );
+
+    let expr_ctx = context.expressionContext.clone();
+
+    let combined_node_index = combined_node(
+        on_update,
+        is_traced,
+        &mut context.graph,
+        first_node_index,
+        second_node_index,
+        Box::new(move |x, y| {
+            apply_traced(
+                &expr_ctx,
+                Expr::BuiltinFunction(MUL_ID).traced(),
+                &[x, y],
+            )
+        }),
+    );
+
+    let combined_node =
+        &mut context.graph.node_weight(combined_node_index).unwrap();
+
+    // Check initial state
+
+    assert_eq!(Expr::Int(6), combined_node.current().evaluated);
+
+    // Check state after updating one of the fields
+
+    let first_node = &mut context.graph.node_weight(first_node_index).unwrap();
+    first_node.update(Expr::Int(3).traced());
+
+    process_event_frame(&context);
+
+    assert_eq!(Expr::Int(9), combined_node.current().evaluated);
 }
