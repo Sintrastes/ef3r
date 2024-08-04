@@ -25,8 +25,13 @@ pub enum Expr {
     Float(f32),
     /// Action reference.
     Action(ActionID),
-    /// TODO: Not sure what the best approach is to deal with FRP constructs in
-    /// the language.
+    /// Externally defined node that has been supplied
+    /// by the interpreter.
+    Node(usize),
+    /// Build a mapped version of a node.
+    /// First argument: Node to map.
+    /// Second argument: Function to use for the mapping.
+    MapNode(Box<Expr>, Box<Expr>),
     BuiltinFunction(FunctionID),
     /// Lambda expression: \x -> f x
     Lambda(VariableID, Box<Expr>),
@@ -146,6 +151,17 @@ impl Display for Expr {
                 Ok(())
             }
             Expr::Var(x) => x.fmt(f),
+            Expr::Node(idx) => {
+                f.write_str("Node(")?;
+                idx.fmt(f)?;
+                f.write_str(")")
+            }
+            Expr::MapNode(x, fun) => {
+                x.fmt(f)?;
+                f.write_str(".map(")?;
+                fun.fmt(f)?;
+                f.write_str(")")
+            }
         }
     }
 }

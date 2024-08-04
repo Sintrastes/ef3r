@@ -117,6 +117,11 @@ pub fn evaluate(
         Expr::Action(_) => Ok(expr),
         Expr::Lambda(_, _) => Ok(expr),
         Expr::BuiltinFunction(_) => Ok(expr),
+        Expr::Node(_) => Ok(expr),
+        // For now, we'll just treat this like an opaque expression.
+        // Evaluating it is different from a normal expression since we'd need
+        // access to the FRP graph.
+        Expr::MapNode(_, _) => Ok(expr),
         // Function applications need to be reduced.
         Expr::Apply(f, x) => match *f {
             // Builtin functions can just be looked up in the evaluator context.
