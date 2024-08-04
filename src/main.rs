@@ -1,8 +1,7 @@
-use daggy::Dag;
 use ef3r::ast::{Expr, Statement};
-use ef3r::interpreter::{evaluate, Context};
+use ef3r::interpreter::evaluate;
 use ef3r::stdlib::{ef3r_stdlib, MUL_ID, PRINT_ID};
-use std::{collections::HashMap, env, fs::File, io::Write};
+use std::{env, fs::File, io::Write};
 
 const UNKNOWN_COMMAND: &str = "Unknown sub-command";
 
@@ -47,7 +46,7 @@ fn main() -> Result<(), String> {
 
             println!(
                 "After evaluate: {:?}",
-                evaluate(&context.expressionContext, expression)
+                evaluate(&context.expression_context, expression)
             );
 
             // Write the bytecode of the example to a file.

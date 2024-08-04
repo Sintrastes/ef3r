@@ -29,7 +29,7 @@ fn test_map_node() {
         },
     );
 
-    let mapped_context = context.expressionContext.clone();
+    let mapped_context = context.expression_context.clone();
 
     let mapped_node_index = map_node(
         on_update,
@@ -42,6 +42,7 @@ fn test_map_node() {
                 Expr::BuiltinFunction(MUL_ID).traced(),
                 &[Expr::Int(2).traced(), x],
             )
+            .unwrap()
         }),
     );
 
@@ -154,7 +155,7 @@ fn test_combined_node() {
         },
     );
 
-    let expr_ctx = context.expressionContext.clone();
+    let expr_ctx = context.expression_context.clone();
 
     let combined_node_index = combined_node(
         on_update,
@@ -168,6 +169,7 @@ fn test_combined_node() {
                 Expr::BuiltinFunction(MUL_ID).traced(),
                 &[x, y],
             )
+            .unwrap()
         }),
     );
 

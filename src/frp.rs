@@ -4,10 +4,7 @@ use std::sync::{
 };
 
 use daggy::{
-    petgraph::{
-        algo::toposort,
-        visit::{IntoNeighbors, NodeRef},
-    },
+    petgraph::{algo::toposort, visit::IntoNeighbors},
     Dag, NodeIndex,
 };
 
@@ -271,8 +268,6 @@ pub fn fold_node(
     initial: TracedExpr,
     fold: fn(TracedExpr, TracedExpr) -> TracedExpr,
 ) -> Node<TracedExpr> {
-    let event = graph.node_weight(event_index);
-
     let value = Arc::new(RwLock::new(initial));
 
     let dirty = Arc::new(AtomicBool::new(false));
@@ -295,7 +290,7 @@ pub fn fold_node(
         on_dependency_update,
     };
 
-    let new_node_index = graph.add_node(new_node);
+    let _new_node_index = graph.add_node(new_node);
 
     todo!()
 }
@@ -332,7 +327,7 @@ pub fn event_loop(ctx: &Context) {
 /// into a custom workflow.
 ///
 pub fn process_event_frame(ctx: &Context) {
-    let mut nodes = toposort(&ctx.graph, None).unwrap();
+    let nodes = toposort(&ctx.graph, None).unwrap();
 
     for node_id in nodes {
         println!(
