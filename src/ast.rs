@@ -3,7 +3,10 @@ use std::fmt::Display;
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
-use crate::{interpreter::Context, stdlib::ef3r_stdlib};
+use crate::{
+    interpreter::{apply_traced, evaluate_traced, Context},
+    stdlib::{ef3r_stdlib, ADD_ID, MUL_ID},
+};
 
 pub type FunctionID = u32;
 
@@ -190,13 +193,13 @@ impl Display for Expr {
                 body.fmt(f)
             }
             Expr::Apply(fun, args) => {
+                f.write_str("(")?;
                 fun.fmt(f)?;
-                f.write_str(" ")?;
                 for arg in args {
-                    arg.fmt(f)?;
                     f.write_str(" ")?;
+                    arg.fmt(f)?;
                 }
-                Ok(())
+                f.write_str(")")
             }
             Expr::Var(x) => x.fmt(f),
             Expr::Node(idx) => {
@@ -240,6 +243,38 @@ impl Display for TracedExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.evaluated.fmt(f)
     }
+}
+
+#[test]
+fn evaluation_keeps_trace() {
+    let context = ef3r_stdlib();
+
+    // Example expression.
+    let expression = Expr::Apply(
+        Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+        Box::new([
+            Expr::Int(2).traced(),
+            Expr::Apply(
+                Box::new(Expr::BuiltinFunction(ADD_ID).traced()),
+                Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
+            )
+            .traced(),
+        ]),
+    );
+
+    let evaluated = evaluate_traced(
+        &context.expression_context,
+        expression.clone().traced(),
+    )
+    .unwrap();
+
+    println!("Evaluated: {}", evaluated.evaluated);
+
+    assert_eq!(evaluated.evaluated, Expr::Int(6));
+
+    println!("Trace: {}", evaluated.trace.clone().unwrap());
+
+    assert_eq!(evaluated.trace, Some(expression));
 }
 
 ///

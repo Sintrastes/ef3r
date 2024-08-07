@@ -88,8 +88,8 @@ pub fn evaluate_traced(
             evaluated: expr,
             trace,
         } => Ok(TracedExpr {
-            evaluated: evaluate(&ctx, expr)?.evaluated,
-            trace: trace,
+            evaluated: evaluate(&ctx, expr.clone())?.evaluated,
+            trace: Some(trace.unwrap_or(expr)),
         }),
     }
 }
@@ -130,7 +130,7 @@ pub fn evaluate(
         // access to the FRP graph.
         Expr::MapNode(_, _) => Ok(expr.traced()),
         // Function applications need to be reduced.
-        Expr::Apply(f, x) => match f.evaluated {
+        Expr::Apply(f, xs) => match f.evaluated {
             // Builtin functions can just be looked up in the evaluator context.
             Expr::BuiltinFunction(id) => {
                 let implemntation = ctx
@@ -138,15 +138,22 @@ pub fn evaluate(
                     .get(&id)
                     .ok_or(EvaluationError::NotAFunction)?
                     .definition;
-                implemntation(x.as_ref())
+
+                let evaluated_args: Result<Vec<TracedExpr>, EvaluationError> =
+                    xs.iter()
+                        .map(|x| evaluate_traced(ctx, x.clone()))
+                        .into_iter()
+                        .collect();
+
+                implemntation(evaluated_args?.as_mut_slice())
             }
             Expr::Lambda(_, _) => Err(EvaluationError::Unimplemented)?,
             // If it's an application itself, try to evaluate it first.
             Expr::Apply(_, _) => {
-                println!("Evaluating apply on {:?} and {:?}", f, x);
+                println!("Evaluating apply on {:?} and {:?}", f, xs);
                 evaluate(
                     ctx,
-                    Expr::Apply(Box::new(evaluate(ctx, f.evaluated)?), x),
+                    Expr::Apply(Box::new(evaluate(ctx, f.evaluated)?), xs),
                 )
             }
             // If it's a variable, see if we can look it up in the context.
