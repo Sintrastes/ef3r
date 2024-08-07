@@ -99,7 +99,7 @@ mod tests {
     use crate::{ast::Expr, interpreter::evaluate, stdlib::ef3r_stdlib};
 
     quickcheck! {
-        fn prop(expr: Expr) -> bool {
+        fn evaluation_is_idempotent(expr: Expr) -> bool {
             let context = ef3r_stdlib().expression_context;
             println!("Evaluating: {}", expr.clone());
             let evaluated = evaluate(&context, expr);
