@@ -140,6 +140,8 @@ impl Expr {
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let context = ef3r_stdlib();
+
         match self {
             Expr::None => f.write_str("None"),
             Expr::Int(x) => x.fmt(f),
@@ -159,8 +161,28 @@ impl Display for Expr {
                 f.write_str("\"")
             }
             Expr::Float(x) => x.fmt(f),
-            Expr::Action(x) => x.fmt(f),
-            Expr::BuiltinFunction(x) => x.fmt(f),
+            Expr::Action(x) => {
+                let name = context
+                    .expression_context
+                    .actions
+                    .get(x)
+                    .unwrap()
+                    .name
+                    .clone();
+
+                f.write_str(name.as_str())
+            }
+            Expr::BuiltinFunction(x) => {
+                let name = context
+                    .expression_context
+                    .functions
+                    .get(x)
+                    .unwrap()
+                    .name
+                    .clone();
+
+                f.write_str(name.as_str())
+            }
             Expr::Lambda(var, body) => {
                 f.write_str("\\")?;
                 f.write_str(var)?;
