@@ -4,7 +4,7 @@ use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    interpreter::{apply_traced, evaluate_traced, Context},
+    interpreter::{apply_traced, evaluate_traced, unwind_trace, Context},
     stdlib::{ef3r_stdlib, ADD_ID, MUL_ID},
 };
 
@@ -275,6 +275,54 @@ fn evaluation_keeps_trace() {
     println!("Trace: {}", evaluated.trace.clone().unwrap());
 
     assert_eq!(evaluated.trace, Some(expression));
+}
+
+#[test]
+fn evaluating_twice_keeps_entire_trace() {
+    let context = ef3r_stdlib();
+
+    // Example expression.
+    let expression = Expr::Apply(
+        Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+        Box::new([
+            Expr::Int(2).traced(),
+            Expr::Apply(
+                Box::new(Expr::BuiltinFunction(ADD_ID).traced()),
+                Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
+            )
+            .traced(),
+        ]),
+    );
+
+    let evaluated = evaluate_traced(
+        &context.expression_context,
+        expression.clone().traced(),
+    )
+    .unwrap();
+
+    let second_expression = Expr::Apply(
+        Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+        Box::new([Expr::Int(2).traced(), evaluated]),
+    );
+
+    let second_evaluated = evaluate_traced(
+        &context.expression_context,
+        second_expression.clone().traced(),
+    )
+    .unwrap();
+
+    let expected = Expr::Apply(
+        Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+        Box::new([Expr::Int(2).traced(), expression.traced()]),
+    );
+
+    println!(
+        "Evaluated: {}",
+        unwind_trace(second_evaluated.clone()).clone()
+    );
+    println!("Expected: {}", expected);
+
+    assert_eq!(unwind_trace(second_evaluated).clone().evaluated, expected);
 }
 
 ///

@@ -27,7 +27,7 @@ pub enum EvaluationError {
 
 #[derive(Clone)]
 pub struct InvokableDefinition {
-    pub definition: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError>,
+    pub definition: fn(&[TracedExpr]) -> Result<Expr, EvaluationError>,
     pub name: String,
     pub infix: bool,
 }
@@ -49,6 +49,27 @@ pub fn trace(expr: TracedExpr) -> TracedExpr {
             evaluated: expr.clone(),
             trace: Option::Some(expr),
         },
+    }
+}
+
+pub fn unwind_trace(expr: TracedExpr) -> TracedExpr {
+    match expr {
+        TracedExpr { evaluated, trace } => {
+            let actual_trace = trace.unwrap_or(evaluated);
+            TracedExpr {
+                evaluated: match actual_trace {
+                    Expr::Apply(function, arguments) => Expr::Apply(
+                        Box::new(unwind_trace(*function)),
+                        arguments
+                            .iter()
+                            .map(|x| unwind_trace(x.to_owned()))
+                            .collect(),
+                    ),
+                    _ => actual_trace,
+                },
+                trace: None,
+            }
+        }
     }
 }
 
@@ -84,12 +105,14 @@ pub fn evaluate_traced(
     expr: TracedExpr,
 ) -> Result<TracedExpr, EvaluationError> {
     match expr {
-        TracedExpr {
-            evaluated: expr,
-            trace,
-        } => Ok(TracedExpr {
-            evaluated: evaluate(&ctx, expr.clone())?.evaluated,
-            trace: Some(trace.unwrap_or(expr)),
+        TracedExpr { evaluated, trace } => Ok(TracedExpr {
+            evaluated: evaluate_traced_rec(
+                &ctx,
+                evaluated.clone(),
+                trace.clone(),
+            )?
+            .evaluated,
+            trace: Some(trace.unwrap_or(evaluated)),
         }),
     }
 }
@@ -115,6 +138,14 @@ pub fn evaluate(
     ctx: &ExpressionContext,
     expr: Expr,
 ) -> Result<TracedExpr, EvaluationError> {
+    evaluate_traced_rec(ctx, expr, None)
+}
+
+fn evaluate_traced_rec(
+    ctx: &ExpressionContext,
+    expr: Expr,
+    trace: Option<Expr>,
+) -> Result<TracedExpr, EvaluationError> {
     match expr {
         // Literals evaluate to themselves.
         Expr::None => Ok(expr.traced()),
@@ -139,13 +170,22 @@ pub fn evaluate(
                     .ok_or(EvaluationError::NotAFunction)?
                     .definition;
 
-                let evaluated_args: Result<Vec<TracedExpr>, EvaluationError> =
-                    xs.iter()
-                        .map(|x| evaluate_traced(ctx, x.clone()))
-                        .into_iter()
-                        .collect();
+                let evaluated_args: Result<Vec<TracedExpr>, _> = xs
+                    .iter()
+                    .map(|x| {
+                        evaluate_traced_rec(
+                            ctx,
+                            x.evaluated.clone(),
+                            x.trace.clone(),
+                        )
+                    })
+                    .into_iter()
+                    .collect();
 
-                implemntation(evaluated_args?.as_mut_slice())
+                Ok(TracedExpr {
+                    evaluated: implemntation(evaluated_args?.as_mut_slice())?,
+                    trace: trace,
+                })
             }
             Expr::Lambda(_, _) => Err(EvaluationError::Unimplemented)?,
             // If it's an application itself, try to evaluate it first.
@@ -198,18 +238,25 @@ pub fn interpret(ctx: &mut Context, statements: &[Statement]) {
                                     [&action_id]
                                     .definition;
 
-                                let evaluated_args: Vec<TracedExpr> = args
-                                    .into_iter()
-                                    .map(|arg| {
-                                        evaluate_traced(
-                                            &ctx.expression_context,
-                                            arg.clone(),
-                                        )
-                                        .unwrap()
-                                    })
-                                    .collect();
+                                let evaluated_args: Result<Vec<TracedExpr>, _> =
+                                    args.into_iter()
+                                        .map(|arg| {
+                                            evaluate_traced(
+                                                &ctx.expression_context,
+                                                arg.clone(),
+                                            )
+                                        })
+                                        .collect();
 
-                                let result = (action)(&evaluated_args).unwrap();
+                                let result = TracedExpr {
+                                    evaluated: (action)(
+                                        &evaluated_args.unwrap().as_mut_slice(),
+                                    )
+                                    .unwrap(),
+                                    trace: Some(
+                                        action_expr.trace.clone().unwrap(),
+                                    ),
+                                };
 
                                 match result_var {
                                     Some(result_var) => {

@@ -33,7 +33,7 @@ pub fn ef3r_stdlib() -> Context {
                 .clone();
 
             match (first.evaluated, second.evaluated) {
-                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y).traced()),
+                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y)),
                 _ => Err(EvaluationError::TypeError)?,
             }
         },
@@ -53,7 +53,7 @@ pub fn ef3r_stdlib() -> Context {
                 .clone();
 
             match (first.evaluated, second.evaluated) {
-                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y).traced()),
+                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y)),
                 _ => Err(EvaluationError::TypeError)?,
             }
         },
@@ -73,7 +73,7 @@ pub fn ef3r_stdlib() -> Context {
                 .clone();
 
             match (first.evaluated, second.evaluated) {
-                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y).traced()),
+                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y)),
                 _ => Err(EvaluationError::TypeError)?,
             }
         },
@@ -88,7 +88,7 @@ pub fn ef3r_stdlib() -> Context {
             match first.evaluated {
                 Expr::String(str) => {
                     println!("{}", str);
-                    Ok(Expr::None.traced())
+                    Ok(Expr::None)
                 }
                 _ => Err(EvaluationError::TypeError)?,
             }
