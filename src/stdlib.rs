@@ -4,7 +4,9 @@ use daggy::Dag;
 
 use crate::{
     ast::{Expr, TracedExpr},
-    interpreter::{Context, EvaluationError, ExpressionContext},
+    interpreter::{
+        Context, EvaluationError, ExpressionContext, InvokableDefinition,
+    },
 };
 
 // Function IDs
@@ -17,8 +19,9 @@ pub const SUB_ID: u32 = 3;
 pub const PRINT_ID: u32 = 0;
 
 pub fn ef3r_stdlib() -> Context {
-    let mul: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError> =
-        |xs: &[TracedExpr]| {
+    let mul = InvokableDefinition {
+        name: "*".to_string(),
+        definition: |xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments)?
@@ -32,10 +35,12 @@ pub fn ef3r_stdlib() -> Context {
                 (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y).traced()),
                 _ => Err(EvaluationError::TypeError)?,
             }
-        };
+        },
+    };
 
-    let add: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError> =
-        |xs: &[TracedExpr]| {
+    let add = InvokableDefinition {
+        name: "+".to_string(),
+        definition: |xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments)?
@@ -49,10 +54,12 @@ pub fn ef3r_stdlib() -> Context {
                 (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y).traced()),
                 _ => Err(EvaluationError::TypeError)?,
             }
-        };
+        },
+    };
 
-    let div: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError> =
-        |xs: &[TracedExpr]| {
+    let div = InvokableDefinition {
+        name: "/".to_string(),
+        definition: |xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments)?
@@ -66,10 +73,12 @@ pub fn ef3r_stdlib() -> Context {
                 (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y).traced()),
                 _ => Err(EvaluationError::TypeError)?,
             }
-        };
+        },
+    };
 
-    let print_fn: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError> =
-        |xs: &[TracedExpr]| {
+    let print_fn = InvokableDefinition {
+        name: "print".to_string(),
+        definition: |xs: &[TracedExpr]| {
             let first = xs.get(0).unwrap().clone();
 
             match first.evaluated {
@@ -79,7 +88,8 @@ pub fn ef3r_stdlib() -> Context {
                 }
                 _ => Err(EvaluationError::TypeError)?,
             }
-        };
+        },
+    };
 
     // Lookup table for the interpreter
     Context {

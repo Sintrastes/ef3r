@@ -1,6 +1,6 @@
 use ef3r::ast::{Expr, Statement};
-use ef3r::interpreter::{self, apply_traced, evaluate};
-use ef3r::stdlib::{ef3r_stdlib, MUL_ID, PRINT_ID};
+use ef3r::interpreter::{self};
+use ef3r::stdlib::{ef3r_stdlib, PRINT_ID};
 use std::{env, fs::File, io::Write};
 
 const UNKNOWN_COMMAND: &str = "Unknown sub-command";
@@ -23,12 +23,6 @@ fn main() -> Result<(), String> {
         "example" => {
             // Runs a built-in example.
             let mut context = ef3r_stdlib();
-
-            // Example expression.
-            let expression = Expr::Apply(
-                Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
-                Box::new([Expr::Int(2).traced(), Expr::Int(3).traced()]),
-            );
 
             // Example program
             let program = [

@@ -26,15 +26,15 @@ pub enum EvaluationError {
 }
 
 #[derive(Clone)]
+pub struct InvokableDefinition {
+    pub definition: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError>,
+    pub name: String,
+}
+
+#[derive(Clone)]
 pub struct ExpressionContext {
-    pub functions: HashMap<
-        FunctionID,
-        fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError>,
-    >,
-    pub actions: HashMap<
-        ActionID,
-        fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError>,
-    >,
+    pub functions: HashMap<FunctionID, InvokableDefinition>,
+    pub actions: HashMap<ActionID, InvokableDefinition>,
     pub variables: HashMap<VariableID, TracedExpr>,
 }
 
@@ -135,7 +135,8 @@ pub fn evaluate(
                 let implemntation = ctx
                     .functions
                     .get(&id)
-                    .ok_or(EvaluationError::NotAFunction)?;
+                    .ok_or(EvaluationError::NotAFunction)?
+                    .definition;
                 implemntation(x.as_ref())
             }
             Expr::Lambda(_, _) => Err(EvaluationError::Unimplemented)?,
@@ -185,8 +186,9 @@ pub fn interpret(ctx: &mut Context, statements: &[Statement]) {
                         let action = action;
                         match action.evaluated {
                             Expr::Action(action_id) => {
-                                let action =
-                                    ctx.expression_context.actions[&action_id];
+                                let action = ctx.expression_context.actions
+                                    [&action_id]
+                                    .definition;
 
                                 let evaluated_args: Vec<TracedExpr> = args
                                     .into_iter()
