@@ -21,6 +21,7 @@ pub const PRINT_ID: u32 = 0;
 pub fn ef3r_stdlib() -> Context {
     let mul = InvokableDefinition {
         name: "*".to_string(),
+        infix: true,
         definition: |xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
@@ -40,6 +41,7 @@ pub fn ef3r_stdlib() -> Context {
 
     let add = InvokableDefinition {
         name: "+".to_string(),
+        infix: true,
         definition: |xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
@@ -59,6 +61,7 @@ pub fn ef3r_stdlib() -> Context {
 
     let div = InvokableDefinition {
         name: "/".to_string(),
+        infix: true,
         definition: |xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
@@ -78,6 +81,7 @@ pub fn ef3r_stdlib() -> Context {
 
     let print_fn = InvokableDefinition {
         name: "print".to_string(),
+        infix: false,
         definition: |xs: &[TracedExpr]| {
             let first = xs.get(0).unwrap().clone();
 

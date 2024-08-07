@@ -29,6 +29,7 @@ pub enum EvaluationError {
 pub struct InvokableDefinition {
     pub definition: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError>,
     pub name: String,
+    pub infix: bool,
 }
 
 #[derive(Clone)]
