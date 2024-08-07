@@ -3,6 +3,8 @@ use std::fmt::Display;
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
+use crate::{interpreter::Context, stdlib::ef3r_stdlib};
+
 pub type FunctionID = u32;
 
 pub type ActionID = u32;
@@ -31,12 +33,12 @@ pub enum Expr {
     /// Build a mapped version of a node.
     /// First argument: Node to map.
     /// Second argument: Function to use for the mapping.
-    MapNode(Box<Expr>, Box<Expr>),
+    MapNode(Box<TracedExpr>, Box<TracedExpr>),
     BuiltinFunction(FunctionID),
     /// Lambda expression: \x -> f x
-    Lambda(VariableID, Box<Expr>),
+    Lambda(VariableID, Box<TracedExpr>),
     /// Function application: f x
-    Apply(Box<Expr>, Box<[Expr]>),
+    Apply(Box<TracedExpr>, Box<[TracedExpr]>),
     /// Locally defined variable.
     Var(VariableID),
 }
@@ -49,12 +51,18 @@ impl Expr {
 
 impl Arbitrary for Expr {
     fn arbitrary(g: &mut Gen) -> Self {
-        Self::arbitrary_with_depth(g, 0)
+        let context = ef3r_stdlib();
+
+        Self::arbitrary_with_depth(&context, g, 0)
     }
 }
 
 impl Expr {
-    fn arbitrary_with_depth(g: &mut Gen, depth: usize) -> Self {
+    fn arbitrary_with_depth(
+        context: &Context,
+        g: &mut Gen,
+        depth: usize,
+    ) -> Self {
         let choices = if depth < 5 {
             vec![
                 0, // None
@@ -89,20 +97,38 @@ impl Expr {
                     return Expr::Float(value);
                 }
             },
-            4 => Expr::Action(u32::arbitrary(g)),
-            5 => Expr::BuiltinFunction(u32::arbitrary(g)),
+            4 => {
+                let keys: Vec<&u32> =
+                    context.expression_context.actions.keys().collect();
+                let key = **g.choose(&keys).unwrap();
+                Expr::Action(key)
+            }
+            5 => {
+                let keys: Vec<&u32> =
+                    context.expression_context.functions.keys().collect();
+                let key = **g.choose(&keys).unwrap();
+                Expr::BuiltinFunction(key)
+            }
             6 => Expr::Lambda(
                 String::arbitrary(g),
-                Box::new(Expr::arbitrary_with_depth(g, depth + 1)),
+                Box::new(
+                    Expr::arbitrary_with_depth(context, g, depth + 1).traced(),
+                ),
             ),
             7 => {
                 let num_args = usize::arbitrary(g) % 5; // Limit the number of arguments to a small number
                 let args = (0..num_args)
-                    .map(|_| Expr::arbitrary_with_depth(g, depth + 1))
+                    .map(|_| {
+                        Expr::arbitrary_with_depth(context, g, depth + 1)
+                            .traced()
+                    })
                     .collect::<Vec<_>>()
                     .into_boxed_slice();
                 Expr::Apply(
-                    Box::new(Expr::arbitrary_with_depth(g, depth + 1)),
+                    Box::new(
+                        Expr::arbitrary_with_depth(context, g, depth + 1)
+                            .traced(),
+                    ),
                     args,
                 )
             }
@@ -173,7 +199,7 @@ impl Display for Expr {
 ///
 /// If it exists, the trace should evaluate to evaluated.
 ///
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TracedExpr {
     pub evaluated: Expr,
     pub trace: Option<Expr>,
@@ -188,16 +214,22 @@ impl TracedExpr {
     }
 }
 
+impl Display for TracedExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.evaluated.fmt(f)
+    }
+}
+
 ///
 /// An imperative statement to be executed in the ef3r runtime.
 ///
 #[derive(Clone, Serialize, Deserialize)]
 pub enum Statement {
     /// Initialize the variable with an expression.
-    Var(VariableID, Expr),
+    Var(VariableID, TracedExpr),
     /// Execute a side-effecting expression (Action) and optionally bind
     ///  its result to a variable.
-    Execute(Option<VariableID>, Expr),
+    Execute(Option<VariableID>, TracedExpr),
 }
 
 ///

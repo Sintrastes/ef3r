@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use daggy::Dag;
 
 use crate::{
-    ast::{ActionID, Expr, FunctionID, TracedExpr, VariableID},
+    ast::{ActionID, Expr, FunctionID, Statement, TracedExpr, VariableID},
     frp::Node,
 };
 
@@ -22,13 +22,19 @@ pub enum EvaluationError {
     NotAFunction,
     VariableNotFound,
     Unimplemented,
+    WrongNumberOfArguments,
 }
 
 #[derive(Clone)]
 pub struct ExpressionContext {
-    pub functions:
-        HashMap<FunctionID, fn(&[Expr]) -> Result<Expr, EvaluationError>>,
-    pub actions: HashMap<ActionID, fn() -> ()>,
+    pub functions: HashMap<
+        FunctionID,
+        fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError>,
+    >,
+    pub actions: HashMap<
+        ActionID,
+        fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError>,
+    >,
     pub variables: HashMap<VariableID, TracedExpr>,
 }
 
@@ -54,20 +60,20 @@ pub fn apply_traced(
     let evaluated = evaluate(
         ctx,
         Expr::Apply(
-            Box::new(expr.evaluated.clone()),
-            args.iter().map(|x| x.evaluated.clone()).collect(),
+            Box::new(expr.evaluated.clone().traced()),
+            args.iter().map(|x| x.evaluated.clone().traced()).collect(),
         ),
     );
 
     let trace = Expr::Apply(
-        Box::new(expr.trace.clone().unwrap_or(expr.evaluated.clone())),
+        Box::new(expr.clone()),
         args.iter()
-            .map(|x| x.trace.clone().unwrap_or(x.evaluated.clone()))
+            .map(|x| x.trace.clone().unwrap_or(x.evaluated.clone()).traced())
             .collect(),
     );
 
     Ok(TracedExpr {
-        evaluated: evaluated?,
+        evaluated: evaluated?.evaluated,
         trace: Some(trace),
     })
 }
@@ -81,7 +87,7 @@ pub fn evaluate_traced(
             evaluated: expr,
             trace,
         } => Ok(TracedExpr {
-            evaluated: evaluate(&ctx, expr)?,
+            evaluated: evaluate(&ctx, expr)?.evaluated,
             trace: trace,
         }),
     }
@@ -98,7 +104,7 @@ mod tests {
             let evaluated = evaluate(&context, expr);
             match evaluated {
                 Err(_) => true, // Property does not apply if expression is malformed.
-                Ok(inner) => Ok(inner.clone()) == evaluate(&context, inner),
+                Ok(inner) => Ok(inner.clone()) == evaluate(&context, inner.evaluated),
             }
         }
     }
@@ -107,23 +113,23 @@ mod tests {
 pub fn evaluate(
     ctx: &ExpressionContext,
     expr: Expr,
-) -> Result<Expr, EvaluationError> {
+) -> Result<TracedExpr, EvaluationError> {
     match expr {
         // Literals evaluate to themselves.
-        Expr::None => Ok(expr),
-        Expr::Int(_) => Ok(expr),
-        Expr::String(_) => Ok(expr),
-        Expr::Float(_) => Ok(expr),
-        Expr::Action(_) => Ok(expr),
-        Expr::Lambda(_, _) => Ok(expr),
-        Expr::BuiltinFunction(_) => Ok(expr),
-        Expr::Node(_) => Ok(expr),
+        Expr::None => Ok(expr.traced()),
+        Expr::Int(_) => Ok(expr.traced()),
+        Expr::String(_) => Ok(expr.traced()),
+        Expr::Float(_) => Ok(expr.traced()),
+        Expr::Action(_) => Ok(expr.traced()),
+        Expr::Lambda(_, _) => Ok(expr.traced()),
+        Expr::BuiltinFunction(_) => Ok(expr.traced()),
+        Expr::Node(_) => Ok(expr.traced()),
         // For now, we'll just treat this like an opaque expression.
         // Evaluating it is different from a normal expression since we'd need
         // access to the FRP graph.
-        Expr::MapNode(_, _) => Ok(expr),
+        Expr::MapNode(_, _) => Ok(expr.traced()),
         // Function applications need to be reduced.
-        Expr::Apply(f, x) => match *f {
+        Expr::Apply(f, x) => match f.evaluated {
             // Builtin functions can just be looked up in the evaluator context.
             Expr::BuiltinFunction(id) => {
                 let implemntation = ctx
@@ -136,7 +142,10 @@ pub fn evaluate(
             // If it's an application itself, try to evaluate it first.
             Expr::Apply(_, _) => {
                 println!("Evaluating apply on {:?} and {:?}", f, x);
-                evaluate(ctx, Expr::Apply(Box::new(evaluate(ctx, *f)?), x))
+                evaluate(
+                    ctx,
+                    Expr::Apply(Box::new(evaluate(ctx, f.evaluated)?), x),
+                )
             }
             // If it's a variable, see if we can look it up in the context.
             Expr::Var(var) => evaluate(
@@ -154,7 +163,59 @@ pub fn evaluate(
             .variables
             .get(&x)
             .ok_or(EvaluationError::VariableNotFound)?
-            .evaluated
             .clone()),
+    }
+}
+
+pub fn interpret(ctx: &mut Context, statements: &[Statement]) {
+    for statement in statements {
+        match statement {
+            Statement::Var(x, expr) => {
+                let evaluated =
+                    evaluate_traced(&ctx.expression_context, expr.clone())
+                        .unwrap();
+
+                ctx.expression_context
+                    .variables
+                    .insert(x.to_string(), evaluated);
+            }
+            Statement::Execute(result_var, action_expr) => {
+                match &action_expr.evaluated {
+                    Expr::Apply(action, args) => {
+                        let action = action;
+                        match action.evaluated {
+                            Expr::Action(action_id) => {
+                                let action =
+                                    ctx.expression_context.actions[&action_id];
+
+                                let evaluated_args: Vec<TracedExpr> = args
+                                    .into_iter()
+                                    .map(|arg| {
+                                        evaluate_traced(
+                                            &ctx.expression_context,
+                                            arg.clone(),
+                                        )
+                                        .unwrap()
+                                    })
+                                    .collect();
+
+                                let result = (action)(&evaluated_args).unwrap();
+
+                                match result_var {
+                                    Some(result_var) => {
+                                        ctx.expression_context
+                                            .variables
+                                            .insert(result_var.clone(), result);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _ => Err(EvaluationError::NotAFunction).unwrap(),
+                        }
+                    }
+                    _ => Err(EvaluationError::NotAFunction).unwrap(),
+                }
+            }
+        };
     }
 }

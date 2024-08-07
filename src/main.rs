@@ -1,5 +1,5 @@
 use ef3r::ast::{Expr, Statement};
-use ef3r::interpreter::evaluate;
+use ef3r::interpreter::{self, apply_traced, evaluate};
 use ef3r::stdlib::{ef3r_stdlib, MUL_ID, PRINT_ID};
 use std::{env, fs::File, io::Write};
 
@@ -22,32 +22,32 @@ fn main() -> Result<(), String> {
         }
         "example" => {
             // Runs a built-in example.
-            let context = ef3r_stdlib();
+            let mut context = ef3r_stdlib();
 
             // Example expression.
             let expression = Expr::Apply(
-                Box::new(Expr::BuiltinFunction(MUL_ID)),
-                Box::new([Expr::Int(2), Expr::Int(3)]),
+                Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+                Box::new([Expr::Int(2).traced(), Expr::Int(3).traced()]),
             );
 
             // Example program
             let program = [
-                Statement::Var("x".to_string(), Expr::Int(42)),
+                Statement::Var("x".to_string(), Expr::Int(42).traced()),
+                Statement::Var(
+                    "y".to_string(),
+                    Expr::String("Hello, world!".to_string()).traced(),
+                ),
                 Statement::Execute(
                     None,
                     Expr::Apply(
-                        Box::new(Expr::Action(PRINT_ID)),
-                        Box::new([Expr::Var("x".to_string())]),
-                    ),
+                        Box::new(Expr::Action(PRINT_ID).traced()),
+                        Box::new([Expr::Var("y".to_string()).traced()]),
+                    )
+                    .traced(),
                 ),
             ];
 
-            println!("Before evaluate: {:?}", expression);
-
-            println!(
-                "After evaluate: {:?}",
-                evaluate(&context.expression_context, expression)
-            );
+            interpreter::interpret(&mut context, &program);
 
             // Write the bytecode of the example to a file.
 

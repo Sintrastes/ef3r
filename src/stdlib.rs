@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use daggy::Dag;
 
 use crate::{
-    ast::Expr,
+    ast::{Expr, TracedExpr},
     interpreter::{Context, EvaluationError, ExpressionContext},
 };
 
@@ -17,35 +17,69 @@ pub const SUB_ID: u32 = 3;
 pub const PRINT_ID: u32 = 0;
 
 pub fn ef3r_stdlib() -> Context {
-    let mul: fn(&[Expr]) -> Result<Expr, EvaluationError> = |xs: &[Expr]| {
-        let first = xs.get(0).unwrap().clone();
-        let second = xs.get(1).unwrap().clone();
+    let mul: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError> =
+        |xs: &[TracedExpr]| {
+            let first = xs
+                .get(0)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
+            let second = xs
+                .get(1)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
 
-        match (first, second) {
-            (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y)),
-            _ => Err(EvaluationError::TypeError)?,
-        }
-    };
+            match (first.evaluated, second.evaluated) {
+                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y).traced()),
+                _ => Err(EvaluationError::TypeError)?,
+            }
+        };
 
-    let add: fn(&[Expr]) -> Result<Expr, EvaluationError> = |xs: &[Expr]| {
-        let first = xs.get(0).unwrap().clone();
-        let second = xs.get(1).unwrap().clone();
+    let add: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError> =
+        |xs: &[TracedExpr]| {
+            let first = xs
+                .get(0)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
+            let second = xs
+                .get(1)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
 
-        match (first, second) {
-            (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y)),
-            _ => Err(EvaluationError::TypeError)?,
-        }
-    };
+            match (first.evaluated, second.evaluated) {
+                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y).traced()),
+                _ => Err(EvaluationError::TypeError)?,
+            }
+        };
 
-    let div: fn(&[Expr]) -> Result<Expr, EvaluationError> = |xs: &[Expr]| {
-        let first = xs.get(0).unwrap().clone();
-        let second = xs.get(1).unwrap().clone();
+    let div: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError> =
+        |xs: &[TracedExpr]| {
+            let first = xs
+                .get(0)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
+            let second = xs
+                .get(1)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
 
-        match (first, second) {
-            (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y)),
-            _ => Err(EvaluationError::TypeError)?,
-        }
-    };
+            match (first.evaluated, second.evaluated) {
+                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y).traced()),
+                _ => Err(EvaluationError::TypeError)?,
+            }
+        };
+
+    let print_fn: fn(&[TracedExpr]) -> Result<TracedExpr, EvaluationError> =
+        |xs: &[TracedExpr]| {
+            let first = xs.get(0).unwrap().clone();
+
+            match first.evaluated {
+                Expr::String(str) => {
+                    println!("{}", str);
+                    Ok(Expr::None.traced())
+                }
+                _ => Err(EvaluationError::TypeError)?,
+            }
+        };
 
     // Lookup table for the interpreter
     Context {
@@ -55,7 +89,7 @@ pub fn ef3r_stdlib() -> Context {
                 (ADD_ID, add),
                 (DIV_ID, div),
             ]),
-            actions: HashMap::new(),
+            actions: HashMap::from([(PRINT_ID, print_fn)]),
             variables: HashMap::new(),
         },
         graph: Dag::new(),
