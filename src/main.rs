@@ -13,6 +13,15 @@ fn main() -> Result<(), String> {
     match sub_command {
         "execute" => {
             // Executes an ef3r bytecode file.
+            let file_path = args.get(2).ok_or("File not specified")?.as_str();
+
+            let program: Vec<Statement> =
+                bincode::deserialize_from(File::open(file_path).unwrap())
+                    .unwrap();
+
+            let mut context = ef3r_stdlib();
+
+            interpreter::interpret(&mut context, &program);
         }
         "pack" => {
             // Parses ef3r source code and converts it into a ef3r bytecode file.
@@ -40,8 +49,6 @@ fn main() -> Result<(), String> {
                     .traced(),
                 ),
             ];
-
-            interpreter::interpret(&mut context, &program);
 
             // Write the bytecode of the example to a file.
 
