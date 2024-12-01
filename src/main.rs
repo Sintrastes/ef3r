@@ -1,6 +1,6 @@
 use ef3r::ast::{Expr, Statement};
 use ef3r::interpreter::{self};
-use ef3r::stdlib::{ef3r_stdlib, PRINT_ID};
+use ef3r::stdlib::{ef3r_stdlib, PRINT_ID, READLN_ID};
 use std::{env, fs::File, io::Write};
 
 const UNKNOWN_COMMAND: &str = "Unknown sub-command";
@@ -34,7 +34,7 @@ fn main() -> Result<(), String> {
             let mut context = ef3r_stdlib();
 
             // Example program
-            let program = [
+            let program = vec![
                 Statement::Var("x".to_string(), Expr::Int(42).traced()),
                 Statement::Var(
                     "y".to_string(),
@@ -45,6 +45,22 @@ fn main() -> Result<(), String> {
                     Expr::Apply(
                         Box::new(Expr::Action(PRINT_ID).traced()),
                         Box::new([Expr::Var("y".to_string()).traced()]),
+                    )
+                    .traced(),
+                ),
+                Statement::Execute(
+                    Some("z".to_string()),
+                    Expr::Apply(
+                        Box::new(Expr::Action(READLN_ID).traced()),
+                        Box::new([]),
+                    )
+                    .traced(),
+                ),
+                Statement::Execute(
+                    None,
+                    Expr::Apply(
+                        Box::new(Expr::Action(PRINT_ID).traced()),
+                        Box::new([Expr::Var("z".to_string()).traced()]),
                     )
                     .traced(),
                 ),

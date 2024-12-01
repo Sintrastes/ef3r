@@ -52,9 +52,12 @@ fn test_map_node() {
 
     // Check the initial state of the mapped node is what we expect
 
-    let mapped_node = context.graph.node_weight(mapped_node_index).unwrap();
+    let mapped_node = context.graph.node_weight(mapped_node_index);
 
-    assert_eq!(Expr::Int(40), mapped_node.current().evaluated.clone());
+    assert_eq!(
+        Expr::Int(40),
+        mapped_node.unwrap().current().evaluated.clone()
+    );
 
     // Update the input value and step through a single frame of the event loop.
 
@@ -62,7 +65,10 @@ fn test_map_node() {
 
     // Check that the mapped node has updated.
 
-    assert_eq!(Expr::Int(42), mapped_node.current().evaluated.clone());
+    assert_eq!(
+        Expr::Int(42),
+        mapped_node.unwrap().current().evaluated.clone()
+    );
 }
 
 #[test]

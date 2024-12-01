@@ -44,18 +44,21 @@ pub fn trace(expr: TracedExpr) -> TracedExpr {
     match expr {
         TracedExpr {
             evaluated: expr,
-            trace: _,
+            stored_trace: _,
         } => TracedExpr {
             evaluated: expr.clone(),
-            trace: Option::Some(expr),
+            stored_trace: Option::Some(expr),
         },
     }
 }
 
 pub fn unwind_trace(expr: TracedExpr) -> TracedExpr {
     match expr {
-        TracedExpr { evaluated, trace } => {
-            let actual_trace = trace.unwrap_or(evaluated);
+        TracedExpr {
+            evaluated,
+            stored_trace,
+        } => {
+            let actual_trace = stored_trace.unwrap_or(evaluated);
             TracedExpr {
                 evaluated: match actual_trace {
                     Expr::Apply(function, arguments) => Expr::Apply(
@@ -67,7 +70,7 @@ pub fn unwind_trace(expr: TracedExpr) -> TracedExpr {
                     ),
                     _ => actual_trace,
                 },
-                trace: None,
+                stored_trace: None,
             }
         }
     }
@@ -89,14 +92,12 @@ pub fn apply_traced(
 
     let trace = Expr::Apply(
         Box::new(expr.clone()),
-        args.iter()
-            .map(|x| x.trace.clone().unwrap_or(x.evaluated.clone()).traced())
-            .collect(),
+        args.iter().map(|x| x.get_trace().traced()).collect(),
     );
 
     Ok(TracedExpr {
         evaluated: evaluated?.evaluated,
-        trace: Some(trace),
+        stored_trace: Some(trace),
     })
 }
 
@@ -105,14 +106,17 @@ pub fn evaluate_traced(
     expr: TracedExpr,
 ) -> Result<TracedExpr, EvaluationError> {
     match expr {
-        TracedExpr { evaluated, trace } => Ok(TracedExpr {
+        TracedExpr {
+            evaluated,
+            stored_trace,
+        } => Ok(TracedExpr {
             evaluated: evaluate_traced_rec(
                 &ctx,
                 evaluated.clone(),
-                trace.clone(),
+                stored_trace.clone(),
             )?
             .evaluated,
-            trace: Some(trace.unwrap_or(evaluated)),
+            stored_trace: Some(stored_trace.unwrap_or(evaluated)),
         }),
     }
 }
@@ -176,16 +180,16 @@ fn evaluate_traced_rec(
                         evaluate_traced_rec(
                             ctx,
                             x.evaluated.clone(),
-                            x.trace.clone(),
+                            Some(x.get_trace()),
                         )
                     })
                     .into_iter()
                     .collect();
 
-                Ok(TracedExpr {
-                    evaluated: implemntation(evaluated_args?.as_mut_slice())?,
-                    trace: trace,
-                })
+                Ok(TracedExpr::build(
+                    implemntation(evaluated_args?.as_mut_slice())?,
+                    trace,
+                ))
             }
             Expr::Lambda(_, _) => Err(EvaluationError::Unimplemented)?,
             // If it's an application itself, try to evaluate it first.
@@ -248,15 +252,13 @@ pub fn interpret(ctx: &mut Context, statements: &[Statement]) {
                                         })
                                         .collect();
 
-                                let result = TracedExpr {
-                                    evaluated: (action)(
+                                let result = TracedExpr::build(
+                                    (action)(
                                         &evaluated_args.unwrap().as_mut_slice(),
                                     )
                                     .unwrap(),
-                                    trace: Some(
-                                        action_expr.trace.clone().unwrap(),
-                                    ),
-                                };
+                                    Some(action_expr.get_trace()),
+                                );
 
                                 match result_var {
                                     Some(result_var) => {

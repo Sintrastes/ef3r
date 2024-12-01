@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io::{self, BufRead},
+};
 
 use daggy::Dag;
 
@@ -17,6 +20,7 @@ pub const SUB_ID: u32 = 3;
 
 // Action IDs
 pub const PRINT_ID: u32 = 0;
+pub const READLN_ID: u32 = 1;
 
 pub fn ef3r_stdlib() -> Context {
     let mul = InvokableDefinition {
@@ -95,6 +99,17 @@ pub fn ef3r_stdlib() -> Context {
         },
     };
 
+    let readln_fn = InvokableDefinition {
+        name: "read_ln".to_string(),
+        infix: false,
+        definition: |xs: &[TracedExpr]| {
+            let stdin = io::stdin();
+            let result = stdin.lock().lines().next().unwrap().unwrap();
+
+            Result::Ok(Expr::String(result))
+        },
+    };
+
     // Lookup table for the interpreter
     Context {
         expression_context: ExpressionContext {
@@ -103,7 +118,10 @@ pub fn ef3r_stdlib() -> Context {
                 (ADD_ID, add),
                 (DIV_ID, div),
             ]),
-            actions: HashMap::from([(PRINT_ID, print_fn)]),
+            actions: HashMap::from([
+                (PRINT_ID, print_fn),
+                (READLN_ID, readln_fn),
+            ]),
             variables: HashMap::new(),
         },
         graph: Dag::new(),

@@ -4,7 +4,9 @@ use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    interpreter::{apply_traced, evaluate_traced, unwind_trace, Context},
+    interpreter::{
+        apply_traced, evaluate, evaluate_traced, unwind_trace, Context,
+    },
     stdlib::{ef3r_stdlib, ADD_ID, MUL_ID},
 };
 
@@ -227,14 +229,28 @@ impl Display for Expr {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TracedExpr {
     pub evaluated: Expr,
-    pub trace: Option<Expr>,
+    pub stored_trace: Option<Expr>,
 }
 
 impl TracedExpr {
+    pub fn build(evaluated: Expr, trace: Option<Expr>) -> TracedExpr {
+        TracedExpr {
+            evaluated: evaluated,
+            stored_trace: trace,
+        }
+    }
+
+    pub fn get_trace(&self) -> Expr {
+        match &self.stored_trace {
+            Some(expr) => expr.clone(),
+            None => self.evaluated.clone(),
+        }
+    }
+
     pub fn new(expr: Expr) -> TracedExpr {
         TracedExpr {
             evaluated: expr,
-            trace: None,
+            stored_trace: None,
         }
     }
 }
@@ -272,9 +288,9 @@ fn evaluation_keeps_trace() {
 
     assert_eq!(evaluated.evaluated, Expr::Int(6));
 
-    println!("Trace: {}", evaluated.trace.clone().unwrap());
+    println!("Trace: {}", evaluated.stored_trace.clone().unwrap());
 
-    assert_eq!(evaluated.trace, Some(expression));
+    assert_eq!(evaluated.stored_trace, Some(expression));
 }
 
 #[test]
