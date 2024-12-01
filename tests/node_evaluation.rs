@@ -25,7 +25,7 @@ fn test_map_node() {
         graph,
         TracedExpr {
             evaluated: Expr::Int(20),
-            trace: None,
+            stored_trace: None,
         },
     );
 
@@ -89,7 +89,7 @@ fn test_filter_node() {
         graph,
         TracedExpr {
             evaluated: Expr::Int(1),
-            trace: None,
+            stored_trace: None,
         },
     );
 
@@ -147,7 +147,7 @@ fn test_combined_node() {
         &mut context.graph,
         TracedExpr {
             evaluated: Expr::Int(2),
-            trace: None,
+            stored_trace: None,
         },
     );
 
@@ -157,7 +157,7 @@ fn test_combined_node() {
         &mut context.graph,
         TracedExpr {
             evaluated: Expr::Int(3),
-            trace: None,
+            stored_trace: None,
         },
     );
 

@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Display, Pointer, Write};
 
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,10 @@ pub enum Expr {
     String(String),
     /// Float literal
     Float(f32),
+    /// Boolean literal,
+    Bool(bool),
+    /// Pair type,
+    Pair(Box<TracedExpr>, Box<TracedExpr>),
     /// Action reference.
     Action(ActionID),
     /// Externally defined node that has been supplied
@@ -40,8 +44,8 @@ pub enum Expr {
     /// Second argument: Function to use for the mapping.
     MapNode(Box<TracedExpr>, Box<TracedExpr>),
     BuiltinFunction(FunctionID),
-    /// Lambda expression: \x -> f x
-    Lambda(VariableID, Box<TracedExpr>),
+    /// Lambda expression with 0+ parameters: \x y z -> f x
+    Lambda(Vec<VariableID>, Box<TracedExpr>),
     /// Function application: f x
     Apply(Box<TracedExpr>, Box<[TracedExpr]>),
     /// Locally defined variable.
@@ -115,7 +119,7 @@ impl Expr {
                 Expr::BuiltinFunction(key)
             }
             6 => Expr::Lambda(
-                String::arbitrary(g),
+                Vec::arbitrary(g),
                 Box::new(
                     Expr::arbitrary_with_depth(context, g, depth + 1).traced(),
                 ),
@@ -188,15 +192,17 @@ impl Display for Expr {
 
                 f.write_str(name.as_str())
             }
-            Expr::Lambda(var, body) => {
+            Expr::Lambda(vars, body) => {
                 f.write_str("\\")?;
-                f.write_str(var)?;
+                for var in vars {
+                    f.write_str(var)?;
+                }
                 f.write_str(" -> ")?;
-                body.fmt(f)
+                body.as_ref().fmt(f)
             }
             Expr::Apply(fun, args) => {
                 f.write_str("(")?;
-                fun.fmt(f)?;
+                fun.as_ref().fmt(f)?;
                 for arg in args {
                     f.write_str(" ")?;
                     arg.fmt(f)?;
@@ -210,9 +216,17 @@ impl Display for Expr {
                 f.write_str(")")
             }
             Expr::MapNode(x, fun) => {
-                x.fmt(f)?;
+                x.as_ref().fmt(f)?;
                 f.write_str(".map(")?;
-                fun.fmt(f)?;
+                fun.as_ref().fmt(f)?;
+                f.write_str(")")
+            }
+            Expr::Bool(value) => value.fmt(f),
+            Expr::Pair(traced_expr, traced_expr1) => {
+                f.write_str("(");
+                traced_expr.as_ref().fmt(f);
+                f.write_str(",");
+                traced_expr1.as_ref().fmt(f);
                 f.write_str(")")
             }
         }

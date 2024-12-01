@@ -154,9 +154,11 @@ fn evaluate_traced_rec(
         // Literals evaluate to themselves.
         Expr::None => Ok(expr.traced()),
         Expr::Int(_) => Ok(expr.traced()),
+        Expr::Bool(_) => Ok(expr.traced()),
         Expr::String(_) => Ok(expr.traced()),
         Expr::Float(_) => Ok(expr.traced()),
         Expr::Action(_) => Ok(expr.traced()),
+        Expr::Pair(_, _) => Ok(expr.traced()),
         Expr::Lambda(_, _) => Ok(expr.traced()),
         Expr::BuiltinFunction(_) => Ok(expr.traced()),
         Expr::Node(_) => Ok(expr.traced()),

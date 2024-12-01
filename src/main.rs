@@ -1,6 +1,6 @@
 use ef3r::ast::{Expr, Statement};
 use ef3r::interpreter::{self};
-use ef3r::stdlib::{ef3r_stdlib, PRINT_ID, READLN_ID};
+use ef3r::stdlib::{ef3r_stdlib, PRINT_ID, READLN_ID, UPPERCASE_ID};
 use std::{env, fs::File, io::Write};
 
 const UNKNOWN_COMMAND: &str = "Unknown sub-command";
@@ -60,7 +60,13 @@ fn main() -> Result<(), String> {
                     None,
                     Expr::Apply(
                         Box::new(Expr::Action(PRINT_ID).traced()),
-                        Box::new([Expr::Var("z".to_string()).traced()]),
+                        Box::new([Expr::Apply(
+                            Box::new(
+                                Expr::BuiltinFunction(UPPERCASE_ID).traced(),
+                            ),
+                            Box::new([Expr::Var("z".to_string()).traced()]),
+                        )
+                        .traced()]),
                     )
                     .traced(),
                 ),
