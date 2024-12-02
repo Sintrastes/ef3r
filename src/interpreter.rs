@@ -11,6 +11,7 @@ use crate::{
 /// Local state needed to evaluate expressions and
 ///  update the FRP event loop.
 ///
+#[derive(Clone)]
 pub struct Context {
     pub expression_context: ExpressionContext,
     pub graph: Dag<Node<TracedExpr>, (), u32>,
@@ -27,7 +28,8 @@ pub enum EvaluationError {
 
 #[derive(Clone)]
 pub struct InvokableDefinition {
-    pub definition: fn(&[TracedExpr]) -> Result<Expr, EvaluationError>,
+    pub definition:
+        fn(&mut Context, &[TracedExpr]) -> Result<Expr, EvaluationError>,
     pub name: String,
     pub infix: bool,
 }
@@ -78,7 +80,7 @@ pub fn unwind_trace(expr: TracedExpr) -> TracedExpr {
 
 // Apply an expression to a list of arguments in a traced manner.
 pub fn apply_traced(
-    ctx: &ExpressionContext,
+    ctx: &mut Context,
     expr: TracedExpr,
     args: &[TracedExpr],
 ) -> Result<TracedExpr, EvaluationError> {
@@ -102,7 +104,7 @@ pub fn apply_traced(
 }
 
 pub fn evaluate_traced(
-    ctx: &ExpressionContext,
+    ctx: &mut Context,
     expr: TracedExpr,
 ) -> Result<TracedExpr, EvaluationError> {
     match expr {
@@ -111,7 +113,7 @@ pub fn evaluate_traced(
             stored_trace,
         } => Ok(TracedExpr {
             evaluated: evaluate_traced_rec(
-                &ctx,
+                ctx,
                 evaluated.clone(),
                 stored_trace.clone(),
             )?
@@ -127,39 +129,41 @@ mod tests {
 
     quickcheck! {
         fn evaluation_is_idempotent(expr: Expr) -> bool {
-            let context = ef3r_stdlib().expression_context;
+            let context = ef3r_stdlib();
             println!("Evaluating: {}", expr.clone());
-            let evaluated = evaluate(&context, expr);
+            let evaluated = evaluate(&mut context, expr);
             match evaluated {
                 Err(_) => true, // Property does not apply if expression is malformed.
-                Ok(inner) => Ok(inner.clone()) == evaluate(&context, inner.evaluated),
+                Ok(inner) => Ok(inner.clone()) == evaluate(&mut context, inner.evaluated),
             }
         }
     }
 }
 
 pub fn evaluate(
-    ctx: &ExpressionContext,
+    ctx: &mut Context,
     expr: Expr,
 ) -> Result<TracedExpr, EvaluationError> {
     evaluate_traced_rec(ctx, expr, None)
 }
 
 fn evaluate_traced_rec(
-    ctx: &ExpressionContext,
+    ctx: &mut Context,
     expr: Expr,
     trace: Option<Expr>,
 ) -> Result<TracedExpr, EvaluationError> {
     match expr {
         // Literals evaluate to themselves.
         Expr::None => Ok(expr.traced()),
+        Expr::Unit => Ok(expr.traced()),
         Expr::Int(_) => Ok(expr.traced()),
         Expr::Bool(_) => Ok(expr.traced()),
         Expr::String(_) => Ok(expr.traced()),
         Expr::Float(_) => Ok(expr.traced()),
         Expr::Action(_) => Ok(expr.traced()),
         Expr::Pair(_, _) => Ok(expr.traced()),
-        Expr::Lambda(_, _) => Ok(expr.traced()),
+        Expr::Type(_) => Ok(expr.traced()),
+        Expr::Lambda(_, _, _) => Ok(expr.traced()),
         Expr::BuiltinFunction(_) => Ok(expr.traced()),
         Expr::Node(_) => Ok(expr.traced()),
         // For now, we'll just treat this like an opaque expression.
@@ -171,6 +175,7 @@ fn evaluate_traced_rec(
             // Builtin functions can just be looked up in the evaluator context.
             Expr::BuiltinFunction(id) => {
                 let implemntation = ctx
+                    .expression_context
                     .functions
                     .get(&id)
                     .ok_or(EvaluationError::NotAFunction)?
@@ -189,23 +194,23 @@ fn evaluate_traced_rec(
                     .collect();
 
                 Ok(TracedExpr::build(
-                    implemntation(evaluated_args?.as_mut_slice())?,
+                    implemntation(ctx, evaluated_args?.as_mut_slice())?,
                     trace,
                 ))
             }
-            Expr::Lambda(_, _) => Err(EvaluationError::Unimplemented)?,
+            Expr::Lambda(_, _, _) => Err(EvaluationError::Unimplemented)?,
             // If it's an application itself, try to evaluate it first.
             Expr::Apply(_, _) => {
                 println!("Evaluating apply on {:?} and {:?}", f, xs);
-                evaluate(
-                    ctx,
-                    Expr::Apply(Box::new(evaluate(ctx, f.evaluated)?), xs),
-                )
+                let f_evaluated = evaluate(ctx, f.evaluated)?;
+
+                evaluate(ctx, Expr::Apply(Box::new(f_evaluated), xs))
             }
             // If it's a variable, see if we can look it up in the context.
             Expr::Var(var) => evaluate(
                 ctx,
-                ctx.variables
+                ctx.expression_context
+                    .variables
                     .get(&var)
                     .ok_or(EvaluationError::VariableNotFound)?
                     .evaluated
@@ -215,6 +220,7 @@ fn evaluate_traced_rec(
         },
         // Variables are looked up in the current context.
         Expr::Var(x) => Ok(ctx
+            .expression_context
             .variables
             .get(&x)
             .ok_or(EvaluationError::VariableNotFound)?
@@ -226,9 +232,7 @@ pub fn interpret(ctx: &mut Context, statements: &[Statement]) {
     for statement in statements {
         match statement {
             Statement::Var(x, expr) => {
-                let evaluated =
-                    evaluate_traced(&ctx.expression_context, expr.clone())
-                        .unwrap();
+                let evaluated = evaluate_traced(ctx, expr.clone()).unwrap();
 
                 ctx.expression_context
                     .variables
@@ -247,15 +251,13 @@ pub fn interpret(ctx: &mut Context, statements: &[Statement]) {
                                 let evaluated_args: Result<Vec<TracedExpr>, _> =
                                     args.into_iter()
                                         .map(|arg| {
-                                            evaluate_traced(
-                                                &ctx.expression_context,
-                                                arg.clone(),
-                                            )
+                                            evaluate_traced(ctx, arg.clone())
                                         })
                                         .collect();
 
                                 let result = TracedExpr::build(
                                     (action)(
+                                        ctx,
                                         &evaluated_args.unwrap().as_mut_slice(),
                                     )
                                     .unwrap(),

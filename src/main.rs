@@ -30,9 +30,6 @@ fn main() -> Result<(), String> {
             // Debug a running ef3r process.
         }
         "example" => {
-            // Runs a built-in example.
-            let mut context = ef3r_stdlib();
-
             // Example program
             let program = vec![
                 Statement::Var("x".to_string(), Expr::Int(42).traced()),

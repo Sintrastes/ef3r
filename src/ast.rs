@@ -1,13 +1,13 @@
-use std::fmt::{Display, Pointer, Write};
+use std::fmt::{Display, Pointer};
 
+use daggy::NodeIndex;
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    interpreter::{
-        apply_traced, evaluate, evaluate_traced, unwind_trace, Context,
-    },
+    interpreter::{evaluate_traced, unwind_trace, Context},
     stdlib::{ef3r_stdlib, ADD_ID, MUL_ID},
+    types::ExprType,
 };
 
 pub type FunctionID = u32;
@@ -24,6 +24,8 @@ pub type VariableID = String;
 pub enum Expr {
     /// Null symbol.
     None,
+    /// Unit symbol
+    Unit,
     /// Integer literal
     Int(i32),
     /// String literal
@@ -32,6 +34,8 @@ pub enum Expr {
     Float(f32),
     /// Boolean literal,
     Bool(bool),
+    /// Type of types
+    Type(ExprType),
     /// Pair type,
     Pair(Box<TracedExpr>, Box<TracedExpr>),
     /// Action reference.
@@ -45,7 +49,9 @@ pub enum Expr {
     MapNode(Box<TracedExpr>, Box<TracedExpr>),
     BuiltinFunction(FunctionID),
     /// Lambda expression with 0+ parameters: \x y z -> f x
-    Lambda(Vec<VariableID>, Box<TracedExpr>),
+    /// Can either be an "effectful" lambda with statements and a final
+    /// return result, or (if there are no statements), a pure function.
+    Lambda(Vec<VariableID>, Vec<Statement>, Box<TracedExpr>),
     /// Function application: f x
     Apply(Box<TracedExpr>, Box<[TracedExpr]>),
     /// Locally defined variable.
@@ -120,6 +126,7 @@ impl Expr {
             }
             6 => Expr::Lambda(
                 Vec::arbitrary(g),
+                vec![],
                 Box::new(
                     Expr::arbitrary_with_depth(context, g, depth + 1).traced(),
                 ),
@@ -153,7 +160,9 @@ impl Display for Expr {
 
         match self {
             Expr::None => f.write_str("None"),
+            Expr::Unit => f.write_str("Unit"),
             Expr::Int(x) => x.fmt(f),
+            Expr::Type(x) => x.fmt(f),
             Expr::String(x) => {
                 f.write_str("\"")?;
                 x.chars()
@@ -192,7 +201,7 @@ impl Display for Expr {
 
                 f.write_str(name.as_str())
             }
-            Expr::Lambda(vars, body) => {
+            Expr::Lambda(vars, _, body) => {
                 f.write_str("\\")?;
                 for var in vars {
                     f.write_str(var)?;
@@ -223,10 +232,10 @@ impl Display for Expr {
             }
             Expr::Bool(value) => value.fmt(f),
             Expr::Pair(traced_expr, traced_expr1) => {
-                f.write_str("(");
-                traced_expr.as_ref().fmt(f);
-                f.write_str(",");
-                traced_expr1.as_ref().fmt(f);
+                f.write_str("(")?;
+                traced_expr.as_ref().fmt(f)?;
+                f.write_str(",")?;
+                traced_expr1.as_ref().fmt(f)?;
                 f.write_str(")")
             }
         }
@@ -240,7 +249,7 @@ impl Display for Expr {
 ///
 /// If it exists, the trace should evaluate to evaluated.
 ///
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct TracedExpr {
     pub evaluated: Expr,
     pub stored_trace: Option<Expr>,
@@ -292,11 +301,8 @@ fn evaluation_keeps_trace() {
         ]),
     );
 
-    let evaluated = evaluate_traced(
-        &context.expression_context,
-        expression.clone().traced(),
-    )
-    .unwrap();
+    let evaluated =
+        evaluate_traced(&context, expression.clone().traced()).unwrap();
 
     println!("Evaluated: {}", evaluated.evaluated);
 
@@ -324,22 +330,16 @@ fn evaluating_twice_keeps_entire_trace() {
         ]),
     );
 
-    let evaluated = evaluate_traced(
-        &context.expression_context,
-        expression.clone().traced(),
-    )
-    .unwrap();
+    let evaluated =
+        evaluate_traced(&context, expression.clone().traced()).unwrap();
 
     let second_expression = Expr::Apply(
         Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
         Box::new([Expr::Int(2).traced(), evaluated]),
     );
 
-    let second_evaluated = evaluate_traced(
-        &context.expression_context,
-        second_expression.clone().traced(),
-    )
-    .unwrap();
+    let second_evaluated =
+        evaluate_traced(&context, second_expression.clone().traced()).unwrap();
 
     let expected = Expr::Apply(
         Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
@@ -358,7 +358,7 @@ fn evaluating_twice_keeps_entire_trace() {
 ///
 /// An imperative statement to be executed in the ef3r runtime.
 ///
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum Statement {
     /// Initialize the variable with an expression.
     Var(VariableID, TracedExpr),

@@ -17,19 +17,12 @@ fn test_map_node() {
 
     let mut context = ef3r_stdlib();
 
+    let mapped_context = context.clone();
+
     let graph = &mut context.graph;
 
-    let node_index = Node::new(
-        on_update,
-        is_traced.clone(),
-        graph,
-        TracedExpr {
-            evaluated: Expr::Int(20),
-            stored_trace: None,
-        },
-    );
-
-    let mapped_context = context.expression_context.clone();
+    let node_index =
+        Node::new(on_update, is_traced.clone(), graph, Expr::Int(20).traced());
 
     let mapped_node_index = map_node(
         on_update,
@@ -83,15 +76,8 @@ fn test_filter_node() {
 
     let graph = &mut context.graph;
 
-    let node_index = Node::new(
-        on_update,
-        is_traced.clone(),
-        graph,
-        TracedExpr {
-            evaluated: Expr::Int(1),
-            stored_trace: None,
-        },
-    );
+    let node_index =
+        Node::new(on_update, is_traced.clone(), graph, Expr::Int(1).traced());
 
     let filtered_node_index = filter_node(
         on_update,
@@ -145,23 +131,17 @@ fn test_combined_node() {
         on_update,
         is_traced.clone(),
         &mut context.graph,
-        TracedExpr {
-            evaluated: Expr::Int(2),
-            stored_trace: None,
-        },
+        Expr::Int(2).traced(),
     );
 
     let second_node_index = Node::new(
         on_update,
         is_traced.clone(),
         &mut context.graph,
-        TracedExpr {
-            evaluated: Expr::Int(3),
-            stored_trace: None,
-        },
+        Expr::Int(3).traced(),
     );
 
-    let expr_ctx = context.expression_context.clone();
+    let ctx = context.clone();
 
     let combined_node_index = combined_node(
         on_update,
@@ -170,12 +150,8 @@ fn test_combined_node() {
         first_node_index,
         second_node_index,
         Box::new(move |x, y| {
-            apply_traced(
-                &expr_ctx,
-                Expr::BuiltinFunction(MUL_ID).traced(),
-                &[x, y],
-            )
-            .unwrap()
+            apply_traced(&ctx, Expr::BuiltinFunction(MUL_ID).traced(), &[x, y])
+                .unwrap()
         }),
     );
 

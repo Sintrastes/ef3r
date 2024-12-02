@@ -7,3 +7,5 @@ pub mod debugging;
 pub mod frp;
 pub mod interpreter;
 pub mod stdlib;
+pub mod typechecking;
+pub mod types;

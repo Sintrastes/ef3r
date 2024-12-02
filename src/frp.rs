@@ -34,7 +34,8 @@ use crate::{ast::TracedExpr, interpreter::Context};
 ///  "initial state".
 ///
 /// In other words, `Event<T>` can be thought of as just a `Behavior<Option<T>>`.
-///  
+///
+#[derive(Clone)]
 pub struct Node<T> {
     /// The underlying value held by this node.
     value: Arc<RwLock<T>>,
@@ -52,7 +53,7 @@ pub struct Node<T> {
     on_update: fn(T),
     /// Action to perform to update state of this node when one of its dependencies
     /// has updated one of its values.
-    on_dependency_update: Box<dyn Fn(NodeIndex, T)>,
+    on_dependency_update: Arc<dyn Fn(NodeIndex, T)>,
 }
 
 impl<T: Clone> Node<T> {
@@ -81,7 +82,7 @@ impl<T: Clone> Node<T> {
             dirty,
             traced,
             on_update,
-            on_dependency_update: Box::new(|_, _| {
+            on_dependency_update: Arc::new(|_, _| {
                 // A new node does not depend on any other nodes,
                 // so this should never be called.
             }),
@@ -125,7 +126,7 @@ pub fn map_node<T: 'static + Clone>(
 
     let cloned = value.clone();
 
-    let on_dependency_update = Box::new(move |id, new_value| {
+    let on_dependency_update = Arc::new(move |id, new_value| {
         if id == parent_index {
             // Update the value to transform of new_value.
             *cloned.write().unwrap() = transform(new_value);
@@ -167,7 +168,7 @@ pub fn filter_node<T: 'static + Clone>(
 
     let cloned = value.clone();
 
-    let on_dependency_update = Box::new(move |id, new_value: T| {
+    let on_dependency_update = Arc::new(move |id, new_value: T| {
         if id == parent_index && predicate(new_value.clone()) {
             *cloned.write().unwrap() = new_value;
         }
@@ -222,7 +223,7 @@ pub fn combined_node<T: 'static + Clone>(
     let second_value_ref =
         graph.node_weight(second_node_index).unwrap().value.clone();
 
-    let on_dependency_update = Box::new(move |id, new_value: T| {
+    let on_dependency_update = Arc::new(move |id, new_value: T| {
         println!("Updating node {:?}", id);
         match id {
             x if x == first_node_index => {
@@ -274,7 +275,7 @@ pub fn fold_node(
 
     let cloned = value.clone();
 
-    let on_dependency_update = Box::new(move |id, event| {
+    let on_dependency_update = Arc::new(move |id, event| {
         if id == event_index {
             // Update the value to transform of new_value.
             *cloned.write().unwrap() =

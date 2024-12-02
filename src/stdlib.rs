@@ -1,15 +1,18 @@
 use std::{
     collections::HashMap,
     io::{self, BufRead},
+    sync::{atomic::AtomicBool, Arc},
 };
 
-use daggy::Dag;
+use daggy::{Dag, NodeIndex};
 
 use crate::{
-    ast::{Expr, TracedExpr},
+    ast::{Expr, Statement, TracedExpr},
+    frp::Node,
     interpreter::{
         Context, EvaluationError, ExpressionContext, InvokableDefinition,
     },
+    typechecking::type_of,
 };
 
 // Function IDs
@@ -29,12 +32,13 @@ pub const UPPERCASE_ID: u32 = 5;
 pub const PRINT_ID: u32 = 0;
 pub const READLN_ID: u32 = 1;
 pub const NEW_NODE_ID: u32 = 2;
+pub const UPDATE_NODE_ID: u32 = 3;
 
 pub fn ef3r_stdlib() -> Context {
     let mul = InvokableDefinition {
         name: "*".to_string(),
         infix: true,
-        definition: |xs: &[TracedExpr]| {
+        definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments)?
@@ -54,7 +58,7 @@ pub fn ef3r_stdlib() -> Context {
     let add = InvokableDefinition {
         name: "+".to_string(),
         infix: true,
-        definition: |xs: &[TracedExpr]| {
+        definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments)?
@@ -74,7 +78,7 @@ pub fn ef3r_stdlib() -> Context {
     let div = InvokableDefinition {
         name: "/".to_string(),
         infix: true,
-        definition: |xs: &[TracedExpr]| {
+        definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments)?
@@ -94,7 +98,7 @@ pub fn ef3r_stdlib() -> Context {
     let append = InvokableDefinition {
         name: "++".to_string(),
         infix: true,
-        definition: |xs: &[TracedExpr]| {
+        definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments)?
@@ -117,14 +121,14 @@ pub fn ef3r_stdlib() -> Context {
     let uppercase = InvokableDefinition {
         name: "uppercase".to_string(),
         infix: false,
-        definition: |xs: &[TracedExpr]| {
+        definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments)?
                 .clone();
 
-            match (first.evaluated) {
-                (Expr::String(x)) => Ok(Expr::String(x.to_uppercase())),
+            match first.evaluated {
+                Expr::String(x) => Ok(Expr::String(x.to_uppercase())),
                 _ => Err(EvaluationError::TypeError)?,
             }
         },
@@ -133,7 +137,7 @@ pub fn ef3r_stdlib() -> Context {
     let print_fn = InvokableDefinition {
         name: "print".to_string(),
         infix: false,
-        definition: |xs: &[TracedExpr]| {
+        definition: |_, xs: &[TracedExpr]| {
             let first = xs.get(0).unwrap().clone();
 
             match first.evaluated {
@@ -149,7 +153,7 @@ pub fn ef3r_stdlib() -> Context {
     let readln_fn = InvokableDefinition {
         name: "read_ln".to_string(),
         infix: false,
-        definition: |xs: &[TracedExpr]| {
+        definition: |_, xs: &[TracedExpr]| {
             let stdin = io::stdin();
             let result = stdin.lock().lines().next().unwrap().unwrap();
 
@@ -157,10 +161,86 @@ pub fn ef3r_stdlib() -> Context {
         },
     };
 
+    let update_node_fn = InvokableDefinition {
+        name: "new_node".to_string(),
+        infix: false,
+        definition: |ctx, xs: &[TracedExpr]| {
+            let first = xs
+                .get(0)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
+
+            let second = xs
+                .get(0)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
+
+            match first.evaluated {
+                Expr::Node(node_id) => {
+                    ctx.graph
+                        .node_weight_mut(NodeIndex::new(node_id))
+                        .unwrap()
+                        .update(second);
+
+                    Ok(Expr::Unit)
+                }
+                _ => todo!(),
+            }
+        },
+    };
+
     let new_node_fn = InvokableDefinition {
         name: "new_node".to_string(),
         infix: false,
-        definition: |xs: &[TracedExpr]| todo!(),
+        definition: |ctx, xs: &[TracedExpr]| {
+            let first = xs
+                .get(0)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
+
+            let second = xs
+                .get(1)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
+
+            match first.evaluated {
+                Expr::Type(x) => {
+                    if type_of(&second.evaluated) == Some(x) {
+                        let update_fn = Expr::Lambda(
+                            vec!["x".to_string()],
+                            vec![Statement::Execute(
+                                None,
+                                Expr::Apply(
+                                    Box::new(
+                                        Expr::Action(UPDATE_NODE_ID).traced(),
+                                    ),
+                                    Box::new([
+                                        Expr::Var("x".to_string()).traced()
+                                    ]),
+                                )
+                                .traced(),
+                            )],
+                            Box::new(Expr::Unit.traced()),
+                        );
+
+                        let fresh_id = Node::new(
+                            |_| {},
+                            Arc::new(AtomicBool::new(false)),
+                            &mut ctx.graph,
+                            second,
+                        );
+
+                        Ok(Expr::Pair(
+                            Box::new(Expr::Node(fresh_id.index()).traced()),
+                            Box::new(update_fn.traced()),
+                        ))
+                    } else {
+                        Err(EvaluationError::TypeError)?
+                    }
+                }
+                _ => Err(EvaluationError::TypeError)?,
+            }
+        },
     };
 
     // Lookup table for the interpreter
@@ -177,6 +257,7 @@ pub fn ef3r_stdlib() -> Context {
                 (PRINT_ID, print_fn),
                 (READLN_ID, readln_fn),
                 (NEW_NODE_ID, new_node_fn),
+                (UPDATE_NODE_ID, update_node_fn),
             ]),
             variables: HashMap::new(),
         },

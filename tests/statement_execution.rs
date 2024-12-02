@@ -1,7 +1,6 @@
 use ef3r::ast::{Expr, Statement};
 use ef3r::interpreter::interpret;
-use ef3r::{interpreter::evaluate_traced, stdlib::ef3r_stdlib};
-use std::collections::HashMap;
+use ef3r::stdlib::ef3r_stdlib;
 
 #[test]
 fn variable_assignment() {
