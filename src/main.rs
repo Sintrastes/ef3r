@@ -5,6 +5,7 @@ use ef3r::stdlib::{
     PAIR_SECOND_ID, PRINT_ID, READLN_ID, UPPERCASE_ID,
 };
 use ef3r::types::ExprType;
+use std::sync::{Arc, Mutex};
 use std::{env, fs::File, io::Write};
 
 const UNKNOWN_COMMAND: &str = "Unknown sub-command";
@@ -23,9 +24,9 @@ fn main() -> Result<(), String> {
                 bincode::deserialize_from(File::open(file_path).unwrap())
                     .unwrap();
 
-            let mut context = ef3r_stdlib();
+            let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
-            interpreter::interpret(&mut context, &program);
+            interpreter::interpret(context, &program);
         }
         "pack" => {
             // Parses ef3r source code and converts it into a ef3r bytecode file.

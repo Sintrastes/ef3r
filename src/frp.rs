@@ -40,7 +40,7 @@ use crate::{ast::TracedExpr, interpreter::Context};
 /// In other words, `Event<T>` can be thought of as just a `Behavior<Option<T>>`.
 ///
 #[derive(Clone)]
-pub struct Node<'a> {
+pub struct Node<'a: 'static> {
     /// The underlying value held by this node.
     value: Arc<RwLock<TracedExpr>>,
     /// Flag to check if the value has been changed since the last event loop.

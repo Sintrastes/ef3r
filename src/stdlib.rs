@@ -1,7 +1,8 @@
 use std::{
     collections::HashMap,
     io::{self, BufRead},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{atomic::AtomicBool, Arc, Mutex},
+    thread,
 };
 
 use daggy::{Dag, NodeIndex};
@@ -38,6 +39,7 @@ pub const READLN_ID: u32 = 9;
 pub const NEW_NODE_ID: u32 = 10;
 pub const UPDATE_NODE_ID: u32 = 11;
 pub const NODE_CURRENT_VALUE: u32 = 12;
+pub const LAUNCH: u32 = 13;
 
 pub fn ef3r_stdlib<'a>() -> Context<'a> {
     let mul = InvokableDefinition {
@@ -209,7 +211,9 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
 
             match first.evaluated {
                 Expr::Node(node_id) => {
-                    ctx.graph
+                    ctx.lock()
+                        .unwrap()
+                        .graph
                         .node_weight_mut(NodeIndex::new(node_id))
                         .unwrap()
                         .update(second);
@@ -236,6 +240,8 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
             match first.evaluated {
                 Expr::Node(node_id) => {
                     let value = ctx
+                        .lock()
+                        .unwrap()
                         .graph
                         .node_weight_mut(NodeIndex::new(node_id))
                         .unwrap()
@@ -274,7 +280,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                         let fresh_id = Node::new(
                             |_| {},
                             Arc::new(AtomicBool::new(false)),
-                            &mut ctx.graph,
+                            &mut ctx.lock().unwrap().graph,
                             second,
                         );
 
@@ -285,6 +291,33 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     } else {
                         Err(EvaluationError::TypeError)?
                     }
+                }
+                _ => Err(EvaluationError::TypeError)?,
+            }
+        },
+    };
+
+    let launch_fn = InvokableDefinition {
+        name: "launch".to_string(),
+        infix: false,
+        definition: move |ctx: Arc<Mutex<Context>>, xs: &[TracedExpr]| {
+            let first = xs
+                .get(0)
+                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .clone();
+
+            let thread_ctx = ctx.clone();
+
+            match first.evaluated {
+                Expr::BuiltinFunction(fun) => {
+                    thread::spawn(move || {
+                        let lock = thread_ctx.lock().unwrap();
+                        (lock.expression_context.functions[&fun].definition)(
+                            thread_ctx.clone(),
+                            &[],
+                        )
+                    });
+                    Ok(Expr::Unit)
                 }
                 _ => Err(EvaluationError::TypeError)?,
             }
@@ -307,6 +340,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                 (NEW_NODE_ID, new_node_fn),
                 (UPDATE_NODE_ID, update_node_fn),
                 (NODE_CURRENT_VALUE, node_current_value_fn),
+                (LAUNCH, launch_fn),
             ]),
             variables: HashMap::new(),
         },
