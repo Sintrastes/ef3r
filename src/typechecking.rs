@@ -14,13 +14,12 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
             Box::new(type_of(&traced_expr.evaluated)?),
             Box::new(type_of(&traced_expr1.evaluated)?),
         )),
-        Expr::Action(_) => Some(ExprType::Func(
+        Expr::BuiltinFunction(_) => Some(ExprType::Func(
             Box::new(ExprType::Unit),
             Box::new(ExprType::Unit),
         )),
         Expr::Node(_) => todo!(),
         Expr::MapNode(traced_expr, traced_expr1) => todo!(),
-        Expr::BuiltinFunction(_) => todo!(),
         Expr::Lambda(args, statements, traced_expr) => todo!(),
         Expr::Apply(traced_expr, _) => todo!(),
         Expr::Var(_) => None,

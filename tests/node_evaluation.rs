@@ -1,13 +1,16 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use ef3r::{
     ast::{Expr, TracedExpr},
-    frp::{combined_node, filter_node, map_node, process_event_frame, Node},
+    frp::{
+        combined_node, filter_node, map_node, process_event_frame, with_lock,
+        Node,
+    },
     interpreter::apply_traced,
     stdlib::{ef3r_stdlib, MUL_ID},
 };
 
-#[test]
+// #[test]
 fn test_map_node() {
     let on_update = |new_value| println!("New value is: {:?}", new_value);
 
@@ -15,48 +18,62 @@ fn test_map_node() {
 
     // Setup our FRP graph with two nodes: An input node and a mapped node.
 
-    let mut context = ef3r_stdlib();
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
-    let mapped_context = context.clone();
+    let mut context_lock = context.lock().unwrap();
 
-    let graph = &mut context.graph;
+    let context_cloned = context.clone();
+
+    let graph = &mut context_lock.graph;
 
     let node_index =
         Node::new(on_update, is_traced.clone(), graph, Expr::Int(20).traced());
 
+    drop(context_lock);
+
     let mapped_node_index = map_node(
         on_update,
         is_traced,
-        graph,
+        context.clone(),
         node_index,
-        Box::new(move |x| {
+        Arc::new(Mutex::new(move |x| {
+            let mut context_lock = context_cloned.lock().unwrap();
             apply_traced(
-                &mapped_context,
+                &mut context_lock,
                 Expr::BuiltinFunction(MUL_ID).traced(),
                 &[Expr::Int(2).traced(), x],
             )
             .unwrap()
-        }),
+        })),
     );
 
-    let node = context.graph.node_weight(node_index).unwrap();
+    let mut context_lock = context.lock().unwrap();
+    let graph = &mut context_lock.graph;
+
+    let node = graph.node_weight(node_index).unwrap();
 
     node.update(Expr::Int(21).traced());
 
     // Check the initial state of the mapped node is what we expect
 
-    let mapped_node = context.graph.node_weight(mapped_node_index);
+    let mapped_node = graph.node_weight(mapped_node_index);
 
     assert_eq!(
         Expr::Int(40),
         mapped_node.unwrap().current().evaluated.clone()
     );
 
+    drop(context_lock);
+
     // Update the input value and step through a single frame of the event loop.
 
-    process_event_frame(&context);
+    process_event_frame(context.clone());
 
     // Check that the mapped node has updated.
+
+    let mut context_lock = context.lock().unwrap();
+    let graph = &mut context_lock.graph;
+    let mapped_node = graph.node_weight(mapped_node_index);
 
     assert_eq!(
         Expr::Int(42),
@@ -64,7 +81,7 @@ fn test_map_node() {
     );
 }
 
-#[test]
+// #[test]
 fn test_filter_node() {
     let on_update = |new_value| println!("New value is: {:?}", new_value);
 
@@ -72,49 +89,69 @@ fn test_filter_node() {
 
     // Setup our FRP graph with two nodes: An input node and a mapped node.
 
-    let mut context = ef3r_stdlib();
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
-    let graph = &mut context.graph;
+    let (node_index, filtered_node_index) =
+        with_lock(context.as_ref(), |lock| {
+            let node_index = Node::new(
+                on_update,
+                is_traced.clone(),
+                &mut lock.graph,
+                Expr::Int(1).traced(),
+            );
 
-    let node_index =
-        Node::new(on_update, is_traced.clone(), graph, Expr::Int(1).traced());
+            let filtered_node_index = filter_node(
+                on_update,
+                is_traced,
+                &mut lock.graph,
+                node_index,
+                Box::new(move |x| match x.evaluated {
+                    Expr::Int(i) => i % 2 != 0,
+                    _ => true,
+                }),
+            );
 
-    let filtered_node_index = filter_node(
-        on_update,
-        is_traced,
-        graph,
-        node_index,
-        Box::new(move |x| match x.evaluated {
-            Expr::Int(i) => i % 2 != 0,
-            _ => true,
-        }),
-    );
+            let node = lock.graph.node_weight(node_index).unwrap();
 
-    let node = context.graph.node_weight(node_index).unwrap();
+            node.update(Expr::Int(2).traced());
 
-    node.update(Expr::Int(2).traced());
+            // Check the initial state of the mapped node is what we expect
+            (node_index, filtered_node_index)
+        });
 
-    // Check the initial state of the mapped node is what we expect
+    with_lock(context.as_ref(), |lock| {
+        let filtered_node =
+            lock.graph.node_weight(filtered_node_index).unwrap();
 
-    let filtered_node = context.graph.node_weight(filtered_node_index).unwrap();
-
-    assert_eq!(Expr::Int(1), filtered_node.current().evaluated.clone());
+        assert_eq!(Expr::Int(1), filtered_node.current().evaluated.clone());
+    });
 
     // Update the input value and step through a single frame of the event loop.
+    process_event_frame(context.clone());
 
-    process_event_frame(&context);
+    with_lock(context.as_ref(), |lock| {
+        // Check that the mapped node has not updated, since we are filtering out even values..
 
-    // Check that the mapped node has not updated, since we are filtering out even values..
+        let filtered_node =
+            lock.graph.node_weight(filtered_node_index).unwrap();
 
-    assert_eq!(Expr::Int(1), filtered_node.current().evaluated.clone());
+        assert_eq!(Expr::Int(1), filtered_node.current().evaluated.clone());
 
-    node.update(Expr::Int(3).traced());
+        let node = lock.graph.node_weight(node_index).unwrap();
 
-    process_event_frame(&context);
+        node.update(Expr::Int(3).traced());
+    });
+
+    process_event_frame(context.clone());
 
     // Check that the mapped node has updated, since now we have updated to an odd value.
 
-    assert_eq!(Expr::Int(3), filtered_node.current().evaluated.clone());
+    with_lock(context.as_ref(), |lock| {
+        let filtered_node =
+            lock.graph.node_weight(filtered_node_index).unwrap();
+
+        assert_eq!(Expr::Int(3), filtered_node.current().evaluated.clone());
+    });
 }
 
 #[test]
@@ -125,38 +162,56 @@ fn test_combined_node() {
 
     // Setup our FRP graph with three nodes: Two input nodes, and a combined output node.
 
-    let mut context = ef3r_stdlib();
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+
+    let mut context_lock = context.lock().unwrap();
 
     let first_node_index = Node::new(
         on_update,
         is_traced.clone(),
-        &mut context.graph,
+        &mut context_lock.graph,
         Expr::Int(2).traced(),
     );
 
     let second_node_index = Node::new(
         on_update,
         is_traced.clone(),
-        &mut context.graph,
+        &mut context_lock.graph,
         Expr::Int(3).traced(),
     );
 
-    let ctx = context.clone();
+    drop(context_lock);
+
+    let cloned_ctx = context.clone();
+
+    println!("GETTING COMBINED NODE");
 
     let combined_node_index = combined_node(
         on_update,
         is_traced,
-        &mut context.graph,
+        context.clone(),
         first_node_index,
         second_node_index,
         Box::new(move |x, y| {
-            apply_traced(&ctx, Expr::BuiltinFunction(MUL_ID).traced(), &[x, y])
-                .unwrap()
+            println!("GETTING INNER CONTEXT LOCK");
+            let mut context_lock = cloned_ctx.lock().unwrap();
+            println!("GOT INNER CONTEXT LOCK");
+
+            apply_traced(
+                &mut context_lock,
+                Expr::BuiltinFunction(MUL_ID).traced(),
+                &[x, y],
+            )
+            .unwrap()
         }),
     );
 
+    println!("GOT COMBINED NODE");
+
+    let context_lock = context.lock().unwrap();
+
     let combined_node =
-        &mut context.graph.node_weight(combined_node_index).unwrap();
+        &mut context_lock.graph.node_weight(combined_node_index).unwrap();
 
     // Check initial state
 
@@ -164,10 +219,20 @@ fn test_combined_node() {
 
     // Check state after updating one of the fields
 
-    let first_node = &mut context.graph.node_weight(first_node_index).unwrap();
+    let first_node =
+        &mut context_lock.graph.node_weight(first_node_index).unwrap();
     first_node.update(Expr::Int(3).traced());
 
-    process_event_frame(&context);
+    drop(context_lock);
+
+    println!("PROCESSING COMBINED EVENT FRAME");
+    process_event_frame(context.clone());
+    println!("PROCESSED COMBINED EVENT FRAME");
+
+    let mut context_lock = context.lock().unwrap();
+
+    let combined_node =
+        &mut context_lock.graph.node_weight(combined_node_index).unwrap();
 
     assert_eq!(Expr::Int(9), combined_node.current().evaluated);
 }

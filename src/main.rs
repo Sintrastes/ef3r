@@ -1,6 +1,10 @@
 use ef3r::ast::{Expr, Statement};
 use ef3r::interpreter::{self};
-use ef3r::stdlib::{ef3r_stdlib, PRINT_ID, READLN_ID, UPPERCASE_ID};
+use ef3r::stdlib::{
+    ef3r_stdlib, NEW_NODE_ID, NODE_CURRENT_VALUE, PAIR_FIRST_ID,
+    PAIR_SECOND_ID, PRINT_ID, READLN_ID, UPPERCASE_ID,
+};
+use ef3r::types::ExprType;
 use std::{env, fs::File, io::Write};
 
 const UNKNOWN_COMMAND: &str = "Unknown sub-command";
@@ -40,15 +44,84 @@ fn main() -> Result<(), String> {
                 Statement::Execute(
                     None,
                     Expr::Apply(
-                        Box::new(Expr::Action(PRINT_ID).traced()),
+                        Box::new(Expr::BuiltinFunction(PRINT_ID).traced()),
                         Box::new([Expr::Var("y".to_string()).traced()]),
+                    )
+                    .traced(),
+                ),
+                Statement::Execute(
+                    Some("nodeAndSetNode".to_string()),
+                    Expr::Apply(
+                        Box::new(Expr::BuiltinFunction(NEW_NODE_ID).traced()),
+                        Box::new([
+                            Expr::Type(ExprType::Int).traced(),
+                            Expr::Int(0).traced(),
+                        ]),
+                    )
+                    .traced(),
+                ),
+                Statement::Execute(
+                    None,
+                    Expr::Apply(
+                        Box::new(Expr::BuiltinFunction(PRINT_ID).traced()),
+                        Box::new([
+                            Expr::String("got node".to_string()).traced()
+                        ]),
+                    )
+                    .traced(),
+                ),
+                Statement::Execute(
+                    Some("node".to_string()),
+                    Expr::Apply(
+                        Box::new(Expr::BuiltinFunction(PAIR_FIRST_ID).traced()),
+                        Box::new([
+                            Expr::Var("nodeAndSetNode".to_string()).traced()
+                        ]),
+                    )
+                    .traced(),
+                ),
+                Statement::Execute(
+                    Some("set_node".to_string()),
+                    Expr::Apply(
+                        Box::new(
+                            Expr::BuiltinFunction(PAIR_SECOND_ID).traced(),
+                        ),
+                        Box::new([
+                            Expr::Var("nodeAndSetNode".to_string()).traced()
+                        ]),
+                    )
+                    .traced(),
+                ),
+                Statement::Execute(
+                    None,
+                    Expr::Apply(
+                        Box::new(Expr::Var("set_node".to_string()).traced()),
+                        Box::new([
+                            Expr::Var("node".to_string()).traced(),
+                            Expr::Int(1).traced(),
+                        ]),
+                    )
+                    .traced(),
+                ),
+                Statement::Execute(
+                    None,
+                    Expr::Apply(
+                        Box::new(Expr::BuiltinFunction(PRINT_ID).traced()),
+                        Box::new([Expr::Apply(
+                            Box::new(
+                                Expr::BuiltinFunction(NODE_CURRENT_VALUE)
+                                    .traced(),
+                            ),
+                            Box::new([Expr::Var("node".to_string()).traced()]),
+                        )
+                        .traced()]),
                     )
                     .traced(),
                 ),
                 Statement::Execute(
                     Some("z".to_string()),
                     Expr::Apply(
-                        Box::new(Expr::Action(READLN_ID).traced()),
+                        Box::new(Expr::BuiltinFunction(READLN_ID).traced()),
                         Box::new([]),
                     )
                     .traced(),
@@ -56,7 +129,7 @@ fn main() -> Result<(), String> {
                 Statement::Execute(
                     None,
                     Expr::Apply(
-                        Box::new(Expr::Action(PRINT_ID).traced()),
+                        Box::new(Expr::BuiltinFunction(PRINT_ID).traced()),
                         Box::new([Expr::Apply(
                             Box::new(
                                 Expr::BuiltinFunction(UPPERCASE_ID).traced(),

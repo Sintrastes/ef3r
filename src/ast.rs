@@ -12,8 +12,6 @@ use crate::{
 
 pub type FunctionID = u32;
 
-pub type ActionID = u32;
-
 pub type VariableID = String;
 
 ///
@@ -38,8 +36,6 @@ pub enum Expr {
     Type(ExprType),
     /// Pair type,
     Pair(Box<TracedExpr>, Box<TracedExpr>),
-    /// Action reference.
-    Action(ActionID),
     /// Externally defined node that has been supplied
     /// by the interpreter.
     Node(usize),
@@ -84,11 +80,10 @@ impl Expr {
                 1, // Int
                 2, // String
                 3, // Float
-                4, // Action
-                5, // BuiltinFunction
-                6, // Lambda
-                7, // Apply
-                8, // Var
+                4, // BuiltinFunction
+                5, // Lambda
+                6, // Apply
+                7, // Var
             ]
         } else {
             vec![
@@ -96,9 +91,8 @@ impl Expr {
                 1, // Int
                 2, // String
                 3, // Float
-                4, // Action
-                5, // BuiltinFunction
-                8, // Var
+                4, // BuiltinFunction
+                7, // Var
             ]
         };
 
@@ -114,24 +108,18 @@ impl Expr {
             },
             4 => {
                 let keys: Vec<&u32> =
-                    context.expression_context.actions.keys().collect();
-                let key = **g.choose(&keys).unwrap();
-                Expr::Action(key)
-            }
-            5 => {
-                let keys: Vec<&u32> =
                     context.expression_context.functions.keys().collect();
                 let key = **g.choose(&keys).unwrap();
                 Expr::BuiltinFunction(key)
             }
-            6 => Expr::Lambda(
+            5 => Expr::Lambda(
                 Vec::arbitrary(g),
                 vec![],
                 Box::new(
                     Expr::arbitrary_with_depth(context, g, depth + 1).traced(),
                 ),
             ),
-            7 => {
+            6 => {
                 let num_args = usize::arbitrary(g) % 5; // Limit the number of arguments to a small number
                 let args = (0..num_args)
                     .map(|_| {
@@ -148,7 +136,7 @@ impl Expr {
                     args,
                 )
             }
-            8 => Expr::Var(String::arbitrary(g)),
+            7 => Expr::Var(String::arbitrary(g)),
             _ => unreachable!(),
         }
     }
@@ -179,17 +167,6 @@ impl Display for Expr {
                 f.write_str("\"")
             }
             Expr::Float(x) => x.fmt(f),
-            Expr::Action(x) => {
-                let name = context
-                    .expression_context
-                    .actions
-                    .get(x)
-                    .unwrap()
-                    .name
-                    .clone();
-
-                f.write_str(name.as_str())
-            }
             Expr::BuiltinFunction(x) => {
                 let name = context
                     .expression_context
@@ -286,7 +263,7 @@ impl Display for TracedExpr {
 
 #[test]
 fn evaluation_keeps_trace() {
-    let context = ef3r_stdlib();
+    let mut context = ef3r_stdlib();
 
     // Example expression.
     let expression = Expr::Apply(
@@ -302,7 +279,7 @@ fn evaluation_keeps_trace() {
     );
 
     let evaluated =
-        evaluate_traced(&context, expression.clone().traced()).unwrap();
+        evaluate_traced(&mut context, expression.clone().traced()).unwrap();
 
     println!("Evaluated: {}", evaluated.evaluated);
 
@@ -315,7 +292,7 @@ fn evaluation_keeps_trace() {
 
 #[test]
 fn evaluating_twice_keeps_entire_trace() {
-    let context = ef3r_stdlib();
+    let mut context = ef3r_stdlib();
 
     // Example expression.
     let expression = Expr::Apply(
@@ -331,7 +308,7 @@ fn evaluating_twice_keeps_entire_trace() {
     );
 
     let evaluated =
-        evaluate_traced(&context, expression.clone().traced()).unwrap();
+        evaluate_traced(&mut context, expression.clone().traced()).unwrap();
 
     let second_expression = Expr::Apply(
         Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
@@ -339,7 +316,8 @@ fn evaluating_twice_keeps_entire_trace() {
     );
 
     let second_evaluated =
-        evaluate_traced(&context, second_expression.clone().traced()).unwrap();
+        evaluate_traced(&mut context, second_expression.clone().traced())
+            .unwrap();
 
     let expected = Expr::Apply(
         Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
@@ -377,4 +355,39 @@ pub enum Statement {
 pub struct DebugInfo {
     line_number: i32,
     token_number: i32,
+}
+
+// Question: How would this work with traced expressions?
+pub fn substitute(variable: String, with: Expr, in_expr: Expr) -> Expr {
+    match in_expr {
+        Expr::Pair(x, y) => Expr::Pair(
+            Box::new(
+                substitute(variable.clone(), with.clone(), x.evaluated)
+                    .traced(),
+            ),
+            Box::new(substitute(variable, with, y.evaluated).traced()),
+        ),
+        Expr::Apply(f, xs) => Expr::Apply(
+            Box::new(
+                substitute(variable.clone(), with.clone(), f.evaluated)
+                    .traced(),
+            ),
+            xs.into_vec()
+                .into_iter()
+                .map(|x| {
+                    substitute(variable.clone(), with.clone(), x.evaluated)
+                        .traced()
+                })
+                .collect(),
+        ),
+        Expr::Var(x) => {
+            if variable == x {
+                with
+            } else {
+                Expr::Var(x)
+            }
+        }
+        Expr::Lambda(vec, vec1, traced_expr) => todo!(),
+        _ => in_expr,
+    }
 }
