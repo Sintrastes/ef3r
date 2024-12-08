@@ -18,7 +18,7 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
             Box::new(ExprType::Unit),
             Box::new(ExprType::Unit),
         )),
-        Expr::Node(_) => todo!(),
+        Expr::Node(_) => Some(ExprType::Node(Box::new(ExprType::Any))),
         Expr::MapNode(traced_expr, traced_expr1) => todo!(),
         Expr::Lambda(args, statements, traced_expr) => todo!(),
         Expr::Apply(traced_expr, _) => todo!(),

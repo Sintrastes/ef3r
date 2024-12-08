@@ -14,6 +14,7 @@ use crate::{
         Context, EvaluationError, ExpressionContext, InvokableDefinition,
     },
     typechecking::type_of,
+    types::ExprType,
 };
 
 // Function IDs
@@ -48,16 +49,35 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 0,
+                    for_function: "*".to_string(),
+                })?
                 .clone();
             let second = xs
                 .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 1,
+                    for_function: "*".to_string(),
+                })?
                 .clone();
 
             match (first.evaluated, second.evaluated) {
                 (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y)),
-                _ => Err(EvaluationError::TypeError)?,
+                (actual, _) if !matches!(actual, Expr::Int(_)) => {
+                    Err(EvaluationError::TypeError {
+                        expected: ExprType::Int,
+                        actual: type_of(&actual).unwrap(),
+                        at_loc: "*".to_string(),
+                    })?
+                }
+                (_, actual) => Err(EvaluationError::TypeError {
+                    expected: ExprType::Int,
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "*".to_string(),
+                })?,
             }
         },
     };
@@ -68,16 +88,35 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 0,
+                    for_function: "+".to_string(),
+                })?
                 .clone();
             let second = xs
                 .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 1,
+                    for_function: "+".to_string(),
+                })?
                 .clone();
 
             match (first.evaluated, second.evaluated) {
                 (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y)),
-                _ => Err(EvaluationError::TypeError)?,
+                (actual, _) if !matches!(actual, Expr::Int(_)) => {
+                    Err(EvaluationError::TypeError {
+                        expected: ExprType::Int,
+                        actual: type_of(&actual).unwrap(),
+                        at_loc: "+".to_string(),
+                    })?
+                }
+                (_, actual) => Err(EvaluationError::TypeError {
+                    expected: ExprType::Int,
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "+".to_string(),
+                })?,
             }
         },
     };
@@ -88,16 +127,35 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 0,
+                    for_function: "/".to_string(),
+                })?
                 .clone();
             let second = xs
                 .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 1,
+                    for_function: "/".to_string(),
+                })?
                 .clone();
 
             match (first.evaluated, second.evaluated) {
                 (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y)),
-                _ => Err(EvaluationError::TypeError)?,
+                (actual, _) if !matches!(actual, Expr::Int(_)) => {
+                    Err(EvaluationError::TypeError {
+                        expected: ExprType::Int,
+                        actual: type_of(&actual).unwrap(),
+                        at_loc: "/".to_string(),
+                    })?
+                }
+                (_, actual) => Err(EvaluationError::TypeError {
+                    expected: ExprType::Int,
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "/".to_string(),
+                })?,
             }
         },
     };
@@ -108,19 +166,38 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 0,
+                    for_function: "++".to_string(),
+                })?
                 .clone();
 
             let second = xs
                 .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 1,
+                    for_function: "++".to_string(),
+                })?
                 .clone();
 
             match (first.evaluated, second.evaluated) {
                 (Expr::String(x), Expr::String(y)) => {
                     Ok(Expr::String(x.to_owned() + y.as_ref()))
                 }
-                _ => Err(EvaluationError::TypeError)?,
+                (actual, _) if !matches!(actual, Expr::String(_)) => {
+                    Err(EvaluationError::TypeError {
+                        expected: ExprType::String,
+                        actual: type_of(&actual).unwrap(),
+                        at_loc: "++".to_string(),
+                    })?
+                }
+                (_, actual) => Err(EvaluationError::TypeError {
+                    expected: ExprType::String,
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "++".to_string(),
+                })?,
             }
         },
     };
@@ -131,12 +208,20 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: |_, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 1,
+                    actual: 0,
+                    for_function: "uppercase".to_string(),
+                })?
                 .clone();
 
             match first.evaluated {
                 Expr::String(x) => Ok(Expr::String(x.to_uppercase())),
-                _ => Err(EvaluationError::TypeError)?,
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::String,
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "uppercase".to_string(),
+                })?,
             }
         },
     };
@@ -147,12 +232,23 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: |_, xs: &[TracedExpr]| {
             let pair = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 1,
+                    actual: 0,
+                    for_function: "first".to_string(),
+                })?
                 .clone();
 
             match pair.evaluated {
                 Expr::Pair(x, _) => Ok(x.evaluated),
-                _ => Err(EvaluationError::TypeError)?,
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Pair(
+                        Box::new(ExprType::Any),
+                        Box::new(ExprType::Any),
+                    ),
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "first".to_string(),
+                })?,
             }
         },
     };
@@ -163,12 +259,23 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: |_, xs: &[TracedExpr]| {
             let pair = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 1,
+                    actual: 0,
+                    for_function: "second".to_string(),
+                })?
                 .clone();
 
             match pair.evaluated {
                 Expr::Pair(_, y) => Ok(y.evaluated),
-                _ => Err(EvaluationError::TypeError)?,
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Pair(
+                        Box::new(ExprType::Any),
+                        Box::new(ExprType::Any),
+                    ),
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "second".to_string(),
+                })?,
             }
         },
     };
@@ -201,12 +308,20 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: |ctx, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 0,
+                    for_function: "update_node".to_string(),
+                })?
                 .clone();
 
             let second = xs
                 .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 1,
+                    for_function: "update_node".to_string(),
+                })?
                 .clone();
 
             match first.evaluated {
@@ -220,10 +335,11 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
 
                     Ok(Expr::Unit)
                 }
-                _ => {
-                    dbg!("Got value {}", first);
-                    todo!()
-                }
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Node(Box::new(ExprType::Any)),
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "update_node".to_string(),
+                })?,
             }
         },
     };
@@ -234,7 +350,11 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: |ctx, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 1,
+                    actual: 0,
+                    for_function: "current_value".to_string(),
+                })?
                 .clone();
 
             match first.evaluated {
@@ -249,10 +369,11 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
 
                     Ok(value.evaluated)
                 }
-                _ => {
-                    dbg!("Got value {}", first);
-                    todo!()
-                }
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Node(Box::new(ExprType::Any)),
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "current_value".to_string(),
+                })?,
             }
         },
     };
@@ -261,21 +382,36 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         name: "new_node".to_string(),
         infix: false,
         definition: |ctx, xs: &[TracedExpr]| {
+            println!("Calling new_node");
+
             let first = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 1,
+                    actual: 0,
+                    for_function: "new_node".to_string(),
+                })?
                 .clone();
 
             let second = xs
                 .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 1,
+                    for_function: "new_node".to_string(),
+                })?
                 .clone();
+
+            println!("Got new_node arguments");
 
             match first.evaluated {
                 Expr::Type(x) => {
-                    if type_of(&second.evaluated) == Some(x) {
+                    if type_of(&second.evaluated) == Some(x.clone()) {
+                        println!("Types checked");
                         let update_fn =
                             Expr::BuiltinFunction(UPDATE_NODE_ID).traced();
+
+                        println!("Creating new node");
 
                         let fresh_id = Node::new(
                             |_| {},
@@ -284,15 +420,25 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                             second,
                         );
 
+                        println!("Returning from new node");
+
                         Ok(Expr::Pair(
                             Box::new(Expr::Node(fresh_id.index()).traced()),
                             Box::new(update_fn),
                         ))
                     } else {
-                        Err(EvaluationError::TypeError)?
+                        Err(EvaluationError::TypeError {
+                            expected: x,
+                            actual: type_of(&second.evaluated).unwrap(),
+                            at_loc: "new_node".to_string(),
+                        })?
                     }
                 }
-                _ => Err(EvaluationError::TypeError)?,
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Type,
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "new_node".to_string(),
+                })?,
             }
         },
     };
@@ -303,23 +449,39 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         definition: move |ctx: Arc<Mutex<Context>>, xs: &[TracedExpr]| {
             let first = xs
                 .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments)?
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 1,
+                    actual: 0,
+                    for_function: "launch".to_string(),
+                })?
                 .clone();
 
             let thread_ctx = ctx.clone();
+
+            dbg!(first.clone());
 
             match first.evaluated {
                 Expr::BuiltinFunction(fun) => {
                     thread::spawn(move || {
                         let lock = thread_ctx.lock().unwrap();
+                        println!("DBG - GOT CTX LOCK, LAUNCHING BODY");
                         (lock.expression_context.functions[&fun].definition)(
                             thread_ctx.clone(),
                             &[],
                         )
+                        .unwrap();
+                        println!("DONE LAUNCHING");
                     });
                     Ok(Expr::Unit)
                 }
-                _ => Err(EvaluationError::TypeError)?,
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Func(
+                        Box::new(ExprType::Unit),
+                        Box::new(ExprType::Unit),
+                    ),
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "launch".to_string(),
+                })?,
             }
         },
     };

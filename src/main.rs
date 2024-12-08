@@ -1,7 +1,7 @@
 use ef3r::ast::{Expr, Statement};
 use ef3r::interpreter::{self};
 use ef3r::stdlib::{
-    ef3r_stdlib, NEW_NODE_ID, NODE_CURRENT_VALUE, PAIR_FIRST_ID,
+    ef3r_stdlib, LAUNCH, NEW_NODE_ID, NODE_CURRENT_VALUE, PAIR_FIRST_ID,
     PAIR_SECOND_ID, PRINT_ID, READLN_ID, UPPERCASE_ID,
 };
 use ef3r::types::ExprType;
@@ -96,11 +96,25 @@ fn main() -> Result<(), String> {
                 Statement::Execute(
                     None,
                     Expr::Apply(
-                        Box::new(Expr::Var("set_node".to_string()).traced()),
-                        Box::new([
-                            Expr::Var("node".to_string()).traced(),
-                            Expr::Int(1).traced(),
-                        ]),
+                        Box::new(Expr::BuiltinFunction(LAUNCH).traced()),
+                        Box::new([Expr::Lambda(
+                            vec![],
+                            vec![],
+                            Box::new(
+                                Expr::Apply(
+                                    Box::new(
+                                        Expr::Var("set_node".to_string())
+                                            .traced(),
+                                    ),
+                                    Box::new([
+                                        Expr::Var("node".to_string()).traced(),
+                                        Expr::Int(1).traced(),
+                                    ]),
+                                )
+                                .traced(),
+                            ),
+                        )
+                        .traced()]),
                     )
                     .traced(),
                 ),
