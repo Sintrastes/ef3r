@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use ef3r::ast::{Expr, Statement};
 use ef3r::interpreter::interpret;
-use ef3r::stdlib::ef3r_stdlib;
+use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
 
 #[test]
 fn variable_assignment() {
@@ -50,4 +50,28 @@ fn reassignment_of_statement() {
             .evaluated,
         Expr::Int(3)
     );
+}
+
+#[test]
+fn execute_example_program() {
+    let program = r#"println("Hello, world!");
+
+        let x = "test";
+
+        println(x.uppercase());
+    "#;
+
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+    let mut parsed_program = ef3r::parser::parse(&program).unwrap();
+
+    let context_lock = context.lock().unwrap();
+    let stdlib_functions = get_stdlib_functions(&context_lock);
+
+    parsed_program = ef3r::stdlib::resolve_builtin_functions(
+        parsed_program,
+        &stdlib_functions,
+    );
+
+    drop(context_lock);
+    interpret(context, parsed_program.as_slice());
 }
