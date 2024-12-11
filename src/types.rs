@@ -11,6 +11,6 @@ pub enum ExprType {
     Bool,
     Type,
     Node(Box<ExprType>),
-    Func(Box<ExprType>, Box<ExprType>),
+    Func(Vec<ExprType>, Box<ExprType>),
     Pair(Box<ExprType>, Box<ExprType>),
 }

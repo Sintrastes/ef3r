@@ -15,12 +15,20 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
             Box::new(type_of(&traced_expr1.evaluated)?),
         )),
         Expr::BuiltinFunction(_) => Some(ExprType::Func(
-            Box::new(ExprType::Unit),
+            vec![ExprType::Unit],
             Box::new(ExprType::Unit),
         )),
         Expr::Node(_) => Some(ExprType::Node(Box::new(ExprType::Any))),
         Expr::MapNode(traced_expr, traced_expr1) => todo!(),
-        Expr::Lambda(args, statements, traced_expr) => todo!(),
+        Expr::Lambda(args, statements, traced_expr) => {
+            let arg_types: Vec<ExprType> = args
+                .iter()
+                .map(|_| ExprType::Any) // All args are assumed to be any type
+                .collect();
+            let return_type = type_of(&traced_expr.evaluated)?;
+
+            Some(ExprType::Func(arg_types, Box::new(return_type)))
+        }
         Expr::Apply(traced_expr, _) => todo!(),
         Expr::Var(_) => None,
     }

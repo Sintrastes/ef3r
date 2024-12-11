@@ -56,9 +56,11 @@ fn reassignment_of_statement() {
 fn execute_example_program() {
     let program = r#"println("Hello, world!");
 
-        let x = "test";
+        launch {
+            let x = "test";
 
-        println(x.uppercase());
+            println(x.uppercase());
+        };
     "#;
 
     let context = Arc::new(Mutex::new(ef3r_stdlib()));

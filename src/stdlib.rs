@@ -11,7 +11,8 @@ use crate::{
     ast::{Expr, Statement, TracedExpr},
     frp::Node,
     interpreter::{
-        Context, EvaluationError, ExpressionContext, InvokableDefinition,
+        invoke_action_expression, Context, EvaluationError, ExpressionContext,
+        InvokableDefinition,
     },
     typechecking::type_of,
     types::ExprType,
@@ -460,29 +461,12 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
 
             dbg!(first.clone());
 
-            match first.evaluated {
-                Expr::BuiltinFunction(fun) => {
-                    thread::spawn(move || {
-                        let lock = thread_ctx.lock().unwrap();
-                        println!("DBG - GOT CTX LOCK, LAUNCHING BODY");
-                        (lock.expression_context.functions[&fun].definition)(
-                            thread_ctx.clone(),
-                            &[],
-                        )
-                        .unwrap();
-                        println!("DONE LAUNCHING");
-                    });
-                    Ok(Expr::Unit)
-                }
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Func(
-                        Box::new(ExprType::Unit),
-                        Box::new(ExprType::Unit),
-                    ),
-                    actual: type_of(&actual).unwrap(),
-                    at_loc: "launch".to_string(),
-                })?,
-            }
+            thread::spawn(move || {
+                println!("DBG - GOT CTX LOCK, LAUNCHING BODY");
+                invoke_action_expression(thread_ctx, &first);
+                println!("DONE LAUNCHING");
+            });
+            Ok(Expr::Unit)
         },
     };
 
