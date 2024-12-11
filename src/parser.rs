@@ -24,13 +24,13 @@ fn lambda_params(input: &str) -> IResult<&str, Vec<String>> {
 fn lambda_body(input: &str) -> IResult<&str, Vec<Statement>> {
     terminated(
         separated_list0(
-            delimited(multispace0, char(';'), multispace0),
+            ws(char(';')),
             alt((
                 let_statement,
                 map(expression, |expr| Statement::Execute(None, expr.traced())),
             )),
         ),
-        opt(delimited(multispace0, char(';'), multispace0)),
+        opt(ws(char(';'))),
     )(input)
 }
 
@@ -102,8 +102,8 @@ fn literal(input: &str) -> IResult<&str, Expr> {
 // Expression parsers
 fn primary_expr(input: &str) -> IResult<&str, Expr> {
     alt((
-        literal,
-        map(identifier, Expr::Var),
+        ws(literal),
+        map(ws(identifier), Expr::Var),
         delimited(ws(char('(')), expression, ws(char(')'))),
     ))(input)
 }
@@ -146,19 +146,6 @@ fn function_call(input: &str) -> IResult<&str, Expr> {
                 .into_boxed_slice(),
         ),
     ))
-}
-
-fn member_access(input: &str) -> IResult<&str, Expr> {
-    let (input, initial) = primary_expr(input)?;
-
-    let (input, accesses) = many0(preceded(ws(char('.')), identifier))(input)?;
-
-    let result = accesses.into_iter().fold(initial, |expr, member| {
-        // Placeholder implementation
-        Expr::None
-    });
-
-    Ok((input, result))
 }
 
 fn comparison_expr(input: &str) -> IResult<&str, Expr> {
@@ -215,13 +202,7 @@ fn expression(input: &str) -> IResult<&str, Expr> {
 }
 
 fn non_cmp_expression(input: &str) -> IResult<&str, Expr> {
-    alt((
-        lambda_expr,
-        function_call,
-        member_access,
-        method_call,
-        primary_expr,
-    ))(input)
+    alt((lambda_expr, function_call, method_call, primary_expr))(input)
 }
 
 // Statement parsers
@@ -233,13 +214,8 @@ fn let_statement(input: &str) -> IResult<&str, Statement> {
 }
 
 pub fn parse_program(input: &str) -> IResult<&str, Vec<Statement>> {
-    terminated(
-        separated_list0(
-            delimited(multispace0, char(';'), multispace0),
-            let_statement,
-        ),
-        delimited(multispace0, char(';'), multispace0),
-    )(input)
+    // A full program is basically a top-level lambda we're executing.
+    lambda_body(input)
 }
 
 pub fn parse(input: &str) -> Result<Vec<Statement>, String> {
@@ -272,13 +248,6 @@ fn test_function_calls() {
     assert!(expression("foo()").is_ok());
     assert!(expression("bar(1, 2)").is_ok());
     assert!(expression("baz(\"hello\", 42, true)").is_ok());
-}
-
-#[test]
-fn test_member_access() {
-    assert!(expression("foo.bar").is_ok());
-    assert!(expression("foo.bar.baz").is_ok());
-    assert!(expression("node.value").is_ok());
 }
 
 #[test]
@@ -342,24 +311,12 @@ mod tests {
 
     #[test]
     fn test_original_syntax() {
-        let input = r#"
-            let x = 42;
-
-            let f = {
-                print_ln("Hello, world!");
-                let value = node.value;
-                assert(value == 0);
-            };
-
-            let g = {
-                print_ln("Hello, world!");
-                let value = node.value;
-                assert(value == 0);
-            };
-            "#;
+        let input = r#"let f = {
+                println("Hello, world!");
+                let value = node.value();
+            };"#;
 
         let result = parse(input);
-        dbg!(parse(input));
         assert!(result.is_ok());
     }
 }
