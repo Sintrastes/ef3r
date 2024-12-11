@@ -1,18 +1,24 @@
+use std::sync::{Arc, Mutex};
+
 use ef3r::ast::{Expr, Statement};
 use ef3r::interpreter::interpret;
-use ef3r::stdlib::ef3r_stdlib;
+use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
 
 #[test]
 fn variable_assignment() {
-    let mut context = ef3r_stdlib();
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+
+    let cloned_ctx = context.clone();
 
     let expression = Expr::Int(3).traced();
     let statement = Statement::Var("x".to_string(), expression.clone());
 
-    interpret(&mut context, &vec![statement.clone()]);
+    interpret(context, &vec![statement.clone()]);
 
     assert_eq!(
-        context
+        cloned_ctx
+            .lock()
+            .unwrap()
             .expression_context
             .variables
             .get("x")
@@ -24,15 +30,19 @@ fn variable_assignment() {
 
 #[test]
 fn reassignment_of_statement() {
-    let mut context = ef3r_stdlib();
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+
+    let cloned_ctx = context.clone();
 
     let statement1 = Statement::Var("x".to_string(), Expr::Int(2).traced());
     let statement2 = Statement::Var("x".to_string(), Expr::Int(3).traced());
 
-    let evaluated = interpret(&mut context, &vec![statement1, statement2]);
+    let evaluated = interpret(context, &vec![statement1, statement2]);
 
     assert_eq!(
-        context
+        cloned_ctx
+            .lock()
+            .unwrap()
             .expression_context
             .variables
             .get("x")
@@ -40,4 +50,30 @@ fn reassignment_of_statement() {
             .evaluated,
         Expr::Int(3)
     );
+}
+
+#[test]
+fn execute_example_program() {
+    let program = r#"println("Hello, world!");
+
+        launch {
+            let x = "test";
+
+            println(x.uppercase());
+        };
+    "#;
+
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+    let mut parsed_program = ef3r::parser::parse(&program).unwrap();
+
+    let context_lock = context.lock().unwrap();
+    let stdlib_functions = get_stdlib_functions(&context_lock);
+
+    parsed_program = ef3r::stdlib::resolve_builtin_functions(
+        parsed_program,
+        &stdlib_functions,
+    );
+
+    drop(context_lock);
+    interpret(context, parsed_program.as_slice());
 }

@@ -1,10 +1,14 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use daggy::Dag;
 
 use crate::{
     ast::{substitute, Expr, FunctionID, Statement, TracedExpr, VariableID},
-    frp::Node,
+    frp::{with_lock, Node},
+    types::ExprType,
 };
 
 ///
@@ -12,24 +16,37 @@ use crate::{
 ///  update the FRP event loop.
 ///
 #[derive(Clone)]
-pub struct Context<'a> {
+pub struct Context<'a>
+where
+    'a: 'static,
+{
     pub expression_context: ExpressionContext,
     pub graph: Dag<Node<'a>, (), u32>,
 }
 
+unsafe impl<'a> Send for Context<'a> {}
+
 #[derive(PartialEq, Debug)]
 pub enum EvaluationError {
-    TypeError,
+    TypeError {
+        expected: ExprType,
+        actual: ExprType,
+        at_loc: String,
+    },
     NotAFunction(Expr),
-    VariableNotFound,
+    VariableNotFound(String),
     Unimplemented,
-    WrongNumberOfArguments,
+    WrongNumberOfArguments {
+        expected: usize,
+        actual: usize,
+        for_function: String,
+    },
 }
 
 #[derive(Clone)]
 pub struct InvokableDefinition {
     pub definition:
-        fn(&mut Context, &[TracedExpr]) -> Result<Expr, EvaluationError>,
+        fn(Arc<Mutex<Context>>, &[TracedExpr]) -> Result<Expr, EvaluationError>,
     pub name: String,
     pub infix: bool,
 }
@@ -38,19 +55,6 @@ pub struct InvokableDefinition {
 pub struct ExpressionContext {
     pub functions: HashMap<FunctionID, InvokableDefinition>,
     pub variables: HashMap<VariableID, TracedExpr>,
-}
-
-/// Ensure an expression is being traced before we evaluate it.
-pub fn trace(expr: TracedExpr) -> TracedExpr {
-    match expr {
-        TracedExpr {
-            evaluated: expr,
-            stored_trace: _,
-        } => TracedExpr {
-            evaluated: expr.clone(),
-            stored_trace: Option::Some(expr),
-        },
-    }
 }
 
 pub fn unwind_trace(expr: TracedExpr) -> TracedExpr {
@@ -172,7 +176,7 @@ fn evaluate_traced_rec(
         Expr::Apply(f, xs) => match f.evaluated {
             // Builtin functions can just be looked up in the evaluator context.
             Expr::BuiltinFunction(id) => {
-                let implemntation = ctx
+                let implementation = ctx
                     .expression_context
                     .functions
                     .get(&id)
@@ -192,7 +196,10 @@ fn evaluate_traced_rec(
                     .collect();
 
                 Ok(TracedExpr::build(
-                    implemntation(ctx, evaluated_args?.as_mut_slice())?,
+                    implementation(
+                        Arc::new(Mutex::new(ctx.clone())),
+                        evaluated_args?.as_mut_slice(),
+                    )?,
                     trace,
                 ))
             }
@@ -210,7 +217,7 @@ fn evaluate_traced_rec(
                 ctx.expression_context
                     .variables
                     .get(&var)
-                    .ok_or(EvaluationError::VariableNotFound)?
+                    .ok_or(EvaluationError::VariableNotFound(var.to_string()))?
                     .evaluated
                     .clone(),
             ),
@@ -221,181 +228,243 @@ fn evaluate_traced_rec(
             .expression_context
             .variables
             .get(&x)
-            .ok_or(EvaluationError::VariableNotFound)?
+            .ok_or(EvaluationError::VariableNotFound(x.to_string()))?
             .clone()),
     }
 }
 
-pub fn interpret(ctx: &mut Context, statements: &[Statement]) {
+/// Entrypoint for the ef3r interpreter. Takes a list of a statements
+///  and executes them.
+pub fn interpret(ctx: Arc<Mutex<Context>>, statements: &[Statement]) {
     for statement in statements {
+        let cloned_ctx = ctx.clone();
         match statement {
-            Statement::Var(x, expr) => {
-                let evaluated = evaluate_traced(ctx, expr.clone()).unwrap();
+            Statement::Var(x, expr) => with_lock(cloned_ctx.as_ref(), |lock| {
+                let evaluated = evaluate_traced(lock, expr.clone()).unwrap();
 
-                ctx.expression_context
+                lock.expression_context
                     .variables
                     .insert(x.to_string(), evaluated);
-            }
+            }),
             Statement::Execute(result_var, action_expr) => {
-                match &action_expr.evaluated {
-                    Expr::Apply(action, args) => {
-                        let action = action;
-                        match &action.evaluated {
-                            Expr::BuiltinFunction(action_id) => {
-                                let action = ctx.expression_context.functions
-                                    [&action_id]
-                                    .definition;
+                let result = invoke_action_expression(cloned_ctx, action_expr);
 
-                                let evaluated_args: Result<Vec<TracedExpr>, _> =
-                                    args.into_iter()
-                                        .map(|arg| {
-                                            evaluate_traced(ctx, arg.clone())
-                                        })
-                                        .collect();
-
-                                let result = TracedExpr::build(
-                                    (action)(
-                                        ctx,
-                                        &evaluated_args.unwrap().as_mut_slice(),
-                                    )
-                                    .unwrap(),
-                                    Some(action_expr.get_trace()),
-                                );
-
-                                match result_var {
-                                    Some(result_var) => {
-                                        ctx.expression_context
-                                            .variables
-                                            .insert(result_var.clone(), result);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            Expr::Var(x) => {
-                                // Lookup the function reference
-                                if let Some(resolved) =
-                                    ctx.expression_context.variables.get(x)
-                                {
-                                    let resolved_function: Box<dyn Fn(&mut Context, &[TracedExpr]) -> Result<Expr, EvaluationError>> = match &resolved
-                                        .evaluated
-                                    {
-                                        Expr::BuiltinFunction(action_id) => Box::new(ctx
-                                            .expression_context
-                                            .functions
-                                            .get(action_id)
-                                            .ok_or(
-                                                EvaluationError::NotAFunction(
-                                                    resolved.evaluated.clone(),
-                                                ),
-                                            )
-                                            .unwrap()
-                                            .definition),
-                                        Expr::Lambda(
-                                            vars,
-                                            statements,
-                                            result,
-                                        ) => Box::new(|ctx: &mut Context, var_values: &[TracedExpr]| {
-                                                if vars.len() != var_values.len() {
-                                                    return Err(EvaluationError::WrongNumberOfArguments);
-                                                }
-
-                                                // Create a new context for the lambda to ensure clean state isolation
-                                                let mut lambda_context = ctx.clone();
-
-                                                // Substitute variables in statements with their corresponding values
-                                                let substituted_statements: Vec<Statement> = statements.iter().map(|statement| {
-                                                    match statement {
-                                                        Statement::Var(var_name, expr) => {
-                                                            let substituted_expr = vars.iter().zip(var_values.iter()).fold(expr.evaluated.clone(),
-                                                                |acc, (var, var_value)| substitute(var.clone(), var_value.evaluated.clone(), acc)
-                                                            ).traced();
-                                                            Statement::Var(var_name.clone(), substituted_expr)
-                                                        }
-                                                        Statement::Execute(optional_var, expr) => {
-                                                            let substituted_expr = vars.iter().zip(var_values.iter()).fold(expr.evaluated.clone(),
-                                                                |acc, (var, var_value)| substitute(var.clone(), var_value.evaluated.clone(), acc)
-                                                            ).traced();
-                                                            Statement::Execute(optional_var.clone(), substituted_expr)
-                                                        }
-                                                    }
-                                                }).collect();
-
-                                                // Run the substituted statements
-                                                interpret(&mut lambda_context, &substituted_statements);
-
-                                                // Substitute variables in result expression
-                                                let substituted_result_expr = vars.iter().zip(var_values.iter()).fold(
-                                                    result.evaluated.clone(),
-                                                    |acc, (var, var_value)| substitute(var.clone(), var_value.evaluated.clone(), acc)
-                                                );
-
-                                                // Run the result to get the return value
-                                                evaluate(&mut lambda_context, substituted_result_expr)
-                                                    .map(|x| x.evaluated)
-                                        }),
-                                        _ => {
-                                            return Err(
-                                                EvaluationError::NotAFunction(
-                                                    resolved.evaluated.clone(),
-                                                ),
-                                            )
-                                            .unwrap();
-                                        }
-                                    };
-
-                                    let evaluated_args: Result<
-                                        Vec<TracedExpr>,
-                                        _,
-                                    > = args
-                                        .iter()
-                                        .map(|arg| {
-                                            evaluate_traced(
-                                                &mut ctx.clone(),
-                                                arg.clone(),
-                                            )
-                                        })
-                                        .collect();
-
-                                    let result = TracedExpr::build(
-                                        (resolved_function)(
-                                            &mut (ctx.clone()),
-                                            &evaluated_args
-                                                .unwrap()
-                                                .as_mut_slice(),
-                                        )
-                                        .unwrap(),
-                                        Some(action_expr.get_trace()),
-                                    );
-
-                                    if let Some(result_var) = result_var {
-                                        ctx.clone()
-                                            .expression_context
-                                            .variables
-                                            .insert(result_var.clone(), result);
-                                    }
-                                } else {
-                                    return Err(
-                                        EvaluationError::VariableNotFound,
-                                    )
-                                    .unwrap();
-                                }
-                            }
-                            _ => {
-                                dbg!(ctx.expression_context.variables.clone());
-
-                                Err(EvaluationError::NotAFunction(
-                                    action.evaluated.clone(),
-                                ))
-                                .unwrap()
-                            }
-                        }
-                    }
-                    _ => Err(EvaluationError::NotAFunction(
-                        action_expr.evaluated.clone(),
-                    ))
-                    .unwrap(),
+                if let Some(var) = result_var {
+                    ctx.lock()
+                        .unwrap()
+                        .expression_context
+                        .variables
+                        .insert(var.clone(), result);
                 }
             }
         };
     }
+}
+
+pub fn invoke_action_expression(
+    ctx: Arc<Mutex<Context>>,
+    action_expr: &TracedExpr,
+) -> TracedExpr {
+    match &action_expr.evaluated {
+        Expr::Apply(action, args) => {
+            let action = action;
+            match &action.evaluated {
+                Expr::BuiltinFunction(action_id) => {
+                    let (action, evaluated_args) =
+                        with_lock(ctx.as_ref(), |lock| {
+                            println!(
+                                "DBG - Got builtin function {}",
+                                action_id
+                            );
+
+                            let action = lock.expression_context.functions
+                                [&action_id]
+                                .definition;
+
+                            let evaluated_args: Result<Vec<TracedExpr>, _> =
+                                args.into_iter()
+                                    .map(|arg| {
+                                        evaluate_traced(lock, arg.clone())
+                                    })
+                                    .collect();
+
+                            (action, evaluated_args)
+                        });
+
+                    TracedExpr::build(
+                        (action)(
+                            ctx.clone(),
+                            &evaluated_args.unwrap().as_mut_slice(),
+                        )
+                        .unwrap(),
+                        Some(action_expr.get_trace()),
+                    )
+                }
+                Expr::Var(x) => {
+                    let cloned = ctx.clone();
+                    // Lookup the function reference
+                    let resolved = with_lock(ctx.as_ref(), |lock| {
+                        lock.expression_context.variables.get(x).cloned()
+                    });
+
+                    if let Some(resolved) = resolved {
+                        let resolved_function =
+                            function_from_expression(ctx, resolved);
+
+                        let evaluated_args =
+                            with_lock(cloned.as_ref(), |lock| {
+                                let mut evaluated = Vec::new();
+                                for arg in args {
+                                    evaluated.push(
+                                        evaluate_traced(lock, arg.clone())
+                                            .unwrap(),
+                                    );
+                                }
+                                evaluated
+                            });
+
+                        TracedExpr::build(
+                            (resolved_function)(
+                                cloned,
+                                &evaluated_args.as_slice(),
+                            )
+                            .unwrap(),
+                            Some(action_expr.get_trace()),
+                        )
+                    } else {
+                        return Err(EvaluationError::VariableNotFound(
+                            x.to_string(),
+                        ))
+                        .unwrap();
+                    }
+                }
+                _ => with_lock(ctx.as_ref(), |lock| {
+                    dbg!(lock.expression_context.variables.clone());
+
+                    Err(EvaluationError::NotAFunction(action.evaluated.clone()))
+                        .unwrap()
+                }),
+            }
+        }
+        _ => Err(EvaluationError::NotAFunction(action_expr.evaluated.clone()))
+            .unwrap(),
+    }
+}
+
+fn function_from_expression(
+    ctx: Arc<Mutex<Context>>,
+    resolved: TracedExpr,
+) -> Box<
+    dyn Fn(Arc<Mutex<Context>>, &[TracedExpr]) -> Result<Expr, EvaluationError>,
+> {
+    return match &resolved.evaluated {
+        Expr::BuiltinFunction(action_id) => Box::new(
+            ctx.lock()
+                .unwrap()
+                .expression_context
+                .functions
+                .get(action_id)
+                .ok_or(EvaluationError::NotAFunction(
+                    resolved.evaluated.clone(),
+                ))
+                .unwrap()
+                .definition,
+        ),
+        Expr::Lambda(vars, statements, result) => {
+            let vars = vars.clone();
+            let statements = statements.clone();
+            let result = result.clone();
+            Box::new(
+                move |ctx: Arc<Mutex<Context>>, var_values: &[TracedExpr]| {
+                    with_lock(ctx.as_ref(), |lock| {
+                        if vars.len() != var_values.len() {
+                            return Err(
+                                EvaluationError::WrongNumberOfArguments {
+                                    expected: vars.len(),
+                                    actual: var_values.len(),
+                                    for_function: "[lambda]".to_string(),
+                                },
+                            );
+                        }
+
+                        // Substitute variables in statements with their corresponding values
+                        let substituted_statements: Vec<Statement> = statements
+                            .iter()
+                            .map(|statement| match statement {
+                                Statement::Var(var_name, expr) => {
+                                    let substituted_expr = vars
+                                        .iter()
+                                        .zip(var_values.iter())
+                                        .fold(
+                                            expr.evaluated.clone(),
+                                            |acc, (var, var_value)| {
+                                                substitute(
+                                                    var.clone(),
+                                                    var_value.evaluated.clone(),
+                                                    acc,
+                                                )
+                                            },
+                                        )
+                                        .traced();
+                                    Statement::Var(
+                                        var_name.clone(),
+                                        substituted_expr,
+                                    )
+                                }
+                                Statement::Execute(optional_var, expr) => {
+                                    let substituted_expr = vars
+                                        .iter()
+                                        .zip(var_values.iter())
+                                        .fold(
+                                            expr.evaluated.clone(),
+                                            |acc, (var, var_value)| {
+                                                substitute(
+                                                    var.clone(),
+                                                    var_value.evaluated.clone(),
+                                                    acc,
+                                                )
+                                            },
+                                        )
+                                        .traced();
+                                    Statement::Execute(
+                                        optional_var.clone(),
+                                        substituted_expr,
+                                    )
+                                }
+                            })
+                            .collect();
+
+                        // Run the substituted statements
+                        interpret(ctx.clone(), &substituted_statements);
+
+                        // Substitute variables in result expression
+                        let substituted_result_expr =
+                            vars.iter().zip(var_values.iter()).fold(
+                                result.evaluated.clone(),
+                                |acc, (var, var_value)| {
+                                    substitute(
+                                        var.clone(),
+                                        var_value.evaluated.clone(),
+                                        acc,
+                                    )
+                                },
+                            );
+
+                        // Run the result to get the return value
+                        let result: Result<Expr, EvaluationError> =
+                            evaluate(lock, substituted_result_expr)
+                                .map(|x| x.evaluated);
+
+                        result
+                    })
+                },
+            )
+        }
+        _ => {
+            return Err(EvaluationError::NotAFunction(
+                resolved.evaluated.clone(),
+            ))
+            .unwrap();
+        }
+    };
 }
