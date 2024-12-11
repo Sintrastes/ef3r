@@ -57,19 +57,6 @@ pub struct ExpressionContext {
     pub variables: HashMap<VariableID, TracedExpr>,
 }
 
-/// Ensure an expression is being traced before we evaluate it.
-pub fn trace(expr: TracedExpr) -> TracedExpr {
-    match expr {
-        TracedExpr {
-            evaluated: expr,
-            stored_trace: _,
-        } => TracedExpr {
-            evaluated: expr.clone(),
-            stored_trace: Option::Some(expr),
-        },
-    }
-}
-
 pub fn unwind_trace(expr: TracedExpr) -> TracedExpr {
     match expr {
         TracedExpr {
