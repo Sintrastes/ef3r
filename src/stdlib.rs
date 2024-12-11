@@ -281,7 +281,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     };
 
     let print_fn = InvokableDefinition {
-        name: "print".to_string(),
+        name: "println".to_string(),
         infix: false,
         definition: |_, xs: &[TracedExpr]| {
             let first = xs.get(0).unwrap().clone();
@@ -292,7 +292,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     };
 
     let readln_fn = InvokableDefinition {
-        name: "read_ln".to_string(),
+        name: "readln".to_string(),
         infix: false,
         definition: |_, xs: &[TracedExpr]| {
             let stdin = io::stdin();
@@ -507,5 +507,92 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
             variables: HashMap::new(),
         },
         graph: Dag::new(),
+    }
+}
+
+pub fn get_stdlib_functions<'a>(stdlib: &'a Context) -> HashMap<&'a str, u32> {
+    stdlib
+        .expression_context
+        .functions
+        .iter()
+        .map(|(id, invokable)| (invokable.name.as_str(), *id))
+        .collect()
+}
+
+pub fn resolve_builtin_functions(
+    statements: Vec<Statement>,
+    stdlib_functions: &HashMap<&str, u32>,
+) -> Vec<Statement> {
+    statements
+        .into_iter()
+        .map(|stmt| replace_variables_in_statement(stmt, stdlib_functions))
+        .collect()
+}
+
+fn replace_variables_in_statement(
+    stmt: Statement,
+    stdlib_functions: &HashMap<&str, u32>,
+) -> Statement {
+    match stmt {
+        Statement::Var(var_id, expr) => Statement::Var(
+            var_id,
+            replace_variables_in_traced_expr(expr, stdlib_functions),
+        ),
+        Statement::Execute(var_id, expr) => Statement::Execute(
+            var_id,
+            replace_variables_in_traced_expr(expr, stdlib_functions),
+        ),
+    }
+}
+
+fn replace_variables_in_traced_expr(
+    traced: TracedExpr,
+    stdlib_functions: &HashMap<&str, u32>,
+) -> TracedExpr {
+    let replaced_eval =
+        replace_variables_in_expr(traced.evaluated, stdlib_functions);
+    let replaced_trace = traced
+        .stored_trace
+        .map(|t| replace_variables_in_expr(t, stdlib_functions));
+
+    TracedExpr::build(replaced_eval, replaced_trace)
+}
+
+fn replace_variables_in_expr(
+    expr: Expr,
+    stdlib_functions: &HashMap<&str, u32>,
+) -> Expr {
+    match expr {
+        Expr::Var(var_name) => {
+            if let Some(func_id) = stdlib_functions.get(var_name.as_str()) {
+                Expr::BuiltinFunction(*func_id)
+            } else {
+                Expr::Var(var_name)
+            }
+        }
+        Expr::Apply(func, args) => Expr::Apply(
+            Box::new(replace_variables_in_traced_expr(*func, stdlib_functions)),
+            args.into_vec()
+                .into_iter()
+                .map(|a| replace_variables_in_traced_expr(a, stdlib_functions))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        ),
+        Expr::Pair(first, second) => Expr::Pair(
+            Box::new(replace_variables_in_traced_expr(
+                *first,
+                stdlib_functions,
+            )),
+            Box::new(replace_variables_in_traced_expr(
+                *second,
+                stdlib_functions,
+            )),
+        ),
+        Expr::Lambda(vars, stmts, body) => Expr::Lambda(
+            vars,
+            resolve_builtin_functions(stmts, stdlib_functions),
+            Box::new(replace_variables_in_traced_expr(*body, stdlib_functions)),
+        ),
+        _ => expr,
     }
 }
