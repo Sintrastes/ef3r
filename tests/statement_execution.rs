@@ -66,6 +66,10 @@ fn execute_example_program() {
             println(x.uppercase());
             println(x.f());
 
+            println(2 + 2 * 3);
+
+            println(2 / 2);
+
             println(y);
         };
     "#;

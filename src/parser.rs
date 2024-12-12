@@ -68,6 +68,21 @@ fn identifier(input: &str) -> IResult<&str, String> {
     )(input)
 }
 
+// Symbol parser
+fn symbol(input: &str) -> IResult<&str, String> {
+    map(
+        recognize(many0(alt((
+            char('='),
+            char('+'),
+            char('-'),
+            char('*'),
+            char('/'),
+            char('.'),
+        )))),
+        String::from,
+    )(input)
+}
+
 // Literal parsers
 fn integer(input: &str) -> IResult<&str, Expr> {
     map(recognize(digit1), |digits: &str| {
@@ -148,16 +163,16 @@ fn function_call(input: &str) -> IResult<&str, Expr> {
     ))
 }
 
-fn comparison_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, first) = non_cmp_expression(input)?;
+fn binary_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, first) = non_binary_expression(input)?;
 
     let (input, rest) =
-        many0(tuple((ws(tag("==")), non_cmp_expression)))(input)?;
+        many0(tuple((ws(symbol), non_binary_expression)))(input)?;
 
     // Build up the binary expression chain
-    let result = rest.into_iter().fold(first, |acc, (_, right)| {
+    let result = rest.into_iter().fold(first, |acc, (sym, right)| {
         Expr::Apply(
-            Box::new(Expr::Var("==".to_string()).traced()),
+            Box::new(Expr::Var(sym.to_string()).traced()),
             vec![acc.traced(), right.traced()].into_boxed_slice(),
         )
     });
@@ -198,10 +213,10 @@ fn method_call(input: &str) -> IResult<&str, Expr> {
 }
 
 fn expression(input: &str) -> IResult<&str, Expr> {
-    alt((comparison_expr, non_cmp_expression))(input)
+    alt((binary_expr, non_binary_expression))(input)
 }
 
-fn non_cmp_expression(input: &str) -> IResult<&str, Expr> {
+fn non_binary_expression(input: &str) -> IResult<&str, Expr> {
     alt((lambda_expr, function_call, method_call, primary_expr))(input)
 }
 
