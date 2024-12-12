@@ -27,7 +27,11 @@ Ef3r seeks to distill the concepts of modern software development into their sim
  - No distinction between functions and properties.
  - All data is inherently extensible. (Data modeling is based off of extensible records and variants)
 
-However, despite many of these concepts having a basis in academic programming language theory, we have no desire to be an academic language. As such, we also aim to focus on usability, and first-class tooling.
+However, despite many of these concepts having a basis in academic programming language theory, we have no desire to be an academic language. As such, we also aim to focus on usability, and first-class tooling, and take inspiration from the following prior art:
+
+ - [Smalltalk](https://en.wikipedia.org/wiki/Smalltalk)
+ - [Whyline](https://www.cs.cmu.edu/~NatProg/whyline.html)
+ - [Eve](https://witheve.com/)
 
 # Acronym
 
