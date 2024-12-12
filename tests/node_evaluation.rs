@@ -10,7 +10,7 @@ use ef3r::{
     stdlib::{ef3r_stdlib, MUL_ID},
 };
 
-// #[test]
+#[test]
 fn test_map_node() {
     let on_update = |new_value| println!("New value is: {:?}", new_value);
 
@@ -81,7 +81,7 @@ fn test_map_node() {
     );
 }
 
-// #[test]
+#[test]
 fn test_filter_node() {
     let on_update = |new_value| println!("New value is: {:?}", new_value);
 
