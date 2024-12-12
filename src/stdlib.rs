@@ -11,8 +11,8 @@ use crate::{
     ast::{Expr, Statement, TracedExpr},
     frp::Node,
     interpreter::{
-        invoke_action_expression, Context, EvaluationError, ExpressionContext,
-        InvokableDefinition,
+        invoke_function_application, Context, EvaluationError,
+        ExpressionContext, InvokableDefinition,
     },
     typechecking::type_of,
     types::ExprType,
@@ -463,7 +463,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
 
             thread::spawn(move || {
                 println!("DBG - GOT CTX LOCK, LAUNCHING BODY");
-                invoke_action_expression(thread_ctx, &first);
+                invoke_function_application(thread_ctx, &first);
                 println!("DONE LAUNCHING");
             });
             Ok(Expr::Unit)

@@ -56,13 +56,17 @@ fn reassignment_of_statement() {
 fn execute_example_program() {
     let program = r#"println("Hello, world!");
 
-        let f = uppercase;
+        let f = { x -> uppercase(x) };
+
+        let y = f("test");
 
         launch {
             let x = "test";
 
             println(x.uppercase());
             println(x.f());
+
+            println(y);
         };
     "#;
 

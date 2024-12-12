@@ -243,7 +243,8 @@ pub fn interpret(ctx: Arc<Mutex<Context>>, statements: &[Statement]) {
                     .insert(x.to_string(), evaluated);
             }),
             Statement::Execute(result_var, action_expr) => {
-                let result = invoke_action_expression(cloned_ctx, action_expr);
+                let result =
+                    invoke_function_application(cloned_ctx, action_expr);
 
                 if let Some(var) = result_var {
                     ctx.lock()
@@ -257,52 +258,28 @@ pub fn interpret(ctx: Arc<Mutex<Context>>, statements: &[Statement]) {
     }
 }
 
-pub fn invoke_action_expression(
+pub fn invoke_function_application(
     ctx: Arc<Mutex<Context>>,
     action_expr: &TracedExpr,
 ) -> TracedExpr {
     match &action_expr.evaluated {
         Expr::Apply(action, args) => {
-            let action = action;
-            match &action.evaluated {
-                Expr::BuiltinFunction(action_id) => {
-                    let (action, evaluated_args) =
-                        with_lock(ctx.as_ref(), |lock| {
-                            println!(
-                                "DBG - Got builtin function {}",
-                                action_id
-                            );
+            let evaluated_args = with_lock(ctx.as_ref(), |lock| {
+                let evaluated_args: Result<Vec<TracedExpr>, _> = args
+                    .into_iter()
+                    .map(|arg| evaluate_traced(lock, arg.clone()))
+                    .collect();
 
-                            let action = lock.expression_context.functions
-                                [&action_id]
-                                .definition;
+                evaluated_args
+            });
 
-                            let evaluated_args: Result<Vec<TracedExpr>, _> =
-                                args.into_iter()
-                                    .map(|arg| {
-                                        evaluate_traced(lock, arg.clone())
-                                    })
-                                    .collect();
+            let action =
+                function_from_expression(ctx.clone(), action.evaluated.clone());
 
-                            (action, evaluated_args)
-                        });
-
-                    TracedExpr::build(
-                        (action)(
-                            ctx.clone(),
-                            &evaluated_args.unwrap().as_mut_slice(),
-                        )
-                        .unwrap(),
-                        Some(action_expr.get_trace()),
-                    )
-                }
-                _ => with_lock(ctx.as_ref(), |lock| {
-                    dbg!(lock.expression_context.variables.clone());
-
-                    Err(EvaluationError::NotAFunction(action.evaluated.clone()))
-                        .unwrap()
-                }),
-            }
+            TracedExpr::build(
+                (action)(ctx, &evaluated_args.unwrap().as_mut_slice()).unwrap(),
+                Some(action_expr.get_trace()),
+            )
         }
         _ => Err(EvaluationError::NotAFunction(action_expr.evaluated.clone()))
             .unwrap(),
@@ -311,20 +288,18 @@ pub fn invoke_action_expression(
 
 fn function_from_expression(
     ctx: Arc<Mutex<Context>>,
-    resolved: TracedExpr,
+    resolved: Expr,
 ) -> Box<
     dyn Fn(Arc<Mutex<Context>>, &[TracedExpr]) -> Result<Expr, EvaluationError>,
 > {
-    return match &resolved.evaluated {
+    return match &resolved {
         Expr::BuiltinFunction(action_id) => Box::new(
             ctx.lock()
                 .unwrap()
                 .expression_context
                 .functions
                 .get(action_id)
-                .ok_or(EvaluationError::NotAFunction(
-                    resolved.evaluated.clone(),
-                ))
+                .ok_or(EvaluationError::NotAFunction(resolved.clone()))
                 .unwrap()
                 .definition,
         ),
@@ -419,10 +394,8 @@ fn function_from_expression(
             )
         }
         _ => {
-            return Err(EvaluationError::NotAFunction(
-                resolved.evaluated.clone(),
-            ))
-            .unwrap();
+            return Err(EvaluationError::NotAFunction(resolved.clone()))
+                .unwrap();
         }
     };
 }
