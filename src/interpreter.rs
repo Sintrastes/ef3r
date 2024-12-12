@@ -168,10 +168,6 @@ fn evaluate_traced_rec(
         Expr::Lambda(_, _, _) => Ok(expr.traced()),
         Expr::BuiltinFunction(_) => Ok(expr.traced()),
         Expr::Node(_) => Ok(expr.traced()),
-        // For now, we'll just treat this like an opaque expression.
-        // Evaluating it is different from a normal expression since we'd need
-        // access to the FRP graph.
-        Expr::MapNode(_, _) => Ok(expr.traced()),
         // Function applications need to be reduced.
         Expr::Apply(f, xs) => match f.evaluated {
             // Builtin functions can just be looked up in the evaluator context.

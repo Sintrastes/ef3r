@@ -39,10 +39,6 @@ pub enum Expr {
     /// Externally defined node that has been supplied
     /// by the interpreter.
     Node(usize),
-    /// Build a mapped version of a node.
-    /// First argument: Node to map.
-    /// Second argument: Function to use for the mapping.
-    MapNode(Box<TracedExpr>, Box<TracedExpr>),
     BuiltinFunction(FunctionID),
     /// Lambda expression with 0+ parameters: \x y z -> f x
     /// Can either be an "effectful" lambda with statements and a final
@@ -199,12 +195,6 @@ impl Display for Expr {
             Expr::Node(idx) => {
                 f.write_str("Node(")?;
                 idx.fmt(f)?;
-                f.write_str(")")
-            }
-            Expr::MapNode(x, fun) => {
-                x.as_ref().fmt(f)?;
-                f.write_str(".map(")?;
-                fun.as_ref().fmt(f)?;
                 f.write_str(")")
             }
             Expr::Bool(value) => value.fmt(f),

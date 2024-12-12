@@ -19,7 +19,6 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
             Box::new(ExprType::Unit),
         )),
         Expr::Node(_) => Some(ExprType::Node(Box::new(ExprType::Any))),
-        Expr::MapNode(traced_expr, traced_expr1) => todo!(),
         Expr::Lambda(args, statements, traced_expr) => {
             let arg_types: Vec<ExprType> = args
                 .iter()

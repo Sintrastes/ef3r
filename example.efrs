@@ -1,0 +1,5 @@
+println("Hello, world!");
+
+let x = readln();
+
+println(x.uppercase());
