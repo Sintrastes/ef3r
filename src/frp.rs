@@ -331,7 +331,7 @@ pub fn fold_node<'a>(
     event_index: NodeIndex,
     initial: TracedExpr,
     fold: fn(TracedExpr, TracedExpr) -> TracedExpr,
-) -> Node<'a> {
+) -> NodeIndex {
     let value = Arc::new(RwLock::new(initial));
 
     let dirty = Arc::new(AtomicBool::new(false));
@@ -340,9 +340,13 @@ pub fn fold_node<'a>(
 
     let on_dependency_update = Arc::new(move |_, id, event| {
         if id == event_index {
+            let current_value = {
+                let lock = cloned.read().unwrap();
+                lock.clone()
+            };
+
             // Update the value to transform of new_value.
-            *cloned.write().unwrap() =
-                fold(event, cloned.read().unwrap().clone());
+            *cloned.write().unwrap() = fold(event, current_value);
         }
     });
 
@@ -354,9 +358,11 @@ pub fn fold_node<'a>(
         on_dependency_update,
     };
 
-    let _new_node_index = graph.add_node(new_node);
+    let new_node_index = graph.add_node(new_node);
 
-    todo!()
+    graph.add_edge(event_index, new_node_index, ()).unwrap();
+
+    new_node_index
 }
 
 ///

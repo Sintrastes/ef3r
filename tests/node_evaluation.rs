@@ -3,8 +3,8 @@ use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use ef3r::{
     ast::{Expr, TracedExpr},
     frp::{
-        combined_node, filter_node, map_node, process_event_frame, with_lock,
-        Node,
+        combined_node, filter_node, fold_node, map_node, process_event_frame,
+        with_lock, Node,
     },
     interpreter::apply_traced,
     stdlib::{ef3r_stdlib, MUL_ID},
@@ -184,8 +184,6 @@ fn test_combined_node() {
 
     let cloned_ctx = context.clone();
 
-    println!("GETTING COMBINED NODE");
-
     let combined_node_index = combined_node(
         on_update,
         is_traced,
@@ -193,9 +191,7 @@ fn test_combined_node() {
         first_node_index,
         second_node_index,
         Box::new(move |x, y| {
-            println!("GETTING INNER CONTEXT LOCK");
             let mut context_lock = cloned_ctx.lock().unwrap();
-            println!("GOT INNER CONTEXT LOCK");
 
             apply_traced(
                 &mut context_lock,
@@ -205,8 +201,6 @@ fn test_combined_node() {
             .unwrap()
         }),
     );
-
-    println!("GOT COMBINED NODE");
 
     let context_lock = context.lock().unwrap();
 
@@ -225,9 +219,7 @@ fn test_combined_node() {
 
     drop(context_lock);
 
-    println!("PROCESSING COMBINED EVENT FRAME");
     process_event_frame(context.clone());
-    println!("PROCESSED COMBINED EVENT FRAME");
 
     let mut context_lock = context.lock().unwrap();
 
@@ -235,4 +227,55 @@ fn test_combined_node() {
         &mut context_lock.graph.node_weight(combined_node_index).unwrap();
 
     assert_eq!(Expr::Int(9), combined_node.current().evaluated);
+}
+
+#[test]
+fn test_fold_node() {
+    let on_update = |new_value| println!("New value is: {:?}", new_value);
+
+    let is_traced = Arc::new(AtomicBool::new(false));
+
+    // Setup our FRP graph with an input node and a folded node
+
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+
+    let mut context_lock = context.lock().unwrap();
+
+    let event_node_index = Node::new(
+        on_update,
+        is_traced.clone(),
+        &mut context_lock.graph,
+        Expr::None.traced(),
+    );
+
+    let folded_node_index = fold_node(
+        on_update,
+        is_traced,
+        &mut context_lock.graph,
+        event_node_index,
+        Expr::Int(2).traced(),
+        |acc, event| match (acc.evaluated, event.evaluated) {
+            (Expr::Int(a), Expr::Int(b)) => Expr::Int(a + b).traced(),
+            _ => panic!("Expected integers"),
+        },
+    );
+
+    // Verify initial state
+    let folded_node =
+        context_lock.graph.node_weight(folded_node_index).unwrap();
+    assert_eq!(Expr::Int(2), folded_node.current().evaluated);
+
+    // Update input value
+    let event_node = context_lock.graph.node_weight(event_node_index).unwrap();
+    event_node.update(Expr::Int(3).traced());
+
+    drop(context_lock);
+
+    process_event_frame(context.clone());
+
+    // Verify folded value is updated
+    let context_lock = context.lock().unwrap();
+    let folded_node =
+        context_lock.graph.node_weight(folded_node_index).unwrap();
+    assert_eq!(Expr::Int(5), folded_node.current().evaluated);
 }
