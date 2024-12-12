@@ -463,7 +463,10 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
 
             thread::spawn(move || {
                 println!("DBG - GOT CTX LOCK, LAUNCHING BODY");
-                invoke_function_application(thread_ctx, &first);
+                invoke_function_application(
+                    thread_ctx,
+                    &Expr::Apply(Box::new(first), Box::new([])).traced(),
+                );
                 println!("DONE LAUNCHING");
             });
             Ok(Expr::Unit)
