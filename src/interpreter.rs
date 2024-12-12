@@ -296,44 +296,6 @@ pub fn invoke_action_expression(
                         Some(action_expr.get_trace()),
                     )
                 }
-                Expr::Var(x) => {
-                    let cloned = ctx.clone();
-                    // Lookup the function reference
-                    let resolved = with_lock(ctx.as_ref(), |lock| {
-                        lock.expression_context.variables.get(x).cloned()
-                    });
-
-                    if let Some(resolved) = resolved {
-                        let resolved_function =
-                            function_from_expression(ctx, resolved);
-
-                        let evaluated_args =
-                            with_lock(cloned.as_ref(), |lock| {
-                                let mut evaluated = Vec::new();
-                                for arg in args {
-                                    evaluated.push(
-                                        evaluate_traced(lock, arg.clone())
-                                            .unwrap(),
-                                    );
-                                }
-                                evaluated
-                            });
-
-                        TracedExpr::build(
-                            (resolved_function)(
-                                cloned,
-                                &evaluated_args.as_slice(),
-                            )
-                            .unwrap(),
-                            Some(action_expr.get_trace()),
-                        )
-                    } else {
-                        return Err(EvaluationError::VariableNotFound(
-                            x.to_string(),
-                        ))
-                        .unwrap();
-                    }
-                }
                 _ => with_lock(ctx.as_ref(), |lock| {
                     dbg!(lock.expression_context.variables.clone());
 
