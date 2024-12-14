@@ -72,7 +72,8 @@ fn execute_example_program() {
         launch {
             let x = "test";
 
-            println(x.uppercase());
+            println("Hello" ++ x.uppercase());
+
             println(x.f());
 
             println(2 + 2 * 3);
