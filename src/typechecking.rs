@@ -3,7 +3,7 @@ use crate::{ast::Expr, types::ExprType};
 /// Attempts to infer the type of expressions.
 pub fn type_of(term: &Expr) -> Option<ExprType> {
     match term {
-        Expr::None => todo!(),
+        Expr::None => Some(ExprType::Any),
         Expr::Unit => Some(ExprType::Unit),
         Expr::Int(_) => Some(ExprType::Int),
         Expr::String(_) => Some(ExprType::String),
@@ -29,6 +29,6 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
             Some(ExprType::Func(arg_types, Box::new(return_type)))
         }
         Expr::Apply(traced_expr, _) => todo!(),
-        Expr::Var(_) => None,
+        Expr::Var(_) => Some(ExprType::Any),
     }
 }
