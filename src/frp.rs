@@ -121,8 +121,6 @@ pub fn map_node(
     parent_index: NodeIndex,
     transform: Arc<Mutex<dyn Fn(TracedExpr) -> TracedExpr>>,
 ) -> NodeIndex {
-    println!("GETTING MAP NODE LOCK");
-
     let parent_value = {
         let mut context_lock = context.lock().unwrap();
         let graph = &mut context_lock.graph;
@@ -139,21 +137,13 @@ pub fn map_node(
 
     let dirty = Arc::new(AtomicBool::new(false));
 
-    println!("GETTING TRANSFORM LOCK");
-
     let transform_lock = transform.lock().unwrap();
 
-    println!("GOT TRANSFORM LOCK");
-
     let initial = (transform_lock)(parent_value);
-
-    println!("INITIAL IS: {}", initial);
 
     let value = Arc::new(RwLock::new(initial));
 
     drop(transform_lock);
-
-    println!("DROPPED TRANSFORM LOCK");
 
     let cloned = value.clone();
 
