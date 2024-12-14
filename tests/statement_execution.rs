@@ -10,7 +10,7 @@ fn variable_assignment() {
 
     let cloned_ctx = context.clone();
 
-    let expression = Expr::Int(3).traced();
+    let expression = Expr::Int(3);
     let statement = Statement::Var("x".to_string(), expression.clone());
 
     interpret(context, &vec![statement.clone()]);
@@ -24,7 +24,7 @@ fn variable_assignment() {
             .get("x")
             .unwrap()
             .evaluated,
-        expression.evaluated
+        expression
     );
 }
 
@@ -34,8 +34,8 @@ fn reassignment_of_statement() {
 
     let cloned_ctx = context.clone();
 
-    let statement1 = Statement::Var("x".to_string(), Expr::Int(2).traced());
-    let statement2 = Statement::Var("x".to_string(), Expr::Int(3).traced());
+    let statement1 = Statement::Var("x".to_string(), Expr::Int(2));
+    let statement2 = Statement::Var("x".to_string(), Expr::Int(3));
 
     let evaluated = interpret(context, &vec![statement1, statement2]);
 

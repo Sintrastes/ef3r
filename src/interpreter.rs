@@ -234,35 +234,23 @@ fn evaluate_traced_rec(
 pub fn interpret(ctx: Arc<Mutex<Context>>, statements: &[Statement]) {
     for statement in statements {
         let cloned_ctx = ctx.clone();
-        match statement {
-            Statement::Var(x, expr) => with_lock(cloned_ctx.as_ref(), |lock| {
-                let evaluated = evaluate_traced(lock, expr.clone()).unwrap();
+        let result = invoke_function_application(cloned_ctx, &statement.expr);
 
-                lock.expression_context
-                    .variables
-                    .insert(x.to_string(), evaluated);
-            }),
-            Statement::Execute(result_var, action_expr) => {
-                let result =
-                    invoke_function_application(cloned_ctx, action_expr);
-
-                if let Some(var) = result_var {
-                    ctx.lock()
-                        .unwrap()
-                        .expression_context
-                        .variables
-                        .insert(var.clone(), result);
-                }
-            }
+        if let Some(var) = &statement.var {
+            ctx.lock()
+                .unwrap()
+                .expression_context
+                .variables
+                .insert(var.clone(), result);
         };
     }
 }
 
 pub fn invoke_function_application(
     ctx: Arc<Mutex<Context>>,
-    action_expr: &TracedExpr,
+    action_expr: &Expr,
 ) -> TracedExpr {
-    match &action_expr.evaluated {
+    match &action_expr {
         Expr::Apply(action, args) => {
             let evaluated_args = with_lock(ctx.as_ref(), |lock| {
                 let evaluated_args: Result<Vec<TracedExpr>, _> = args
@@ -278,11 +266,10 @@ pub fn invoke_function_application(
 
             TracedExpr::build(
                 (action)(ctx, &evaluated_args.unwrap().as_mut_slice()).unwrap(),
-                Some(action_expr.get_trace()),
+                Some(action_expr.clone()),
             )
         }
-        _ => Err(EvaluationError::NotAFunction(action_expr.evaluated.clone()))
-            .unwrap(),
+        _ => Err(EvaluationError::NotAFunction(action_expr.clone())).unwrap(),
     }
 }
 
@@ -323,46 +310,21 @@ fn function_from_expression(
                         // Substitute variables in statements with their corresponding values
                         let substituted_statements: Vec<Statement> = statements
                             .iter()
-                            .map(|statement| match statement {
-                                Statement::Var(var_name, expr) => {
-                                    let substituted_expr = vars
-                                        .iter()
-                                        .zip(var_values.iter())
-                                        .fold(
-                                            expr.evaluated.clone(),
-                                            |acc, (var, var_value)| {
-                                                substitute(
-                                                    var.clone(),
-                                                    var_value.evaluated.clone(),
-                                                    acc,
-                                                )
-                                            },
-                                        )
-                                        .traced();
-                                    Statement::Var(
-                                        var_name.clone(),
-                                        substituted_expr,
-                                    )
-                                }
-                                Statement::Execute(optional_var, expr) => {
-                                    let substituted_expr = vars
-                                        .iter()
-                                        .zip(var_values.iter())
-                                        .fold(
-                                            expr.evaluated.clone(),
-                                            |acc, (var, var_value)| {
-                                                substitute(
-                                                    var.clone(),
-                                                    var_value.evaluated.clone(),
-                                                    acc,
-                                                )
-                                            },
-                                        )
-                                        .traced();
-                                    Statement::Execute(
-                                        optional_var.clone(),
-                                        substituted_expr,
-                                    )
+                            .map(|statement| {
+                                let substituted_expr =
+                                    vars.iter().zip(var_values.iter()).fold(
+                                        statement.expr.clone(),
+                                        |acc, (var, var_value)| {
+                                            substitute(
+                                                var.clone(),
+                                                var_value.evaluated.clone(),
+                                                acc,
+                                            )
+                                        },
+                                    );
+                                Statement {
+                                    var: statement.var.clone(),
+                                    expr: substituted_expr,
                                 }
                             })
                             .collect();

@@ -465,7 +465,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                 println!("DBG - GOT CTX LOCK, LAUNCHING BODY");
                 invoke_function_application(
                     thread_ctx,
-                    &Expr::Apply(Box::new(first), Box::new([])).traced(),
+                    &Expr::Apply(Box::new(first), Box::new([])),
                 );
                 println!("DONE LAUNCHING");
             });
@@ -520,15 +520,9 @@ fn replace_variables_in_statement(
     stmt: Statement,
     stdlib_functions: &HashMap<&str, u32>,
 ) -> Statement {
-    match stmt {
-        Statement::Var(var_id, expr) => Statement::Var(
-            var_id,
-            replace_variables_in_traced_expr(expr, stdlib_functions),
-        ),
-        Statement::Execute(var_id, expr) => Statement::Execute(
-            var_id,
-            replace_variables_in_traced_expr(expr, stdlib_functions),
-        ),
+    Statement {
+        var: stmt.var,
+        expr: replace_variables_in_expr(stmt.expr, stdlib_functions),
     }
 }
 

@@ -326,13 +326,13 @@ fn evaluating_twice_keeps_entire_trace() {
 ///
 /// An imperative statement to be executed in the ef3r runtime.
 ///
+/// Execute an expression and optionally bind
+///  its result to a variable.
+///
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum Statement {
-    /// Initialize the variable with an expression.
-    Var(VariableID, TracedExpr),
-    /// Execute a side-effecting expression (Action) and optionally bind
-    ///  its result to a variable.
-    Execute(Option<VariableID>, TracedExpr),
+pub struct Statement {
+    pub var: Option<VariableID>,
+    pub expr: Expr,
 }
 
 ///

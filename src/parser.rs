@@ -27,7 +27,10 @@ fn lambda_body(input: &str) -> IResult<&str, Vec<Statement>> {
             ws(char(';')),
             alt((
                 let_statement,
-                map(expression, |expr| Statement::Execute(None, expr.traced())),
+                map(expression, |expr| Statement {
+                    var: None,
+                    expr: expr,
+                }),
             )),
         ),
         opt(ws(char(';'))),
@@ -224,7 +227,10 @@ fn non_binary_expression(input: &str) -> IResult<&str, Expr> {
 fn let_statement(input: &str) -> IResult<&str, Statement> {
     map(
         tuple((ws(tag("let")), ws(identifier), ws(char('=')), expression)),
-        |(_, id, _, expr)| Statement::Var(id, expr.traced()),
+        |(_, id, _, expr)| Statement {
+            var: Some(id),
+            expr: expr,
+        },
     )(input)
 }
 
