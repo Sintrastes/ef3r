@@ -200,23 +200,6 @@ fn evaluate_traced_rec(
                 ))
             }
             Expr::Lambda(_, _, _) => Err(EvaluationError::Unimplemented)?,
-            // If it's an application itself, try to evaluate it first.
-            Expr::Apply(_, _) => {
-                println!("Evaluating apply on {:?} and {:?}", f, xs);
-                let f_evaluated = evaluate(ctx, f.evaluated)?;
-
-                evaluate(ctx, Expr::Apply(Box::new(f_evaluated), xs))
-            }
-            // If it's a variable, see if we can look it up in the context.
-            Expr::Var(var) => evaluate(
-                ctx,
-                ctx.expression_context
-                    .variables
-                    .get(&var)
-                    .ok_or(EvaluationError::VariableNotFound(var.to_string()))?
-                    .evaluated
-                    .clone(),
-            ),
             _ => Err(EvaluationError::NotAFunction(f.evaluated.clone()))?,
         },
         // Variables are looked up in the current context.
@@ -231,19 +214,25 @@ fn evaluate_traced_rec(
 
 /// Entrypoint for the ef3r interpreter. Takes a list of a statements
 ///  and executes them.
-pub fn interpret(ctx: Arc<Mutex<Context>>, statements: &[Statement]) {
+pub fn interpret(
+    ctx: Arc<Mutex<Context>>,
+    statements: &[Statement],
+) -> Result<(), EvaluationError> {
     for statement in statements {
-        let cloned_ctx = ctx.clone();
-        let result = invoke_function_application(cloned_ctx, &statement.expr);
+        let evaluated = with_lock(ctx.as_ref(), |lock| {
+            evaluate(lock, statement.expr.clone())
+        });
 
         if let Some(var) = &statement.var {
             ctx.lock()
                 .unwrap()
                 .expression_context
                 .variables
-                .insert(var.clone(), result);
+                .insert(var.clone(), evaluated?);
         };
     }
+
+    Ok(())
 }
 
 pub fn invoke_function_application(
@@ -261,8 +250,14 @@ pub fn invoke_function_application(
                 evaluated_args
             });
 
-            let action =
-                function_from_expression(ctx.clone(), action.evaluated.clone());
+            let evaluated_fn = with_lock(ctx.as_ref(), |lock| {
+                evaluate(lock, action.clone().evaluated)
+                    .unwrap()
+                    .evaluated
+                    .clone()
+            });
+
+            let action = function_from_expression(ctx.clone(), evaluated_fn);
 
             TracedExpr::build(
                 (action)(ctx, &evaluated_args.unwrap().as_mut_slice()).unwrap(),
