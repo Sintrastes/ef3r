@@ -11,7 +11,10 @@ fn variable_assignment() {
     let cloned_ctx = context.clone();
 
     let expression = Expr::Int(3);
-    let statement = Statement::Var("x".to_string(), expression.clone());
+    let statement = Statement {
+        var: Some("x".to_string()),
+        expr: expression.clone(),
+    };
 
     interpret(context, &vec![statement.clone()]);
 
