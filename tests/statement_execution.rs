@@ -37,8 +37,14 @@ fn reassignment_of_statement() {
 
     let cloned_ctx = context.clone();
 
-    let statement1 = Statement::Var("x".to_string(), Expr::Int(2));
-    let statement2 = Statement::Var("x".to_string(), Expr::Int(3));
+    let statement1 = Statement {
+        var: Some("x".to_string()),
+        expr: Expr::Int(2),
+    };
+    let statement2 = Statement {
+        var: Some("x".to_string()),
+        expr: Expr::Int(3),
+    };
 
     let evaluated = interpret(context, &vec![statement1, statement2]);
 
