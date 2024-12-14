@@ -1,4 +1,7 @@
-use std::fmt::{Display, Pointer};
+use std::{
+    fmt::{Display, Pointer},
+    sync::{Arc, Mutex},
+};
 
 use daggy::NodeIndex;
 use quickcheck::{Arbitrary, Gen};
@@ -253,7 +256,7 @@ impl Display for TracedExpr {
 
 #[test]
 fn evaluation_keeps_trace() {
-    let mut context = ef3r_stdlib();
+    let mut context = Arc::new(Mutex::new(ef3r_stdlib()));
 
     // Example expression.
     let expression = Expr::Apply(
@@ -269,7 +272,7 @@ fn evaluation_keeps_trace() {
     );
 
     let evaluated =
-        evaluate_traced(&mut context, expression.clone().traced()).unwrap();
+        evaluate_traced(context, expression.clone().traced()).unwrap();
 
     println!("Evaluated: {}", evaluated.evaluated);
 
@@ -282,7 +285,7 @@ fn evaluation_keeps_trace() {
 
 #[test]
 fn evaluating_twice_keeps_entire_trace() {
-    let mut context = ef3r_stdlib();
+    let mut context = Arc::new(Mutex::new(ef3r_stdlib()));
 
     // Example expression.
     let expression = Expr::Apply(
@@ -298,7 +301,7 @@ fn evaluating_twice_keeps_entire_trace() {
     );
 
     let evaluated =
-        evaluate_traced(&mut context, expression.clone().traced()).unwrap();
+        evaluate_traced(context.clone(), expression.clone().traced()).unwrap();
 
     let second_expression = Expr::Apply(
         Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
@@ -306,8 +309,7 @@ fn evaluating_twice_keeps_entire_trace() {
     );
 
     let second_evaluated =
-        evaluate_traced(&mut context, second_expression.clone().traced())
-            .unwrap();
+        evaluate_traced(context, second_expression.clone().traced()).unwrap();
 
     let expected = Expr::Apply(
         Box::new(Expr::BuiltinFunction(MUL_ID).traced()),

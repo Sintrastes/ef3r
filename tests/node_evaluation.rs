@@ -37,9 +37,8 @@ fn test_map_node() {
         context.clone(),
         node_index,
         Arc::new(Mutex::new(move |x| {
-            let mut context_lock = context_cloned.lock().unwrap();
             apply_traced(
-                &mut context_lock,
+                context_cloned.clone(),
                 Expr::BuiltinFunction(MUL_ID).traced(),
                 &[Expr::Int(2).traced(), x],
             )
@@ -191,10 +190,8 @@ fn test_combined_node() {
         first_node_index,
         second_node_index,
         Box::new(move |x, y| {
-            let mut context_lock = cloned_ctx.lock().unwrap();
-
             apply_traced(
-                &mut context_lock,
+                cloned_ctx.clone(),
                 Expr::BuiltinFunction(MUL_ID).traced(),
                 &[x, y],
             )
