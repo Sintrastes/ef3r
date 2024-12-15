@@ -1,4 +1,4 @@
-use nom::character::complete::newline;
+use nom::character::complete::{newline, satisfy};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
@@ -64,7 +64,7 @@ where
 fn identifier(input: &str) -> IResult<&str, String> {
     map(
         recognize(pair(
-            alt((alpha1, tag("_"))),
+            satisfy(|c| c.is_ascii_lowercase()),
             many0(alt((alphanumeric1, tag("_")))),
         )),
         String::from,
