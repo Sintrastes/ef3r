@@ -349,6 +349,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         name: "current_value".to_string(),
         infix: false,
         definition: |ctx, xs: &[TracedExpr]| {
+            println!("CURRENT VALUE");
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments {
@@ -360,6 +361,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
 
             match first.evaluated {
                 Expr::Node(node_id) => {
+                    println!("GETTING CURRENT VALUE");
                     let value = ctx
                         .lock()
                         .unwrap()
@@ -383,8 +385,6 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         name: "new_node".to_string(),
         infix: false,
         definition: |ctx, xs: &[TracedExpr]| {
-            println!("Calling new_node");
-
             let first = xs
                 .get(0)
                 .ok_or(EvaluationError::WrongNumberOfArguments {
@@ -403,16 +403,11 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                 })?
                 .clone();
 
-            println!("Got new_node arguments");
-
             match first.evaluated {
                 Expr::Type(x) => {
                     if type_of(&second.evaluated) == Some(x.clone()) {
-                        println!("Types checked");
                         let update_fn =
                             Expr::BuiltinFunction(UPDATE_NODE_ID).traced();
-
-                        println!("Creating new node");
 
                         let fresh_id = Node::new(
                             |_| {},
@@ -420,8 +415,6 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                             &mut ctx.lock().unwrap().graph,
                             second,
                         );
-
-                        println!("Returning from new node");
 
                         Ok(Expr::Pair(
                             Box::new(Expr::Node(fresh_id.index()).traced()),
@@ -459,15 +452,11 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
 
             let thread_ctx = ctx.clone();
 
-            dbg!(first.clone());
-
             thread::spawn(move || {
-                println!("DBG - GOT CTX LOCK, LAUNCHING BODY");
                 evaluate_function_application(
                     thread_ctx,
                     &Expr::Apply(Box::new(first), Box::new([])),
                 );
-                println!("DONE LAUNCHING");
             });
             Ok(Expr::Unit)
         },

@@ -51,6 +51,7 @@ fn lambda_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 use crate::ast::{Expr, Statement};
+use crate::types::ExprType;
 
 // Utility parsers
 fn ws<'a, F: 'a, O>(inner: F) -> impl FnMut(&'a str) -> IResult<&'a str, O>
@@ -69,6 +70,36 @@ fn identifier(input: &str) -> IResult<&str, String> {
         )),
         String::from,
     )(input)
+}
+
+// Type parsers
+fn type_expr(input: &str) -> IResult<&str, ExprType> {
+    alt((type_arrow, non_arrow_type))(input)
+}
+
+fn type_arrow(input: &str) -> IResult<&str, ExprType> {
+    let (input, first) = non_arrow_type(input)?;
+    let (input, rest) = many0(preceded(ws(tag("->")), non_arrow_type))(input)?;
+
+    // Build up the function type chain from right to left
+    let result = rest.into_iter().rev().fold(first, |acc, arg_type| {
+        ExprType::Func(vec![arg_type], Box::new(acc))
+    });
+
+    Ok((input, result))
+}
+
+fn non_arrow_type(input: &str) -> IResult<&str, ExprType> {
+    alt((
+        map(tag("Int"), |_| ExprType::Int),
+        map(tag("String"), |_| ExprType::String),
+        map(tag("Bool"), |_| ExprType::Bool),
+        map(tag("Float"), |_| ExprType::Float),
+        map(tag("Type"), |_| ExprType::Type),
+        map(tag("Unit"), |_| ExprType::Unit),
+        map(tag("Any"), |_| ExprType::Any),
+        delimited(ws(char('(')), type_expr, ws(char(')'))),
+    ))(input)
 }
 
 // Symbol parser
@@ -121,6 +152,7 @@ fn literal(input: &str) -> IResult<&str, Expr> {
 fn primary_expr(input: &str) -> IResult<&str, Expr> {
     alt((
         ws(literal),
+        map(ws(type_expr), Expr::Type),
         map(ws(identifier), Expr::Var),
         delimited(ws(char('(')), expression, ws(char(')'))),
     ))(input)
@@ -262,6 +294,7 @@ fn test_literal_expressions() {
     assert!(literal("false").is_ok());
     assert!(literal("None").is_ok());
     assert!(literal("Unit").is_ok());
+    assert!(expression("Int").is_ok());
 }
 
 #[test]

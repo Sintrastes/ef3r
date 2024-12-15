@@ -69,10 +69,18 @@ fn execute_example_program() {
 
         let y = f("test");
 
+        let node = new_node(Int, 0);
+
+        let set_node = node.second();
+
+        let current_value = node.first().current_value();
+
+        println(current_value);
+
         launch {
             let x = "test";
 
-            println("Hello" ++ x.uppercase());
+            println("Hello " ++ x.uppercase());
 
             println(x.f());
 
