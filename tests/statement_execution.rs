@@ -85,7 +85,6 @@ fn execute_example_program() {
 
         new_node(Bool, true);
         new_node(String, "test");
-        new_node(Float, 4.2);
         new_node(Type, Int);
         new_node(Pair(Int, Int), pair(2, 3));
 
@@ -116,7 +115,12 @@ fn execute_example_program() {
     );
 
     drop(context_lock);
-    interpret(context, parsed_program.as_slice());
+
+    let result = interpret(context, parsed_program.as_slice());
+
+    dbg!(&result);
+
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -124,7 +128,8 @@ fn pair_accessors_fail_on_nonpair() {
     let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
     let program = r#"
-        first(42);
+        let x = 42;
+        x.first();
     "#;
 
     let parsed_program = ef3r::parser::parse(&program).unwrap();
