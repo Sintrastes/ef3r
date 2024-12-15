@@ -145,3 +145,32 @@ fn pair_accessors_fail_on_nonpair() {
     let result2 = interpret(context, parsed_program2.as_slice());
     assert!(result2.is_err());
 }
+
+#[test]
+fn arithmetic_operators_wrong_args() {
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+
+    let program = r#"
+        let x = "test" + 42;
+    "#;
+
+    let parsed_program = ef3r::parser::parse(&program).unwrap();
+    let result = interpret(context.clone(), parsed_program.as_slice());
+    assert!(result.is_err());
+
+    let program2 = r#"
+        let y = "hello" * 3;
+    "#;
+
+    let parsed_program2 = ef3r::parser::parse(&program2).unwrap();
+    let result2 = interpret(context.clone(), parsed_program2.as_slice());
+    assert!(result2.is_err());
+
+    let program3 = r#"
+        let z = true / 2;
+    "#;
+
+    let parsed_program3 = ef3r::parser::parse(&program3).unwrap();
+    let result3 = interpret(context, parsed_program3.as_slice());
+    assert!(result3.is_err());
+}
