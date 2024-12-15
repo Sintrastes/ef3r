@@ -73,13 +73,13 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                         expected: ExprType::Int,
                         actual: type_of(&actual).unwrap(),
                         at_loc: "*".to_string(),
-                    })?
+                    })
                 }
                 (_, actual) => Err(EvaluationError::TypeError {
                     expected: ExprType::Int,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "*".to_string(),
-                })?,
+                }),
             }
         },
     };
@@ -112,13 +112,13 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                         expected: ExprType::Int,
                         actual: type_of(&actual).unwrap(),
                         at_loc: "+".to_string(),
-                    })?
+                    })
                 }
                 (_, actual) => Err(EvaluationError::TypeError {
                     expected: ExprType::Int,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "+".to_string(),
-                })?,
+                }),
             }
         },
     };
@@ -151,13 +151,13 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                         expected: ExprType::Int,
                         actual: type_of(&actual).unwrap(),
                         at_loc: "/".to_string(),
-                    })?
+                    })
                 }
                 (_, actual) => Err(EvaluationError::TypeError {
                     expected: ExprType::Int,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "/".to_string(),
-                })?,
+                }),
             }
         },
     };
@@ -199,7 +199,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     expected: ExprType::String,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "++".to_string(),
-                })?,
+                }),
             }
         },
     };
@@ -223,7 +223,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     expected: ExprType::String,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "uppercase".to_string(),
-                })?,
+                }),
             }
         },
     };
@@ -250,7 +250,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     ),
                     actual: type_of(&actual).unwrap(),
                     at_loc: "first".to_string(),
-                })?,
+                }),
             }
         },
     };
@@ -277,7 +277,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     ),
                     actual: type_of(&actual).unwrap(),
                     at_loc: "second".to_string(),
-                })?,
+                }),
             }
         },
     };
@@ -367,7 +367,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
                     actual: type_of(&actual).unwrap(),
                     at_loc: "update_node".to_string(),
-                })?,
+                }),
             }
         },
     };
@@ -403,7 +403,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
                     actual: type_of(&actual).unwrap(),
                     at_loc: "current_value".to_string(),
-                })?,
+                }),
             }
         },
     };
@@ -452,14 +452,14 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                             expected: x,
                             actual: type_of(&second.evaluated).unwrap(),
                             at_loc: "new_node".to_string(),
-                        })?
+                        })
                     }
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Type,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "new_node".to_string(),
-                })?,
+                }),
             }
         },
     };
