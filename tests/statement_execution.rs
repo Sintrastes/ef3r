@@ -85,6 +85,7 @@ fn execute_example_program() {
         new_node(String, "test");
         new_node(Float, 4.2);
         new_node(Type, Int);
+        new_node(Pair(Int, Int), 2);
 
         launch {
             let x = "test";

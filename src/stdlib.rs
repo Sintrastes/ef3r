@@ -42,6 +42,7 @@ pub const NEW_NODE_ID: u32 = 10;
 pub const UPDATE_NODE_ID: u32 = 11;
 pub const NODE_CURRENT_VALUE: u32 = 12;
 pub const LAUNCH: u32 = 13;
+pub const PAIR_ID: u32 = 14;
 
 pub fn ef3r_stdlib<'a>() -> Context<'a> {
     let mul = InvokableDefinition {
@@ -281,6 +282,32 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         },
     };
 
+    let pair_fn = InvokableDefinition {
+        name: "pair".to_string(),
+        infix: false,
+        definition: |_, xs: &[TracedExpr]| {
+            let first = xs
+                .get(0)
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 0,
+                    for_function: "pair".to_string(),
+                })?
+                .clone();
+
+            let second = xs
+                .get(1)
+                .ok_or(EvaluationError::WrongNumberOfArguments {
+                    expected: 2,
+                    actual: 1,
+                    for_function: "pair".to_string(),
+                })?
+                .clone();
+
+            Ok(Expr::Pair(Box::new(first), Box::new(second)))
+        },
+    };
+
     let print_fn = InvokableDefinition {
         name: "println".to_string(),
         infix: false,
@@ -479,6 +506,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                 (UPDATE_NODE_ID, update_node_fn),
                 (NODE_CURRENT_VALUE, node_current_value_fn),
                 (LAUNCH, launch_fn),
+                (PAIR_ID, pair_fn),
             ]),
             variables: HashMap::new(),
         },

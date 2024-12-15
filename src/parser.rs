@@ -98,6 +98,24 @@ fn non_arrow_type(input: &str) -> IResult<&str, ExprType> {
         map(tag("Type"), |_| ExprType::Type),
         map(tag("Unit"), |_| ExprType::Unit),
         map(tag("Any"), |_| ExprType::Any),
+        map(
+            preceded(
+                tag("Pair"),
+                delimited(
+                    ws(char('(')),
+                    tuple((type_expr, preceded(ws(char(',')), type_expr))),
+                    ws(char(')')),
+                ),
+            ),
+            |(t1, t2)| ExprType::Pair(Box::new(t1), Box::new(t2)),
+        ),
+        map(
+            preceded(
+                tag("Node"),
+                delimited(ws(char('(')), type_expr, ws(char(')'))),
+            ),
+            |t| ExprType::Node(Box::new(t)),
+        ),
         delimited(ws(char('(')), type_expr, ws(char(')'))),
     ))(input)
 }
