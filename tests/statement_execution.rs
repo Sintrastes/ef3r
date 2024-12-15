@@ -77,9 +77,14 @@ fn execute_example_program() {
 
         println(current_value);
 
-        set_node(2);
+        node.first().set_node(2);
 
         println(node.first().current_value());
+
+        new_node(Bool, true);
+        new_node(String, "test");
+        new_node(Float, 4.2);
+        new_node(Type, Int);
 
         launch {
             let x = "test";
