@@ -323,6 +323,12 @@ fn test_function_calls() {
 }
 
 #[test]
+fn test_function_type() {
+    assert!(expression("Int -> Int").is_ok());
+    assert!(expression("Int -> Int -> String").is_ok());
+}
+
+#[test]
 fn test_method_calls() {
     assert!(expression("foo.bar(x)").is_ok());
     assert!(expression("foo.bar(x, y).baz(z)").is_ok());

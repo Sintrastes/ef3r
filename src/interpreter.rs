@@ -194,14 +194,14 @@ pub fn interpret(
     statements: &[Statement],
 ) -> Result<(), EvaluationError> {
     for statement in statements {
-        let evaluated = evaluate(ctx.clone(), statement.expr.clone());
+        let evaluated = evaluate(ctx.clone(), statement.expr.clone())?;
 
         if let Some(var) = &statement.var {
             ctx.lock()
                 .unwrap()
                 .expression_context
                 .variables
-                .insert(var.clone(), evaluated?);
+                .insert(var.clone(), evaluated);
         };
     }
 
