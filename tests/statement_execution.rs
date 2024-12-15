@@ -77,6 +77,10 @@ fn execute_example_program() {
 
         println(current_value);
 
+        set_node(2);
+
+        println(node.first().current_value());
+
         launch {
             let x = "test";
 
