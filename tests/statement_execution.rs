@@ -86,6 +86,7 @@ fn execute_example_program() {
         new_node(Bool, true);
         new_node(String, "test");
         new_node(Type, Int);
+        new_node(Float, 4.2);
         new_node(Pair(Int, Int), pair(2, 3));
 
         launch {

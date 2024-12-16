@@ -136,6 +136,17 @@ fn symbol(input: &str) -> IResult<&str, String> {
 }
 
 // Literal parsers
+fn float(input: &str) -> IResult<&str, Expr> {
+    map(
+        tuple((recognize(digit1), char('.'), recognize(digit1))),
+        |(int_digits, _, frac_digits): (&str, char, &str)| {
+            Expr::Float(
+                (int_digits.to_owned() + "." + frac_digits).parse().unwrap(),
+            )
+        },
+    )(input)
+}
+
 fn integer(input: &str) -> IResult<&str, Expr> {
     map(recognize(digit1), |digits: &str| {
         Expr::Int(digits.parse().unwrap())
@@ -158,6 +169,7 @@ fn boolean(input: &str) -> IResult<&str, Expr> {
 
 fn literal(input: &str) -> IResult<&str, Expr> {
     alt((
+        float,
         integer,
         string_literal,
         boolean,
@@ -307,6 +319,7 @@ pub fn parse(input: &str) -> Result<Vec<Statement>, String> {
 #[test]
 fn test_literal_expressions() {
     assert!(literal("42").is_ok());
+    assert!(literal("4.2").is_ok());
     assert!(literal("\"hello\"").is_ok());
     assert!(literal("true").is_ok());
     assert!(literal("false").is_ok());
