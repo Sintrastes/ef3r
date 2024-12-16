@@ -44,285 +44,184 @@ pub const NODE_CURRENT_VALUE: u32 = 12;
 pub const LAUNCH: u32 = 13;
 pub const PAIR_ID: u32 = 14;
 
-pub fn ef3r_stdlib<'a>() -> Context<'a> {
-    let mul = InvokableDefinition {
-        name: "*".to_string(),
-        infix: true,
-        definition: |_, xs: &[TracedExpr]| {
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 0,
-                    for_function: "*".to_string(),
-                })?
-                .clone();
-            let second = xs
-                .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 1,
-                    for_function: "*".to_string(),
-                })?
-                .clone();
+macro_rules! build_invokable {
+    // Pattern for single argument function
+    ($name:expr, $infix:expr, |$ctx:ident, $param:ident| $body:expr) => {
+        InvokableDefinition {
+            name: $name.to_string(),
+            infix: $infix,
+            definition: |$ctx, xs: &[TracedExpr]| {
+                let $param = xs
+                    .get(0)
+                    .ok_or(EvaluationError::WrongNumberOfArguments {
+                        expected: 1,
+                        actual: 0,
+                        for_function: $name.to_string(),
+                    })?
+                    .clone();
 
-            match (first.evaluated, second.evaluated) {
-                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y)),
-                (actual, _) if !matches!(actual, Expr::Int(_)) => {
-                    Err(EvaluationError::TypeError {
-                        expected: ExprType::Int,
-                        actual: type_of(&actual).unwrap(),
-                        at_loc: "*".to_string(),
-                    })
-                }
-                (_, actual) => Err(EvaluationError::TypeError {
+                $body
+            },
+        }
+    };
+
+    // Pattern for two argument function
+    ($name:expr, $infix:expr, |$ctx:ident, $param1:ident, $param2:ident| $body:expr) => {
+        InvokableDefinition {
+            name: $name.to_string(),
+            infix: $infix,
+            definition: |$ctx, xs: &[TracedExpr]| {
+                let $param1 = xs
+                    .get(0)
+                    .ok_or(EvaluationError::WrongNumberOfArguments {
+                        expected: 2,
+                        actual: 0,
+                        for_function: $name.to_string(),
+                    })?
+                    .clone();
+
+                let $param2 = xs
+                    .get(1)
+                    .ok_or(EvaluationError::WrongNumberOfArguments {
+                        expected: 2,
+                        actual: 1,
+                        for_function: $name.to_string(),
+                    })?
+                    .clone();
+
+                $body
+            },
+        }
+    };
+}
+
+pub fn ef3r_stdlib<'a>() -> Context<'a> {
+    let mul = build_invokable!("*", true, |ctx, first, second| {
+        match (first.evaluated, second.evaluated) {
+            (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y)),
+            (actual, _) if !matches!(actual, Expr::Int(_)) => {
+                Err(EvaluationError::TypeError {
                     expected: ExprType::Int,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "*".to_string(),
-                }),
+                })
             }
-        },
-    };
+            (_, actual) => Err(EvaluationError::TypeError {
+                expected: ExprType::Int,
+                actual: type_of(&actual).unwrap(),
+                at_loc: "*".to_string(),
+            }),
+        }
+    });
 
-    let add = InvokableDefinition {
-        name: "+".to_string(),
-        infix: true,
-        definition: |_, xs: &[TracedExpr]| {
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 0,
-                    for_function: "+".to_string(),
-                })?
-                .clone();
-            let second = xs
-                .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 1,
-                    for_function: "+".to_string(),
-                })?
-                .clone();
-
-            match (first.evaluated, second.evaluated) {
-                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y)),
-                (actual, _) if !matches!(actual, Expr::Int(_)) => {
-                    Err(EvaluationError::TypeError {
-                        expected: ExprType::Int,
-                        actual: type_of(&actual).unwrap(),
-                        at_loc: "+".to_string(),
-                    })
-                }
-                (_, actual) => Err(EvaluationError::TypeError {
+    let add = build_invokable!("+", true, |ctx, first, second| {
+        match (first.evaluated, second.evaluated) {
+            (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y)),
+            (actual, _) if !matches!(actual, Expr::Int(_)) => {
+                Err(EvaluationError::TypeError {
                     expected: ExprType::Int,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "+".to_string(),
-                }),
+                })
             }
-        },
-    };
+            (_, actual) => Err(EvaluationError::TypeError {
+                expected: ExprType::Int,
+                actual: type_of(&actual).unwrap(),
+                at_loc: "+".to_string(),
+            }),
+        }
+    });
 
-    let div = InvokableDefinition {
-        name: "/".to_string(),
-        infix: true,
-        definition: |_, xs: &[TracedExpr]| {
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 0,
-                    for_function: "/".to_string(),
-                })?
-                .clone();
-            let second = xs
-                .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 1,
-                    for_function: "/".to_string(),
-                })?
-                .clone();
-
-            match (first.evaluated, second.evaluated) {
-                (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y)),
-                (actual, _) if !matches!(actual, Expr::Int(_)) => {
-                    Err(EvaluationError::TypeError {
-                        expected: ExprType::Int,
-                        actual: type_of(&actual).unwrap(),
-                        at_loc: "/".to_string(),
-                    })
-                }
-                (_, actual) => Err(EvaluationError::TypeError {
+    let div = build_invokable!("/", true, |ctx, first, second| {
+        match (first.evaluated, second.evaluated) {
+            (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y)),
+            (actual, _) if !matches!(actual, Expr::Int(_)) => {
+                Err(EvaluationError::TypeError {
                     expected: ExprType::Int,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "/".to_string(),
-                }),
+                })
             }
-        },
-    };
+            (_, actual) => Err(EvaluationError::TypeError {
+                expected: ExprType::Int,
+                actual: type_of(&actual).unwrap(),
+                at_loc: "/".to_string(),
+            }),
+        }
+    });
 
-    let append = InvokableDefinition {
-        name: "++".to_string(),
-        infix: true,
-        definition: |_, xs: &[TracedExpr]| {
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 0,
-                    for_function: "++".to_string(),
-                })?
-                .clone();
-
-            let second = xs
-                .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 1,
-                    for_function: "++".to_string(),
-                })?
-                .clone();
-
-            match (first.evaluated, second.evaluated) {
-                (Expr::String(x), Expr::String(y)) => {
-                    Ok(Expr::String(x.to_owned() + y.as_ref()))
-                }
-                (actual, _) if !matches!(actual, Expr::String(_)) => {
-                    Err(EvaluationError::TypeError {
-                        expected: ExprType::String,
-                        actual: type_of(&actual).unwrap(),
-                        at_loc: "++".to_string(),
-                    })?
-                }
-                (_, actual) => Err(EvaluationError::TypeError {
+    let append = build_invokable!("++", true, |ctx, first, second| {
+        match (first.evaluated, second.evaluated) {
+            (Expr::String(x), Expr::String(y)) => {
+                Ok(Expr::String(x.to_owned() + y.as_ref()))
+            }
+            (actual, _) if !matches!(actual, Expr::String(_)) => {
+                Err(EvaluationError::TypeError {
                     expected: ExprType::String,
                     actual: type_of(&actual).unwrap(),
                     at_loc: "++".to_string(),
-                }),
+                })?
             }
-        },
-    };
+            (_, actual) => Err(EvaluationError::TypeError {
+                expected: ExprType::String,
+                actual: type_of(&actual).unwrap(),
+                at_loc: "++".to_string(),
+            }),
+        }
+    });
 
-    let uppercase = InvokableDefinition {
-        name: "uppercase".to_string(),
-        infix: false,
-        definition: |_, xs: &[TracedExpr]| {
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 1,
-                    actual: 0,
-                    for_function: "uppercase".to_string(),
-                })?
-                .clone();
+    let uppercase = build_invokable!("uppercase", false, |ctx, first| {
+        match first.evaluated {
+            Expr::String(x) => Ok(Expr::String(x.to_uppercase())),
+            actual => Err(EvaluationError::TypeError {
+                expected: ExprType::String,
+                actual: type_of(&actual).unwrap(),
+                at_loc: "uppercase".to_string(),
+            }),
+        }
+    });
 
-            match first.evaluated {
-                Expr::String(x) => Ok(Expr::String(x.to_uppercase())),
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::String,
-                    actual: type_of(&actual).unwrap(),
-                    at_loc: "uppercase".to_string(),
-                }),
-            }
-        },
-    };
+    let pair_first_fn = build_invokable!("first", false, |ctx, pair| {
+        match pair.evaluated {
+            Expr::Pair(x, _) => Ok(x.evaluated),
+            actual => Err(EvaluationError::TypeError {
+                expected: ExprType::Pair(
+                    Box::new(ExprType::Any),
+                    Box::new(ExprType::Any),
+                ),
+                actual: type_of(&actual).unwrap(),
+                at_loc: "first".to_string(),
+            }),
+        }
+    });
 
-    let pair_first_fn = InvokableDefinition {
-        name: "first".to_string(),
-        infix: false,
-        definition: |_, xs: &[TracedExpr]| {
-            let pair = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 1,
-                    actual: 0,
-                    for_function: "first".to_string(),
-                })?
-                .clone();
+    let pair_second_fn = build_invokable!("second", false, |ctx, pair| {
+        match pair.evaluated {
+            Expr::Pair(_, y) => Ok(y.evaluated),
+            actual => Err(EvaluationError::TypeError {
+                expected: ExprType::Pair(
+                    Box::new(ExprType::Any),
+                    Box::new(ExprType::Any),
+                ),
+                actual: type_of(&actual).unwrap(),
+                at_loc: "second".to_string(),
+            }),
+        }
+    });
 
-            match pair.evaluated {
-                Expr::Pair(x, _) => Ok(x.evaluated),
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Pair(
-                        Box::new(ExprType::Any),
-                        Box::new(ExprType::Any),
-                    ),
-                    actual: type_of(&actual).unwrap(),
-                    at_loc: "first".to_string(),
-                }),
-            }
-        },
-    };
+    let pair_fn = build_invokable!("pair", false, |ctx, first, second| {
+        Ok(Expr::Pair(Box::new(first), Box::new(second)))
+    });
 
-    let pair_second_fn = InvokableDefinition {
-        name: "second".to_string(),
-        infix: false,
-        definition: |_, xs: &[TracedExpr]| {
-            let pair = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 1,
-                    actual: 0,
-                    for_function: "second".to_string(),
-                })?
-                .clone();
-
-            match pair.evaluated {
-                Expr::Pair(_, y) => Ok(y.evaluated),
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Pair(
-                        Box::new(ExprType::Any),
-                        Box::new(ExprType::Any),
-                    ),
-                    actual: type_of(&actual).unwrap(),
-                    at_loc: "second".to_string(),
-                }),
-            }
-        },
-    };
-
-    let pair_fn = InvokableDefinition {
-        name: "pair".to_string(),
-        infix: false,
-        definition: |_, xs: &[TracedExpr]| {
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 0,
-                    for_function: "pair".to_string(),
-                })?
-                .clone();
-
-            let second = xs
-                .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 1,
-                    for_function: "pair".to_string(),
-                })?
-                .clone();
-
-            Ok(Expr::Pair(Box::new(first), Box::new(second)))
-        },
-    };
-
-    let print_fn = InvokableDefinition {
-        name: "println".to_string(),
-        infix: false,
-        definition: |_, xs: &[TracedExpr]| {
-            let first = xs.get(0).unwrap().clone();
-
-            println!("{}", first);
-            Ok(Expr::None)
-        },
-    };
+    let print_fn = build_invokable!("println", false, |ctx, first| {
+        println!("{}", first);
+        Ok(Expr::None)
+    });
 
     let readln_fn = InvokableDefinition {
         name: "readln".to_string(),
         infix: false,
-        definition: |_, xs: &[TracedExpr]| {
+        definition: |_, _: &[TracedExpr]| {
             let stdin = io::stdin();
             let result = stdin.lock().lines().next().unwrap().unwrap();
 
@@ -330,28 +229,8 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         },
     };
 
-    let update_node_fn = InvokableDefinition {
-        name: "update_node".to_string(),
-        infix: false,
-        definition: |ctx, xs: &[TracedExpr]| {
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 0,
-                    for_function: "update_node".to_string(),
-                })?
-                .clone();
-
-            let second = xs
-                .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 1,
-                    for_function: "update_node".to_string(),
-                })?
-                .clone();
-
+    let update_node_fn =
+        build_invokable!("update_node", false, |ctx, first, second| {
             match first.evaluated {
                 Expr::Node(node_id) => {
                     ctx.lock()
@@ -369,26 +248,12 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     at_loc: "update_node".to_string(),
                 }),
             }
-        },
-    };
+        });
 
-    let node_current_value_fn = InvokableDefinition {
-        name: "current_value".to_string(),
-        infix: false,
-        definition: |ctx, xs: &[TracedExpr]| {
-            println!("CURRENT VALUE");
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 1,
-                    actual: 0,
-                    for_function: "current_value".to_string(),
-                })?
-                .clone();
-
+    let node_current_value_fn =
+        build_invokable!("current_value", false, |ctx, first| {
             match first.evaluated {
                 Expr::Node(node_id) => {
-                    println!("GETTING CURRENT VALUE");
                     let value = ctx
                         .lock()
                         .unwrap()
@@ -405,31 +270,10 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     at_loc: "current_value".to_string(),
                 }),
             }
-        },
-    };
+        });
 
-    let new_node_fn = InvokableDefinition {
-        name: "new_node".to_string(),
-        infix: false,
-        definition: |ctx, xs: &[TracedExpr]| {
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 1,
-                    actual: 0,
-                    for_function: "new_node".to_string(),
-                })?
-                .clone();
-
-            let second = xs
-                .get(1)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 2,
-                    actual: 1,
-                    for_function: "new_node".to_string(),
-                })?
-                .clone();
-
+    let new_node_fn =
+        build_invokable!("new_node", false, |ctx, first, second| {
             match first.evaluated {
                 Expr::Type(x) => {
                     if type_of(&second.evaluated) == Some(x.clone()) {
@@ -461,33 +305,19 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     at_loc: "new_node".to_string(),
                 }),
             }
-        },
-    };
+        });
 
-    let launch_fn = InvokableDefinition {
-        name: "launch".to_string(),
-        infix: false,
-        definition: move |ctx: Arc<Mutex<Context>>, xs: &[TracedExpr]| {
-            let first = xs
-                .get(0)
-                .ok_or(EvaluationError::WrongNumberOfArguments {
-                    expected: 1,
-                    actual: 0,
-                    for_function: "launch".to_string(),
-                })?
-                .clone();
+    let launch_fn = build_invokable!("launch", false, |ctx, first| {
+        let thread_ctx = ctx.clone();
 
-            let thread_ctx = ctx.clone();
-
-            thread::spawn(move || {
-                evaluate_function_application(
-                    thread_ctx,
-                    &Expr::Apply(Box::new(first), Box::new([])),
-                );
-            });
-            Ok(Expr::Unit)
-        },
-    };
+        thread::spawn(move || {
+            evaluate_function_application(
+                thread_ctx,
+                &Expr::Apply(Box::new(first), Box::new([])),
+            );
+        });
+        Ok(Expr::Unit)
+    });
 
     // Lookup table for the interpreter
     Context {
