@@ -174,7 +174,7 @@ fn literal(input: &str) -> IResult<&str, Expr> {
         string_literal,
         boolean,
         map(tag("None"), |_| Expr::None),
-        map(tag("Unit"), |_| Expr::Unit),
+        map(tag("()"), |_| Expr::Unit),
     ))(input)
 }
 
@@ -324,7 +324,7 @@ fn test_literal_expressions() {
     assert!(literal("true").is_ok());
     assert!(literal("false").is_ok());
     assert!(literal("None").is_ok());
-    assert!(literal("Unit").is_ok());
+    assert!(literal("()").is_ok());
     assert!(expression("Int").is_ok());
 }
 
