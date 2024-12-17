@@ -1,7 +1,7 @@
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use ef3r::{
-    ast::Expr,
+    ast::{Expr, TracedExpr},
     frp::{
         combined_node, filter_node, fold_node, map_node, process_event_frame,
         with_lock, Node,
@@ -262,10 +262,12 @@ fn test_fold_node() {
         &mut context_lock.graph,
         event_node_index,
         Expr::Int(2).traced(),
-        |acc, event| match (acc.evaluated, event.evaluated) {
-            (Expr::Int(a), Expr::Int(b)) => Expr::Int(a + b).traced(),
-            _ => panic!("Expected integers"),
-        },
+        Box::new(|acc: TracedExpr, event: TracedExpr| {
+            match (acc.evaluated, event.evaluated) {
+                (Expr::Int(a), Expr::Int(b)) => Expr::Int(a + b).traced(),
+                _ => panic!("Expected integers"),
+            }
+        }),
     );
 
     // Verify initial state

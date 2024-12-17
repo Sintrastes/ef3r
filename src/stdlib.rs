@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     io::{self, BufRead},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{atomic::AtomicBool, Arc, Mutex},
     thread,
 };
 
@@ -9,7 +9,7 @@ use daggy::{Dag, NodeIndex};
 
 use crate::{
     ast::{Expr, Statement, TracedExpr},
-    frp::Node,
+    frp::{filter_node, fold_node, map_node, Node},
     interpreter::{
         evaluate_function_application, Context, EvaluationError,
         ExpressionContext, InvokableDefinition,
@@ -48,6 +48,9 @@ pub const AND_ID: u32 = 16;
 pub const OR_ID: u32 = 17;
 pub const NOT_ID: u32 = 18;
 pub const ASSERT_ID: u32 = 19;
+pub const MAP_NODE_ID: u32 = 20;
+pub const FILTER_NODE_ID: u32 = 21;
+pub const FOLD_NODE_ID: u32 = 22;
 
 macro_rules! build_invokable {
     // Pattern for single argument function
@@ -393,6 +396,119 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         Ok(Expr::Unit)
     });
 
+    let map_node_fn = build_invokable!("map", false, |ctx, first, second| {
+        match first.evaluated {
+            Expr::Node(node_id) => {
+                let ctx_clone = ctx.clone();
+                let second_clone = second.clone();
+                let transform =
+                    Arc::new(Mutex::new(move |expr: TracedExpr| {
+                        evaluate_function_application(
+                            ctx_clone.clone(),
+                            &Expr::Apply(
+                                Box::new(second_clone.clone()),
+                                Box::new([expr]),
+                            ),
+                        )
+                        .unwrap()
+                    }));
+
+                let fresh_id = map_node(
+                    |_| {},
+                    Arc::new(AtomicBool::new(false)),
+                    ctx.clone(),
+                    NodeIndex::new(node_id),
+                    ExprType::Any,
+                    transform,
+                );
+
+                Ok(Expr::Node(fresh_id.index()))
+            }
+            actual => Err(EvaluationError::TypeError {
+                expected: ExprType::Node(Box::new(ExprType::Any)),
+                actual: type_of(&actual).unwrap(),
+                at_loc: "map_node".to_string(),
+            }),
+        }
+    });
+
+    let filter_node_fn =
+        build_invokable!("filter", false, |ctx, first, second| {
+            match first.evaluated {
+                Expr::Node(node_id) => {
+                    let ctx_clone = ctx.clone();
+                    let second_clone = second.clone();
+                    let transform = move |expr: TracedExpr| {
+                        let result = evaluate_function_application(
+                            ctx_clone.clone(),
+                            &Expr::Apply(
+                                Box::new(second_clone.clone()),
+                                Box::new([expr]),
+                            ),
+                        )
+                        .unwrap()
+                        .evaluated;
+
+                        match result {
+                            Expr::Bool(x) => x,
+                            _ => todo!(),
+                        }
+                    };
+
+                    let fresh_id = filter_node(
+                        |_| {},
+                        Arc::new(AtomicBool::new(false)),
+                        &mut ctx.lock().unwrap().graph,
+                        NodeIndex::new(node_id),
+                        Box::new(transform),
+                    );
+
+                    Ok(Expr::Node(fresh_id.index()))
+                }
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Node(Box::new(ExprType::Any)),
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "filter_node".to_string(),
+                }),
+            }
+        });
+
+    let fold_node_fn = build_invokable!("fold", false, |ctx, first, second| {
+        match first.evaluated {
+            Expr::Node(node_id) => {
+                let ctx_clone = ctx.clone();
+                let second_clone = second.clone();
+                let transform =
+                    Box::new(move |expr: TracedExpr, acc: TracedExpr| {
+                        evaluate_function_application(
+                            ctx_clone.clone(),
+                            &Expr::Apply(
+                                Box::new(second_clone.clone()),
+                                Box::new([expr, acc]),
+                            ),
+                        )
+                        .unwrap()
+                    });
+
+                let fresh_id = fold_node(
+                    |_| {},
+                    Arc::new(AtomicBool::new(false)),
+                    &mut ctx.lock().unwrap().graph,
+                    NodeIndex::new(node_id),
+                    Expr::None.traced(),
+                    transform,
+                );
+
+                Ok(Expr::Node(fresh_id.index()))
+            }
+            actual => Err(EvaluationError::TypeError {
+                expected: ExprType::Node(Box::new(ExprType::Any)),
+                actual: type_of(&actual).unwrap(),
+                at_loc: "fold_node".to_string(),
+            }),
+        }
+    });
+
     // Lookup table for the interpreter
     Context {
         expression_context: ExpressionContext {
@@ -416,6 +532,9 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                 (OR_ID, or),
                 (NOT_ID, not),
                 (ASSERT_ID, assert),
+                (MAP_NODE_ID, map_node_fn),
+                (FILTER_NODE_ID, filter_node_fn),
+                (FOLD_NODE_ID, fold_node_fn),
             ]),
             variables: HashMap::new(),
         },

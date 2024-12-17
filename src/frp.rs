@@ -328,7 +328,7 @@ pub fn fold_node<'a>(
     graph: &mut Dag<Node, (), u32>,
     event_index: NodeIndex,
     initial: TracedExpr,
-    fold: fn(TracedExpr, TracedExpr) -> TracedExpr,
+    fold: Box<dyn Fn(TracedExpr, TracedExpr) -> TracedExpr>,
 ) -> NodeIndex {
     let initial_clone = initial.clone();
     let value = Arc::new(RwLock::new(initial.clone()));
