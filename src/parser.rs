@@ -1,10 +1,8 @@
-use nom::character::complete::{newline, satisfy};
+use nom::character::complete::satisfy;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
-    character::complete::{
-        alpha1, alphanumeric1, char, digit1, multispace0, multispace1,
-    },
+    character::complete::{alphanumeric1, char, digit1, multispace0},
     combinator::{map, opt, recognize},
     multi::{many0, separated_list0},
     sequence::{delimited, pair, preceded, terminated, tuple},
@@ -130,6 +128,9 @@ fn symbol(input: &str) -> IResult<&str, String> {
             char('*'),
             char('/'),
             char('.'),
+            char('&'),
+            char('|'),
+            char('!'),
         )))),
         String::from,
     )(input)

@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     io::{self, BufRead},
-    sync::{atomic::AtomicBool, Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc},
     thread,
 };
 
@@ -44,6 +44,10 @@ pub const NODE_CURRENT_VALUE: u32 = 12;
 pub const LAUNCH: u32 = 13;
 pub const PAIR_ID: u32 = 14;
 pub const TYPE_OF_ID: u32 = 15;
+pub const AND_ID: u32 = 16;
+pub const OR_ID: u32 = 17;
+pub const NOT_ID: u32 = 18;
+pub const ASSERT_ID: u32 = 19;
 
 macro_rules! build_invokable {
     // Pattern for single argument function
@@ -97,7 +101,7 @@ macro_rules! build_invokable {
 }
 
 pub fn ef3r_stdlib<'a>() -> Context<'a> {
-    let mul = build_invokable!("*", true, |ctx, first, second| {
+    let mul = build_invokable!("*", true, |_ctx, first, second| {
         match (first.evaluated, second.evaluated) {
             (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y)),
             (actual, _) if !matches!(actual, Expr::Int(_)) => {
@@ -115,7 +119,68 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     });
 
-    let add = build_invokable!("+", true, |ctx, first, second| {
+    let and = build_invokable!("&&", true, |_ctx, first, second| {
+        match (first.evaluated, second.evaluated) {
+            (Expr::Bool(x), Expr::Bool(y)) => Ok(Expr::Bool(x && y)),
+            (actual, _) if !matches!(actual, Expr::Int(_)) => {
+                Err(EvaluationError::TypeError {
+                    expected: ExprType::Bool,
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "&&".to_string(),
+                })
+            }
+            (_, actual) => Err(EvaluationError::TypeError {
+                expected: ExprType::Bool,
+                actual: type_of(&actual).unwrap(),
+                at_loc: "&&".to_string(),
+            }),
+        }
+    });
+
+    let or = build_invokable!("||", true, |_ctx, first, second| {
+        match (first.evaluated, second.evaluated) {
+            (Expr::Bool(x), Expr::Bool(y)) => Ok(Expr::Bool(x || y)),
+            (actual, _) if !matches!(actual, Expr::Int(_)) => {
+                Err(EvaluationError::TypeError {
+                    expected: ExprType::Bool,
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "||".to_string(),
+                })
+            }
+            (_, actual) => Err(EvaluationError::TypeError {
+                expected: ExprType::Bool,
+                actual: type_of(&actual).unwrap(),
+                at_loc: "||".to_string(),
+            }),
+        }
+    });
+
+    let not = build_invokable!("not", false, |_ctx, first| {
+        match first.evaluated {
+            Expr::Bool(x) => Ok(Expr::Bool(!x)),
+            actual => Err(EvaluationError::TypeError {
+                expected: ExprType::Bool,
+                actual: type_of(&actual).unwrap(),
+                at_loc: "not".to_string(),
+            }),
+        }
+    });
+
+    let assert = build_invokable!("assert", false, |_ctx, first| {
+        match first.evaluated {
+            Expr::Bool(x) => {
+                assert!(x);
+                Ok(Expr::Unit)
+            }
+            actual => Err(EvaluationError::TypeError {
+                expected: ExprType::Bool,
+                actual: type_of(&actual).unwrap(),
+                at_loc: "assert".to_string(),
+            }),
+        }
+    });
+
+    let add = build_invokable!("+", true, |_ctx, first, second| {
         match (first.evaluated, second.evaluated) {
             (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y)),
             (actual, _) if !matches!(actual, Expr::Int(_)) => {
@@ -133,7 +198,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     });
 
-    let div = build_invokable!("/", true, |ctx, first, second| {
+    let div = build_invokable!("/", true, |_ctx, first, second| {
         match (first.evaluated, second.evaluated) {
             (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y)),
             (actual, _) if !matches!(actual, Expr::Int(_)) => {
@@ -151,7 +216,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     });
 
-    let append = build_invokable!("++", true, |ctx, first, second| {
+    let append = build_invokable!("++", true, |_ctx, first, second| {
         match (first.evaluated, second.evaluated) {
             (Expr::String(x), Expr::String(y)) => {
                 Ok(Expr::String(x.to_owned() + y.as_ref()))
@@ -171,7 +236,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     });
 
-    let uppercase = build_invokable!("uppercase", false, |ctx, first| {
+    let uppercase = build_invokable!("uppercase", false, |_ctx, first| {
         match first.evaluated {
             Expr::String(x) => Ok(Expr::String(x.to_uppercase())),
             actual => Err(EvaluationError::TypeError {
@@ -182,14 +247,14 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     });
 
-    let type_of_fn = build_invokable!("type_of", false, |ctx, first| {
+    let type_of_fn = build_invokable!("type_of", false, |_ctx, first| {
         Ok(match type_of(&first.evaluated) {
             Some(x) => Expr::Type(x),
             None => Expr::None,
         })
     });
 
-    let pair_first_fn = build_invokable!("first", false, |ctx, pair| {
+    let pair_first_fn = build_invokable!("first", false, |_ctx, pair| {
         match pair.evaluated {
             Expr::Pair(x, _) => Ok(x.evaluated),
             actual => Err(EvaluationError::TypeError {
@@ -203,7 +268,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     });
 
-    let pair_second_fn = build_invokable!("second", false, |ctx, pair| {
+    let pair_second_fn = build_invokable!("second", false, |_ctx, pair| {
         match pair.evaluated {
             Expr::Pair(_, y) => Ok(y.evaluated),
             actual => Err(EvaluationError::TypeError {
@@ -217,11 +282,11 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     });
 
-    let pair_fn = build_invokable!("pair", false, |ctx, first, second| {
+    let pair_fn = build_invokable!("pair", false, |_ctx, first, second| {
         Ok(Expr::Pair(Box::new(first), Box::new(second)))
     });
 
-    let print_fn = build_invokable!("println", false, |ctx, first| {
+    let print_fn = build_invokable!("println", false, |_ctx, first| {
         println!("{}", first);
         Ok(Expr::None)
     });
@@ -323,7 +388,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
             evaluate_function_application(
                 thread_ctx,
                 &Expr::Apply(Box::new(first), Box::new([])),
-            );
+            )
         });
         Ok(Expr::Unit)
     });
@@ -347,6 +412,10 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                 (LAUNCH, launch_fn),
                 (PAIR_ID, pair_fn),
                 (TYPE_OF_ID, type_of_fn),
+                (AND_ID, and),
+                (OR_ID, or),
+                (NOT_ID, not),
+                (ASSERT_ID, assert),
             ]),
             variables: HashMap::new(),
         },

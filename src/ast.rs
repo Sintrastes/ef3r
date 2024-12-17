@@ -1,17 +1,9 @@
-use std::{
-    fmt::{Display, Pointer},
-    sync::{Arc, Mutex},
-};
+use std::fmt::{Display, Pointer};
 
-use daggy::NodeIndex;
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    interpreter::{evaluate_traced, unwind_trace, Context},
-    stdlib::{ef3r_stdlib, ADD_ID, MUL_ID},
-    types::ExprType,
-};
+use crate::{interpreter::Context, stdlib::ef3r_stdlib, types::ExprType};
 
 pub type FunctionID = u32;
 
@@ -254,75 +246,88 @@ impl Display for TracedExpr {
     }
 }
 
-#[test]
-fn evaluation_keeps_trace() {
-    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
 
-    // Example expression.
-    let expression = Expr::Apply(
-        Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
-        Box::new([
-            Expr::Int(2).traced(),
-            Expr::Apply(
-                Box::new(Expr::BuiltinFunction(ADD_ID).traced()),
-                Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
-            )
-            .traced(),
-        ]),
-    );
+    use crate::{
+        ast::Expr,
+        interpreter::{evaluate_traced, unwind_trace},
+        stdlib::{ef3r_stdlib, ADD_ID, MUL_ID},
+    };
 
-    let evaluated =
-        evaluate_traced(context, expression.clone().traced()).unwrap();
+    #[test]
+    fn evaluation_keeps_trace() {
+        let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
-    println!("Evaluated: {}", evaluated.evaluated);
+        // Example expression.
+        let expression = Expr::Apply(
+            Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+            Box::new([
+                Expr::Int(2).traced(),
+                Expr::Apply(
+                    Box::new(Expr::BuiltinFunction(ADD_ID).traced()),
+                    Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
+                )
+                .traced(),
+            ]),
+        );
 
-    assert_eq!(evaluated.evaluated, Expr::Int(6));
+        let evaluated =
+            evaluate_traced(context, expression.clone().traced()).unwrap();
 
-    println!("Trace: {}", evaluated.stored_trace.clone().unwrap());
+        println!("Evaluated: {}", evaluated.evaluated);
 
-    assert_eq!(evaluated.stored_trace, Some(expression));
-}
+        assert_eq!(evaluated.evaluated, Expr::Int(6));
 
-#[test]
-fn evaluating_twice_keeps_entire_trace() {
-    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+        println!("Trace: {}", evaluated.stored_trace.clone().unwrap());
 
-    // Example expression.
-    let expression = Expr::Apply(
-        Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
-        Box::new([
-            Expr::Int(2).traced(),
-            Expr::Apply(
-                Box::new(Expr::BuiltinFunction(ADD_ID).traced()),
-                Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
-            )
-            .traced(),
-        ]),
-    );
+        assert_eq!(evaluated.stored_trace, Some(expression));
+    }
 
-    let evaluated =
-        evaluate_traced(context.clone(), expression.clone().traced()).unwrap();
+    #[test]
+    fn evaluating_twice_keeps_entire_trace() {
+        let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
-    let second_expression = Expr::Apply(
-        Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
-        Box::new([Expr::Int(2).traced(), evaluated]),
-    );
+        // Example expression.
+        let expression = Expr::Apply(
+            Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+            Box::new([
+                Expr::Int(2).traced(),
+                Expr::Apply(
+                    Box::new(Expr::BuiltinFunction(ADD_ID).traced()),
+                    Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
+                )
+                .traced(),
+            ]),
+        );
 
-    let second_evaluated =
-        evaluate_traced(context, second_expression.clone().traced()).unwrap();
+        let evaluated =
+            evaluate_traced(context.clone(), expression.clone().traced())
+                .unwrap();
 
-    let expected = Expr::Apply(
-        Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
-        Box::new([Expr::Int(2).traced(), expression.traced()]),
-    );
+        let second_expression = Expr::Apply(
+            Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+            Box::new([Expr::Int(2).traced(), evaluated]),
+        );
 
-    println!(
-        "Evaluated: {}",
-        unwind_trace(second_evaluated.clone()).clone()
-    );
-    println!("Expected: {}", expected);
+        let second_evaluated =
+            evaluate_traced(context, second_expression.clone().traced())
+                .unwrap();
 
-    assert_eq!(unwind_trace(second_evaluated).clone().evaluated, expected);
+        let expected = Expr::Apply(
+            Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+            Box::new([Expr::Int(2).traced(), expression.traced()]),
+        );
+
+        println!(
+            "Evaluated: {}",
+            unwind_trace(second_evaluated.clone()).clone()
+        );
+        println!("Expected: {}", expected);
+
+        assert_eq!(unwind_trace(second_evaluated).clone().evaluated, expected);
+    }
 }
 
 ///
@@ -379,7 +384,7 @@ pub fn substitute(variable: String, with: Expr, in_expr: Expr) -> Expr {
                 Expr::Var(x)
             }
         }
-        Expr::Lambda(vec, vec1, traced_expr) => todo!(),
+        Expr::Lambda(_, _, _) => todo!(),
         _ => in_expr,
     }
 }

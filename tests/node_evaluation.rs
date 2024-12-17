@@ -1,7 +1,7 @@
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use ef3r::{
-    ast::{Expr, TracedExpr},
+    ast::Expr,
     frp::{
         combined_node, filter_node, fold_node, map_node, process_event_frame,
         with_lock, Node,
@@ -228,7 +228,7 @@ fn test_combined_node() {
 
     process_event_frame(context.clone());
 
-    let mut context_lock = context.lock().unwrap();
+    let context_lock = context.lock().unwrap();
 
     let combined_node =
         &mut context_lock.graph.node_weight(combined_node_index).unwrap();

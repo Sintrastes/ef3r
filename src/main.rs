@@ -1,10 +1,6 @@
-use ef3r::ast::{Expr, Statement};
+use ef3r::ast::Statement;
 use ef3r::interpreter::{self};
-use ef3r::stdlib::{
-    ef3r_stdlib, get_stdlib_functions, LAUNCH, NEW_NODE_ID, NODE_CURRENT_VALUE,
-    PAIR_FIRST_ID, PAIR_SECOND_ID, PRINT_ID, READLN_ID, UPPERCASE_ID,
-};
-use ef3r::types::ExprType;
+use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
 use std::sync::{Arc, Mutex};
 use std::{env, fs::File, io::Write};
 
@@ -26,7 +22,7 @@ fn main() -> Result<(), String> {
 
             let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
-            interpreter::interpret(context, &program);
+            interpreter::interpret(context, &program).unwrap();
         }
         "pack" => {
             // Parses ef3r source code and converts it into a ef3r bytecode file.

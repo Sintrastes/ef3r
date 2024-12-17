@@ -16,7 +16,7 @@ fn variable_assignment() {
         expr: expression.clone(),
     };
 
-    interpret(context, &vec![statement.clone()]);
+    interpret(context, &vec![statement.clone()]).unwrap();
 
     assert_eq!(
         cloned_ctx
@@ -46,7 +46,7 @@ fn reassignment_of_statement() {
         expr: Expr::Int(3),
     };
 
-    let evaluated = interpret(context, &vec![statement1, statement2]);
+    interpret(context, &vec![statement1, statement2]).unwrap();
 
     assert_eq!(
         cloned_ctx

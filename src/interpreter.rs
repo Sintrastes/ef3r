@@ -7,7 +7,7 @@ use daggy::Dag;
 
 use crate::{
     ast::{substitute, Expr, FunctionID, Statement, TracedExpr, VariableID},
-    frp::{with_lock, Node},
+    frp::Node,
     types::ExprType,
 };
 
@@ -115,12 +115,7 @@ pub fn evaluate_traced(
             evaluated,
             stored_trace,
         } => Ok(TracedExpr {
-            evaluated: evaluate_traced_rec(
-                ctx,
-                evaluated.clone(),
-                stored_trace.clone(),
-            )?
-            .evaluated,
+            evaluated: evaluate_traced_rec(ctx, evaluated.clone())?.evaluated,
             stored_trace: Some(stored_trace.unwrap_or(evaluated)),
         }),
     }
@@ -150,13 +145,12 @@ pub fn evaluate(
     ctx: Arc<Mutex<Context>>,
     expr: Expr,
 ) -> Result<TracedExpr, EvaluationError> {
-    evaluate_traced_rec(ctx, expr, None)
+    evaluate_traced_rec(ctx, expr)
 }
 
 fn evaluate_traced_rec(
     ctx: Arc<Mutex<Context>>,
     expr: Expr,
-    trace: Option<Expr>,
 ) -> Result<TracedExpr, EvaluationError> {
     match expr {
         // Literals evaluate to themselves.

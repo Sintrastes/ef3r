@@ -1,10 +1,6 @@
-use std::{
-    borrow::BorrowMut,
-    ops::DerefMut,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex, RwLock,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, RwLock,
 };
 
 use daggy::{
@@ -310,7 +306,7 @@ pub fn combined_node(
     };
 
     with_lock(context.as_ref(), |lock| {
-        let mut graph = &mut lock.graph;
+        let graph = &mut lock.graph;
 
         let new_node_index = graph.add_node(new_node);
 
