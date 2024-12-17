@@ -8,6 +8,7 @@ use ef3r::{
     },
     interpreter::apply_traced,
     stdlib::{ef3r_stdlib, MUL_ID},
+    types::ExprType,
 };
 
 #[test]
@@ -26,8 +27,13 @@ fn test_map_node() {
 
     let graph = &mut context_lock.graph;
 
-    let node_index =
-        Node::new(on_update, is_traced.clone(), graph, Expr::Int(20).traced());
+    let node_index = Node::new(
+        on_update,
+        is_traced.clone(),
+        graph,
+        ExprType::Int,
+        Expr::Int(20).traced(),
+    );
 
     drop(context_lock);
 
@@ -36,6 +42,7 @@ fn test_map_node() {
         is_traced,
         context.clone(),
         node_index,
+        ExprType::Int,
         Arc::new(Mutex::new(move |x| {
             apply_traced(
                 context_cloned.clone(),
@@ -96,6 +103,7 @@ fn test_filter_node() {
                 on_update,
                 is_traced.clone(),
                 &mut lock.graph,
+                ExprType::Int,
                 Expr::Int(1).traced(),
             );
 
@@ -169,6 +177,7 @@ fn test_combined_node() {
         on_update,
         is_traced.clone(),
         &mut context_lock.graph,
+        ExprType::Int,
         Expr::Int(2).traced(),
     );
 
@@ -176,6 +185,7 @@ fn test_combined_node() {
         on_update,
         is_traced.clone(),
         &mut context_lock.graph,
+        ExprType::Int,
         Expr::Int(3).traced(),
     );
 
@@ -242,6 +252,7 @@ fn test_fold_node() {
         on_update,
         is_traced.clone(),
         &mut context_lock.graph,
+        ExprType::Any,
         Expr::None.traced(),
     );
 

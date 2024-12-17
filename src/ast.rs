@@ -256,7 +256,7 @@ impl Display for TracedExpr {
 
 #[test]
 fn evaluation_keeps_trace() {
-    let mut context = Arc::new(Mutex::new(ef3r_stdlib()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
     // Example expression.
     let expression = Expr::Apply(
@@ -285,7 +285,7 @@ fn evaluation_keeps_trace() {
 
 #[test]
 fn evaluating_twice_keeps_entire_trace() {
-    let mut context = Arc::new(Mutex::new(ef3r_stdlib()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
     // Example expression.
     let expression = Expr::Apply(

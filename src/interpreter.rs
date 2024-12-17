@@ -134,7 +134,7 @@ mod tests {
 
     quickcheck! {
         fn evaluation_is_idempotent(expr: Expr) -> bool {
-            let mut context = Arc::new(Mutex::new(ef3r_stdlib()));
+            let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
             println!("Evaluating: {}", expr.clone());
             let evaluated = evaluate(context.clone(), expr);

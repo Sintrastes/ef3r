@@ -9,7 +9,7 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
         Expr::String(_) => Some(ExprType::String),
         Expr::Float(_) => Some(ExprType::Float),
         Expr::Bool(_) => Some(ExprType::Bool),
-        Expr::Type(expr_type) => Some(ExprType::Type),
+        Expr::Type(_) => Some(ExprType::Type),
         Expr::Pair(traced_expr, traced_expr1) => Some(ExprType::Pair(
             Box::new(type_of(&traced_expr.evaluated)?),
             Box::new(type_of(&traced_expr1.evaluated)?),
@@ -19,7 +19,7 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
             Box::new(ExprType::Unit),
         )),
         Expr::Node(_) => Some(ExprType::Node(Box::new(ExprType::Any))),
-        Expr::Lambda(args, statements, traced_expr) => {
+        Expr::Lambda(args, _, traced_expr) => {
             let arg_types: Vec<ExprType> = args
                 .iter()
                 .map(|_| ExprType::Any) // All args are assumed to be any type
@@ -28,7 +28,7 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
 
             Some(ExprType::Func(arg_types, Box::new(return_type)))
         }
-        Expr::Apply(traced_expr, _) => todo!(),
+        Expr::Apply(_, _) => todo!(),
         Expr::Var(_) => Some(ExprType::Any),
     }
 }

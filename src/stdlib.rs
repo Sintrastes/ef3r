@@ -43,6 +43,7 @@ pub const UPDATE_NODE_ID: u32 = 11;
 pub const NODE_CURRENT_VALUE: u32 = 12;
 pub const LAUNCH: u32 = 13;
 pub const PAIR_ID: u32 = 14;
+pub const TYPE_OF_ID: u32 = 15;
 
 macro_rules! build_invokable {
     // Pattern for single argument function
@@ -181,6 +182,13 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     });
 
+    let type_of_fn = build_invokable!("type_of", false, |ctx, first| {
+        Ok(match type_of(&first.evaluated) {
+            Some(x) => Expr::Type(x),
+            None => Expr::None,
+        })
+    });
+
     let pair_first_fn = build_invokable!("first", false, |ctx, pair| {
         match pair.evaluated {
             Expr::Pair(x, _) => Ok(x.evaluated),
@@ -284,6 +292,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                             |_| {},
                             Arc::new(AtomicBool::new(false)),
                             &mut ctx.lock().unwrap().graph,
+                            x,
                             second,
                         );
 
@@ -337,6 +346,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                 (NODE_CURRENT_VALUE, node_current_value_fn),
                 (LAUNCH, launch_fn),
                 (PAIR_ID, pair_fn),
+                (TYPE_OF_ID, type_of_fn),
             ]),
             variables: HashMap::new(),
         },

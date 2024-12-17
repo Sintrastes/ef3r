@@ -12,7 +12,10 @@ use daggy::{
     Dag, NodeIndex,
 };
 
-use crate::{ast::TracedExpr, interpreter::Context};
+use crate::{
+    ast::TracedExpr, interpreter::Context, typechecking::type_of,
+    types::ExprType,
+};
 
 ///
 /// A node in the graph of functional reactive values.
@@ -41,6 +44,8 @@ use crate::{ast::TracedExpr, interpreter::Context};
 ///
 #[derive(Clone)]
 pub struct Node<'a: 'static> {
+    /// The type of expressions used in the node.
+    expr_type: ExprType,
     /// The underlying value held by this node.
     value: Arc<RwLock<TracedExpr>>,
     /// Flag to check if the value has been changed since the last event loop.
@@ -76,6 +81,7 @@ impl<'a> Node<'a> {
         on_update: fn(TracedExpr),
         traced: Arc<AtomicBool>,
         graph: &mut Dag<Node<'a>, (), u32>,
+        expr_type: ExprType,
         initial: TracedExpr,
     ) -> NodeIndex {
         let value = Arc::new(RwLock::new(initial));
@@ -83,6 +89,7 @@ impl<'a> Node<'a> {
         let dirty = Arc::new(AtomicBool::new(false));
 
         let node = Node {
+            expr_type,
             value,
             dirty,
             traced,
@@ -119,6 +126,7 @@ pub fn map_node(
     traced: Arc<AtomicBool>,
     context: Arc<Mutex<Context>>,
     parent_index: NodeIndex,
+    result_type: ExprType,
     transform: Arc<Mutex<dyn Fn(TracedExpr) -> TracedExpr>>,
 ) -> NodeIndex {
     let parent_value = {
@@ -157,6 +165,7 @@ pub fn map_node(
         });
 
     let new_node = Node {
+        expr_type: result_type,
         value,
         dirty,
         traced,
@@ -202,6 +211,7 @@ pub fn filter_node(
         });
 
     let new_node = Node {
+        expr_type: parent.expr_type.clone(),
         value: value.clone(),
         dirty,
         traced,
@@ -290,6 +300,8 @@ pub fn combined_node(
         });
 
     let new_node = Node {
+        // TODO: Need to derive the actual type here somehow.
+        expr_type: ExprType::Any,
         value: value.clone(),
         dirty,
         traced,
@@ -322,7 +334,8 @@ pub fn fold_node<'a>(
     initial: TracedExpr,
     fold: fn(TracedExpr, TracedExpr) -> TracedExpr,
 ) -> NodeIndex {
-    let value = Arc::new(RwLock::new(initial));
+    let initial_clone = initial.clone();
+    let value = Arc::new(RwLock::new(initial.clone()));
 
     let dirty = Arc::new(AtomicBool::new(false));
 
@@ -341,6 +354,7 @@ pub fn fold_node<'a>(
     });
 
     let new_node = Node {
+        expr_type: type_of(&initial_clone.evaluated).unwrap(),
         value: value.clone(),
         dirty,
         traced,
@@ -394,7 +408,7 @@ pub fn process_event_frame(ctx: Arc<Mutex<Context>>) {
     drop(ctx_lock);
 
     for node_id in nodes {
-        let mut derived_nodes: Vec<_>;
+        let derived_nodes: Vec<_>;
         let dirty;
         let value;
 
