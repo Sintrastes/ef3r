@@ -56,7 +56,47 @@ fn ws<'a, F: 'a, O>(inner: F) -> impl FnMut(&'a str) -> IResult<&'a str, O>
 where
     F: FnMut(&'a str) -> IResult<&'a str, O>,
 {
-    delimited(multispace0, inner, multispace0)
+    delimited(
+        delimited(multispace0, opt(comment), multispace0),
+        inner,
+        delimited(multispace0, opt(comment), multispace0),
+    )
+}
+
+fn comment(input: &str) -> IResult<&str, ()> {
+    alt((
+        block_comment,
+        map(
+            tuple((tag("//"), take_while1(|c| c != '\n'), opt(char('\n')))),
+            |_| (),
+        ),
+    ))(input)
+}
+
+fn block_comment(input: &str) -> IResult<&str, ()> {
+    let (input, _) = tag("/*")(input)?;
+    let mut depth = 1;
+    let mut pos = 0;
+
+    while pos < input.len() - 1 {
+        if &input[pos..pos + 2] == "/*" {
+            depth += 1;
+            pos += 2;
+        } else if &input[pos..pos + 2] == "*/" {
+            depth -= 1;
+            if depth == 0 {
+                return Ok((&input[pos + 2..], ()));
+            }
+            pos += 2;
+        } else {
+            pos += 1;
+        }
+    }
+
+    Err(nom::Err::Error(nom::error::Error::new(
+        input,
+        nom::error::ErrorKind::Tag,
+    )))
 }
 
 // Identifier parser

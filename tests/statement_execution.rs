@@ -83,6 +83,7 @@ fn execute_example_program() {
 
         println(pair(1,2));
 
+        // Test executing new nodes.
         new_node(Bool, true);
         new_node(String, "test");
         new_node(Type, Int);
@@ -90,6 +91,7 @@ fn execute_example_program() {
         new_node(Unit, ());
         new_node(Pair(Int, Int), pair(2, 3));
 
+        /* Test launcing a thread. */
         launch {
             let x = "test";
 
