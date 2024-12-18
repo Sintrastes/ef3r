@@ -89,16 +89,40 @@ pub fn apply_traced(
     args: &[TracedExpr],
 ) -> Result<TracedExpr, EvaluationError> {
     let evaluated = evaluate(
-        ctx,
+        ctx.clone(),
         Expr::Apply(
             Box::new(expr.evaluated.clone().traced()),
             args.iter().map(|x| x.evaluated.clone().traced()).collect(),
         ),
     );
 
+    // Before building the trace, expand variables in args
+    let expanded_args: Vec<TracedExpr> = args
+        .iter()
+        .map(|arg| match &arg.evaluated {
+            Expr::Var(var_name) => {
+                if let Some(value) = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .variables
+                    .get(var_name)
+                {
+                    value.clone()
+                } else {
+                    arg.clone()
+                }
+            }
+            _ => arg.clone(),
+        })
+        .collect();
+
     let trace = Expr::Apply(
         Box::new(expr.clone()),
-        args.iter().map(|x| x.get_trace().traced()).collect(),
+        expanded_args
+            .iter()
+            .map(|x| x.get_trace().traced())
+            .collect(),
     );
 
     Ok(TracedExpr {
@@ -111,15 +135,7 @@ pub fn evaluate_traced(
     ctx: Arc<Mutex<Context>>,
     expr: TracedExpr,
 ) -> Result<TracedExpr, EvaluationError> {
-    match expr {
-        TracedExpr {
-            evaluated,
-            stored_trace,
-        } => Ok(TracedExpr {
-            evaluated: evaluate_traced_rec(ctx, evaluated.clone())?.evaluated,
-            stored_trace: Some(stored_trace.unwrap_or(evaluated)),
-        }),
-    }
+    evaluate_traced_rec(ctx, expr.evaluated.clone())
 }
 
 #[cfg(test)]
@@ -219,11 +235,33 @@ pub fn evaluate_function_application(
                 .evaluated
                 .clone();
 
-            let action = function_from_expression(ctx.clone(), evaluated_fn)?;
+            let expanded_args = args
+                .iter()
+                .map(|arg| {
+                    if let Expr::Var(var_name) = &arg.evaluated {
+                        if let Some(value) = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .variables
+                            .get(var_name)
+                        {
+                            value.get_trace().traced()
+                        } else {
+                            arg.clone()
+                        }
+                    } else {
+                        arg.clone()
+                    }
+                })
+                .collect();
+
+            let action_fn =
+                function_from_expression(ctx.clone(), evaluated_fn)?;
 
             Ok(TracedExpr::build(
-                (action)(ctx, &evaluated_args?.as_mut_slice())?,
-                Some(action_expr.clone()),
+                (action_fn)(ctx, &evaluated_args?.as_mut_slice())?,
+                Some(Expr::Apply(action.clone(), expanded_args)),
             ))
         }
         _ => Err(EvaluationError::NotAFunction(action_expr.clone())),

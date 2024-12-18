@@ -1,5 +1,12 @@
 println("Hello, world!");
 
-let x = readln();
+let response = readln();
 
-println(x.uppercase());
+println(response.uppercase());
+
+let x = 2;
+let y = 3;
+
+let z = x + y;
+
+dbg_trace_full(z + 3);

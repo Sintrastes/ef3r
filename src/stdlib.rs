@@ -786,7 +786,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         ExprType::Unit,
         vec![ExprType::Any],
         |_ctx, first| {
-            println!("{}", first.get_trace());
+            println!("{} = {}", first, first.get_trace());
             Ok(Expr::Unit)
         }
     );
