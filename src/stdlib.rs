@@ -12,7 +12,7 @@ use crate::{
     frp::{filter_node, fold_node, map_node, Node},
     interpreter::{
         evaluate_function_application, Context, EvaluationError,
-        ExpressionContext, InvokableDefinition,
+        ExpressionContext, FunctionDefinition,
     },
     typechecking::type_of,
     types::ExprType,
@@ -64,10 +64,10 @@ pub const FIRST_LIST_ID: u32 = 32;
 pub const LAST_LIST_ID: u32 = 33;
 pub const LIST_ID: u32 = 34;
 
-macro_rules! build_invokable {
+macro_rules! build_function {
     // Pattern for single argument function with type checking
     ($name:expr, $res_type:expr, |$ctx:ident, $param:ident: $type:ty| $body:expr) => {
-        InvokableDefinition {
+        FunctionDefinition {
             argument_types: vec![<$type>::expr_type()],
             result_type: $res_type,
             name: $name.to_string(),
@@ -96,7 +96,7 @@ macro_rules! build_invokable {
 
     // Pattern for two argument function with type checking
     ($name:expr, $res_type:expr, |$ctx:ident, $param1:ident: $type1:ty, $param2:ident: $type2:ty| $body:expr) => {
-        InvokableDefinition {
+        FunctionDefinition {
             name: $name.to_string(),
             argument_types: vec![<$type1>::expr_type(), <$type2>::expr_type()],
             result_type: $res_type,
@@ -142,7 +142,7 @@ macro_rules! build_invokable {
 
     // Pattern for single argument function without type checking
     ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param:ident| $body:expr) => {
-        InvokableDefinition {
+        FunctionDefinition {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
@@ -163,7 +163,7 @@ macro_rules! build_invokable {
 
     // Pattern for two argument function without type checking.
     ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident| $body:expr) => {
-        InvokableDefinition {
+        FunctionDefinition {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
@@ -193,7 +193,7 @@ macro_rules! build_invokable {
 
     // Pattern for three argument function without type checking.
     ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident, $param3:ident| $body:expr) => {
-        InvokableDefinition {
+        FunctionDefinition {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
@@ -232,52 +232,49 @@ macro_rules! build_invokable {
 }
 
 pub fn ef3r_stdlib<'a>() -> Context<'a> {
-    let mul = build_invokable!("*", ExprType::Int, |_cx, x: i32, y: i32| {
+    let mul = build_function!("*", ExprType::Int, |_cx, x: i32, y: i32| {
         Ok(x * y)
     });
 
-    let and =
-        build_invokable!("&&", ExprType::Bool, |_cx, x: bool, y: bool| {
-            Ok(x && y)
-        });
+    let and = build_function!("&&", ExprType::Bool, |_cx, x: bool, y: bool| {
+        Ok(x && y)
+    });
 
-    let or = build_invokable!("||", ExprType::Bool, |_cx, x: bool, y: bool| {
+    let or = build_function!("||", ExprType::Bool, |_cx, x: bool, y: bool| {
         Ok(x || y)
     });
 
-    let not =
-        build_invokable!("not", ExprType::Bool, |_cx, x: bool| { Ok(!x) });
+    let not = build_function!("not", ExprType::Bool, |_cx, x: bool| { Ok(!x) });
 
-    let assert = build_invokable!("assert", ExprType::Unit, |_cx, x: bool| {
+    let assert = build_function!("assert", ExprType::Unit, |_cx, x: bool| {
         assert!(x);
         Ok(())
     });
 
-    let add = build_invokable!("+", ExprType::Int, |_cx, x: i32, y: i32| {
+    let add = build_function!("+", ExprType::Int, |_cx, x: i32, y: i32| {
         Ok(x + y)
     });
 
-    let div = build_invokable!("/", ExprType::Int, |_cx, x: i32, y: i32| {
+    let div = build_function!("/", ExprType::Int, |_cx, x: i32, y: i32| {
         Ok(x / y)
     });
 
-    let append = build_invokable!(
-        "++",
-        ExprType::String,
-        |_cx, x: String, y: String| { Ok(x.to_owned() + y.as_ref()) }
-    );
+    let append =
+        build_function!("++", ExprType::String, |_cx, x: String, y: String| {
+            Ok(x.to_owned() + y.as_ref())
+        });
 
     let uppercase =
-        build_invokable!("uppercase", ExprType::String, |_cx, x: String| {
+        build_function!("uppercase", ExprType::String, |_cx, x: String| {
             Ok(x.to_uppercase())
         });
 
     let lowercase =
-        build_invokable!("lowercase", ExprType::String, |_cx, x: String| {
+        build_function!("lowercase", ExprType::String, |_cx, x: String| {
             Ok(x.to_lowercase())
         });
 
-    let drop_list_fn = build_invokable!(
+    let drop_list_fn = build_function!(
         "drop",
         ExprType::List(Box::new(ExprType::Any)),
         |_cx, list: Vec<TracedExpr>, n: i32| {
@@ -289,7 +286,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let drop_last_list_fn = build_invokable!(
+    let drop_last_list_fn = build_function!(
         "drop_last",
         ExprType::List(Box::new(ExprType::Any)),
         |_cx, list: Vec<TracedExpr>, n: i32| {
@@ -304,20 +301,20 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let list_fn = InvokableDefinition {
+    let list_fn = FunctionDefinition {
         name: "list".to_string(),
         argument_types: vec![], // Vararg function
         result_type: ExprType::List(Box::new(ExprType::Any)),
         definition: |_, xs: &[TracedExpr]| Ok(Expr::List(xs.to_vec())),
     };
 
-    let length_list_fn = build_invokable!(
+    let length_list_fn = build_function!(
         "length",
         ExprType::Int,
         |_cx, list: Vec<TracedExpr>| { Ok(list.len() as i32) }
     );
 
-    let append_lists_fn = build_invokable!(
+    let append_lists_fn = build_function!(
         "++",
         ExprType::List(Box::new(ExprType::Any)),
         |_cx, list1: Vec<TracedExpr>, list2: Vec<TracedExpr>| {
@@ -327,7 +324,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let map_list_fn = build_invokable!(
+    let map_list_fn = build_function!(
         "map",
         ExprType::List(Box::new(ExprType::Any)),
         vec![
@@ -357,7 +354,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let filter_list_fn = build_invokable!(
+    let filter_list_fn = build_function!(
         "filter",
         ExprType::List(Box::new(ExprType::Any)),
         vec![
@@ -392,7 +389,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let fold_list_fn = build_invokable!(
+    let fold_list_fn = build_function!(
         "fold",
         ExprType::Any,
         vec![
@@ -423,28 +420,25 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let first_list_fn = build_invokable!(
-        "first",
-        ExprType::Any,
-        |_cx, list: Vec<TracedExpr>| {
-            Ok(list
-                .first()
-                .map(|x| x.evaluated.clone())
-                .unwrap_or(Expr::None))
-        }
-    );
-
-    let last_list_fn = build_invokable!("last", ExprType::Any, |_cx,
-                                                                list: Vec<
+    let first_list_fn = build_function!("first", ExprType::Any, |_cx,
+                                                                 list: Vec<
         TracedExpr,
     >| {
         Ok(list
-            .last()
+            .first()
             .map(|x| x.evaluated.clone())
             .unwrap_or(Expr::None))
     });
 
-    let type_of_fn = build_invokable!(
+    let last_list_fn =
+        build_function!("last", ExprType::Any, |_cx, list: Vec<TracedExpr>| {
+            Ok(list
+                .last()
+                .map(|x| x.evaluated.clone())
+                .unwrap_or(Expr::None))
+        });
+
+    let type_of_fn = build_function!(
         "type_of",
         ExprType::Type,
         vec![ExprType::Any],
@@ -456,7 +450,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let pair_first_fn = build_invokable!(
+    let pair_first_fn = build_function!(
         "first",
         ExprType::Any,
         vec![ExprType::Pair(
@@ -478,7 +472,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let pair_second_fn = build_invokable!(
+    let pair_second_fn = build_function!(
         "second",
         ExprType::Any,
         vec![ExprType::Pair(
@@ -500,7 +494,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let pair_fn = build_invokable!(
+    let pair_fn = build_function!(
         "pair",
         ExprType::Pair(Box::new(ExprType::Any), Box::new(ExprType::Any)),
         vec![ExprType::Any, ExprType::Any],
@@ -509,7 +503,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let print_fn = build_invokable!(
+    let print_fn = build_function!(
         "println",
         ExprType::Unit,
         vec![ExprType::Any],
@@ -519,7 +513,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let readln_fn = InvokableDefinition {
+    let readln_fn = FunctionDefinition {
         name: "readln".to_string(),
         argument_types: vec![],
         result_type: ExprType::String,
@@ -531,7 +525,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         },
     };
 
-    let update_node_fn = build_invokable!(
+    let update_node_fn = build_function!(
         "update_node",
         ExprType::Unit,
         vec![ExprType::Node(Box::new(ExprType::Any)), ExprType::Any],
@@ -556,7 +550,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let node_current_value_fn = build_invokable!(
+    let node_current_value_fn = build_function!(
         "current_value",
         ExprType::Any,
         vec![ExprType::Node(Box::new(ExprType::Any))],
@@ -582,7 +576,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let new_node_fn = build_invokable!(
+    let new_node_fn = build_function!(
         "new_node",
         ExprType::Pair(
             Box::new(ExprType::Node(Box::new(ExprType::Any))),
@@ -625,7 +619,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let launch_fn = build_invokable!(
+    let launch_fn = build_function!(
         "launch",
         ExprType::Unit,
         vec![ExprType::Func(vec![], Box::new(ExprType::Unit))],
@@ -642,7 +636,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let map_node_fn = build_invokable!(
+    let map_node_fn = build_function!(
         "map",
         ExprType::Node(Box::new(ExprType::Any)),
         vec![
@@ -686,7 +680,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let filter_node_fn = build_invokable!(
+    let filter_node_fn = build_function!(
         "filter",
         ExprType::Node(Box::new(ExprType::Any)),
         vec![
@@ -734,7 +728,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let fold_node_fn = build_invokable!(
+    let fold_node_fn = build_function!(
         "fold",
         ExprType::Node(Box::new(ExprType::Any)),
         vec![
@@ -781,7 +775,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let dbg_trace_full_fn = build_invokable!(
+    let dbg_trace_full_fn = build_function!(
         "dbg_trace_full",
         ExprType::Unit,
         vec![ExprType::Any],

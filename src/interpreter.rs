@@ -44,7 +44,7 @@ pub enum EvaluationError {
 }
 
 #[derive(Clone)]
-pub struct InvokableDefinition {
+pub struct FunctionDefinition {
     pub argument_types: Vec<ExprType>,
     pub result_type: ExprType,
     pub definition:
@@ -54,7 +54,7 @@ pub struct InvokableDefinition {
 
 #[derive(Clone)]
 pub struct ExpressionContext {
-    pub functions: HashMap<FunctionID, InvokableDefinition>,
+    pub functions: HashMap<FunctionID, FunctionDefinition>,
     pub variables: HashMap<VariableID, TracedExpr>,
 }
 
