@@ -51,6 +51,7 @@ pub const ASSERT_ID: u32 = 19;
 pub const MAP_NODE_ID: u32 = 20;
 pub const FILTER_NODE_ID: u32 = 21;
 pub const FOLD_NODE_ID: u32 = 22;
+pub const DEBUG_TRACE_FULL_ID: u32 = 23;
 
 macro_rules! build_invokable {
     // Pattern for single argument function
@@ -509,6 +510,12 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     });
 
+    let dbg_trace_full_fn =
+        build_invokable!("dbg_trace_full", false, |_ctx, first| {
+            println!("{}", first.get_trace());
+            Ok(Expr::Unit)
+        });
+
     // Lookup table for the interpreter
     Context {
         expression_context: ExpressionContext {
@@ -535,6 +542,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                 (MAP_NODE_ID, map_node_fn),
                 (FILTER_NODE_ID, filter_node_fn),
                 (FOLD_NODE_ID, fold_node_fn),
+                (DEBUG_TRACE_FULL_ID, dbg_trace_full_fn),
             ]),
             variables: HashMap::new(),
         },
