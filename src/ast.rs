@@ -31,8 +31,10 @@ pub enum Expr {
     Type(ExprType),
     /// Pair type,
     Pair(Box<TracedExpr>, Box<TracedExpr>),
-    /// Externally defined node that has been supplied
-    /// by the interpreter.
+    /// Type of lists
+    List(Vec<TracedExpr>),
+    /// Reference to a node that has been created and stored in the
+    ///  interpreter context.
     Node(usize),
     BuiltinFunction(FunctionID),
     /// Lambda expression with 0+ parameters: \x y z -> f x
@@ -168,6 +170,16 @@ impl Display for Expr {
                     .clone();
 
                 f.write_str(name.as_str())
+            }
+            Expr::List(elements) => {
+                f.write_str("[")?;
+                for (i, element) in elements.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    element.fmt(f)?;
+                }
+                f.write_str("]")
             }
             Expr::Lambda(vars, _, body) => {
                 f.write_str("\\")?;

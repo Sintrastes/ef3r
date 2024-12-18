@@ -165,6 +165,7 @@ fn evaluate_traced_rec(
         Expr::Lambda(_, _, _) => Ok(expr.traced()),
         Expr::BuiltinFunction(_) => Ok(expr.traced()),
         Expr::Node(_) => Ok(expr.traced()),
+        Expr::List(_) => Ok(expr.traced()),
         // Function applications need to be reduced.
         Expr::Apply(_, _) => {
             evaluate_function_application(ctx, &(expr.clone()))

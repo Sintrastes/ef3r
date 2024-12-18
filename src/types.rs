@@ -10,6 +10,7 @@ pub enum ExprType {
     String,
     Bool,
     Type,
+    List(Box<ExprType>),
     Node(Box<ExprType>),
     Func(Vec<ExprType>, Box<ExprType>),
     Pair(Box<ExprType>, Box<ExprType>),

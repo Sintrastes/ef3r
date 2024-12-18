@@ -10,6 +10,16 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
         Expr::Float(_) => Some(ExprType::Float),
         Expr::Bool(_) => Some(ExprType::Bool),
         Expr::Type(_) => Some(ExprType::Type),
+        Expr::List(xs) => {
+            let element_types = xs
+                .iter()
+                .map(|x| type_of(&x.evaluated).unwrap_or(ExprType::Any))
+                .collect::<Vec<_>>();
+            let unified_type = element_types
+                .into_iter()
+                .fold(ExprType::Any, |acc, t| union_type(&acc, &t));
+            Some(ExprType::List(Box::new(unified_type)))
+        }
         Expr::Pair(traced_expr, traced_expr1) => Some(ExprType::Pair(
             Box::new(type_of(&traced_expr.evaluated)?),
             Box::new(type_of(&traced_expr1.evaluated)?),
@@ -30,5 +40,13 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
         }
         Expr::Apply(_, _) => todo!(),
         Expr::Var(_) => Some(ExprType::Any),
+    }
+}
+
+fn union_type(t1: &ExprType, t2: &ExprType) -> ExprType {
+    if t1 == t2 {
+        t1.clone()
+    } else {
+        ExprType::Any
     }
 }
