@@ -45,10 +45,11 @@ pub enum EvaluationError {
 
 #[derive(Clone)]
 pub struct InvokableDefinition {
+    pub argument_types: Vec<ExprType>,
+    pub result_type: ExprType,
     pub definition:
         fn(Arc<Mutex<Context>>, &[TracedExpr]) -> Result<Expr, EvaluationError>,
     pub name: String,
-    pub infix: bool,
 }
 
 #[derive(Clone)]

@@ -8,7 +8,7 @@ use std::{
 use daggy::{Dag, NodeIndex};
 
 use crate::{
-    ast::{Expr, Statement, TracedExpr},
+    ast::{Expr, ExprTypeable, Statement, TracedExpr},
     frp::{filter_node, fold_node, map_node, Node},
     interpreter::{
         evaluate_function_application, Context, EvaluationError,
@@ -54,11 +54,87 @@ pub const FOLD_NODE_ID: u32 = 22;
 pub const DEBUG_TRACE_FULL_ID: u32 = 23;
 
 macro_rules! build_invokable {
-    // Pattern for single argument function
-    ($name:expr, $infix:expr, |$ctx:ident, $param:ident| $body:expr) => {
+    // Pattern for single argument function with type checking
+    ($name:expr, $res_type:expr, |$ctx:ident, $param:ident: $type:ty| $body:expr) => {
+        InvokableDefinition {
+            argument_types: vec![<$type>::expr_type()],
+            result_type: $res_type,
+            name: $name.to_string(),
+            definition: |$ctx, xs: &[TracedExpr]| {
+                let expr = xs.get(0).ok_or(
+                    EvaluationError::WrongNumberOfArguments {
+                        expected: 1,
+                        actual: 0,
+                        for_function: $name.to_string(),
+                    },
+                )?;
+
+                let $param = <$type>::try_from_expr(&expr.evaluated).ok_or(
+                    EvaluationError::TypeError {
+                        expected: <$type>::expr_type(),
+                        actual: type_of(&expr.evaluated)
+                            .unwrap_or(ExprType::Any),
+                        at_loc: $name.to_string(),
+                    },
+                )?;
+
+                $body.map(|x| x.to_expr())
+            },
+        }
+    };
+
+    // Pattern for two argument function with type checking
+    ($name:expr, $res_type:expr, |$ctx:ident, $param1:ident: $type1:ty, $param2:ident: $type2:ty| $body:expr) => {
         InvokableDefinition {
             name: $name.to_string(),
-            infix: $infix,
+            argument_types: vec![<$type1>::expr_type(), <$type2>::expr_type()],
+            result_type: $res_type,
+            definition: |$ctx, xs: &[TracedExpr]| {
+                let expr1 = xs.get(0).ok_or(
+                    EvaluationError::WrongNumberOfArguments {
+                        expected: 2,
+                        actual: 0,
+                        for_function: $name.to_string(),
+                    },
+                )?;
+
+                let expr2 = xs.get(1).ok_or(
+                    EvaluationError::WrongNumberOfArguments {
+                        expected: 2,
+                        actual: 1,
+                        for_function: $name.to_string(),
+                    },
+                )?;
+
+                let $param1 = <$type1>::try_from_expr(&expr1.evaluated).ok_or(
+                    EvaluationError::TypeError {
+                        expected: <$type1>::expr_type(),
+                        actual: type_of(&expr1.evaluated)
+                            .unwrap_or(ExprType::Any),
+                        at_loc: $name.to_string(),
+                    },
+                )?;
+
+                let $param2 = <$type2>::try_from_expr(&expr2.evaluated).ok_or(
+                    EvaluationError::TypeError {
+                        expected: <$type2>::expr_type(),
+                        actual: type_of(&expr2.evaluated)
+                            .unwrap_or(ExprType::Any),
+                        at_loc: $name.to_string(),
+                    },
+                )?;
+
+                $body.map(|x| x.to_expr())
+            },
+        }
+    };
+
+    // Pattern for single argument function without type checking
+    ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param:ident| $body:expr) => {
+        InvokableDefinition {
+            name: $name.to_string(),
+            argument_types: $arg_types,
+            result_type: $res_type,
             definition: |$ctx, xs: &[TracedExpr]| {
                 let $param = xs
                     .get(0)
@@ -74,11 +150,12 @@ macro_rules! build_invokable {
         }
     };
 
-    // Pattern for two argument function
-    ($name:expr, $infix:expr, |$ctx:ident, $param1:ident, $param2:ident| $body:expr) => {
+    // Pattern for two argument function without type checking.
+    ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident| $body:expr) => {
         InvokableDefinition {
             name: $name.to_string(),
-            infix: $infix,
+            argument_types: $arg_types,
+            result_type: $res_type,
             definition: |$ctx, xs: &[TracedExpr]| {
                 let $param1 = xs
                     .get(0)
@@ -105,199 +182,125 @@ macro_rules! build_invokable {
 }
 
 pub fn ef3r_stdlib<'a>() -> Context<'a> {
-    let mul = build_invokable!("*", true, |_ctx, first, second| {
-        match (first.evaluated, second.evaluated) {
-            (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x * y)),
-            (actual, _) if !matches!(actual, Expr::Int(_)) => {
-                Err(EvaluationError::TypeError {
-                    expected: ExprType::Int,
+    let mul = build_invokable!("*", ExprType::Int, |_cx, x: i32, y: i32| {
+        Ok(x * y)
+    });
+
+    let and =
+        build_invokable!("&&", ExprType::Bool, |_cx, x: bool, y: bool| {
+            Ok(x && y)
+        });
+
+    let or = build_invokable!("||", ExprType::Bool, |_cx, x: bool, y: bool| {
+        Ok(x || y)
+    });
+
+    let not =
+        build_invokable!("not", ExprType::Bool, |_cx, x: bool| { Ok(!x) });
+
+    let assert = build_invokable!("assert", ExprType::Unit, |_cx, x: bool| {
+        assert!(x);
+        Ok(())
+    });
+
+    let add = build_invokable!("+", ExprType::Int, |_cx, x: i32, y: i32| {
+        Ok(x + y)
+    });
+
+    let div = build_invokable!("/", ExprType::Int, |_cx, x: i32, y: i32| {
+        Ok(x / y)
+    });
+
+    let append = build_invokable!(
+        "++",
+        ExprType::String,
+        |_cx, x: String, y: String| { Ok(x.to_owned() + y.as_ref()) }
+    );
+
+    let uppercase =
+        build_invokable!("uppercase", ExprType::String, |_cx, x: String| {
+            Ok(x.to_uppercase())
+        });
+
+    let type_of_fn = build_invokable!(
+        "type_of",
+        ExprType::Type,
+        vec![ExprType::Any],
+        |_cx, first| {
+            Ok(match type_of(&first.evaluated) {
+                Some(x) => Expr::Type(x),
+                None => Expr::None,
+            })
+        }
+    );
+
+    let pair_first_fn = build_invokable!(
+        "first",
+        ExprType::Any,
+        vec![ExprType::Pair(
+            Box::new(ExprType::Any),
+            Box::new(ExprType::Any)
+        )],
+        |_cx, pair| {
+            match pair.evaluated {
+                Expr::Pair(x, _) => Ok(x.evaluated),
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Pair(
+                        Box::new(ExprType::Any),
+                        Box::new(ExprType::Any),
+                    ),
                     actual: type_of(&actual).unwrap(),
-                    at_loc: "*".to_string(),
-                })
+                    at_loc: "first".to_string(),
+                }),
             }
-            (_, actual) => Err(EvaluationError::TypeError {
-                expected: ExprType::Int,
-                actual: type_of(&actual).unwrap(),
-                at_loc: "*".to_string(),
-            }),
         }
-    });
+    );
 
-    let and = build_invokable!("&&", true, |_ctx, first, second| {
-        match (first.evaluated, second.evaluated) {
-            (Expr::Bool(x), Expr::Bool(y)) => Ok(Expr::Bool(x && y)),
-            (actual, _) if !matches!(actual, Expr::Int(_)) => {
-                Err(EvaluationError::TypeError {
-                    expected: ExprType::Bool,
+    let pair_second_fn = build_invokable!(
+        "second",
+        ExprType::Any,
+        vec![ExprType::Pair(
+            Box::new(ExprType::Any),
+            Box::new(ExprType::Any)
+        )],
+        |_cx, pair| {
+            match pair.evaluated {
+                Expr::Pair(_, y) => Ok(y.evaluated),
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Pair(
+                        Box::new(ExprType::Any),
+                        Box::new(ExprType::Any),
+                    ),
                     actual: type_of(&actual).unwrap(),
-                    at_loc: "&&".to_string(),
-                })
+                    at_loc: "second".to_string(),
+                }),
             }
-            (_, actual) => Err(EvaluationError::TypeError {
-                expected: ExprType::Bool,
-                actual: type_of(&actual).unwrap(),
-                at_loc: "&&".to_string(),
-            }),
         }
-    });
+    );
 
-    let or = build_invokable!("||", true, |_ctx, first, second| {
-        match (first.evaluated, second.evaluated) {
-            (Expr::Bool(x), Expr::Bool(y)) => Ok(Expr::Bool(x || y)),
-            (actual, _) if !matches!(actual, Expr::Int(_)) => {
-                Err(EvaluationError::TypeError {
-                    expected: ExprType::Bool,
-                    actual: type_of(&actual).unwrap(),
-                    at_loc: "||".to_string(),
-                })
-            }
-            (_, actual) => Err(EvaluationError::TypeError {
-                expected: ExprType::Bool,
-                actual: type_of(&actual).unwrap(),
-                at_loc: "||".to_string(),
-            }),
+    let pair_fn = build_invokable!(
+        "pair",
+        ExprType::Pair(Box::new(ExprType::Any), Box::new(ExprType::Any)),
+        vec![ExprType::Any, ExprType::Any],
+        |_cx, first, second| {
+            Ok(Expr::Pair(Box::new(first), Box::new(second)))
         }
-    });
+    );
 
-    let not = build_invokable!("not", false, |_ctx, first| {
-        match first.evaluated {
-            Expr::Bool(x) => Ok(Expr::Bool(!x)),
-            actual => Err(EvaluationError::TypeError {
-                expected: ExprType::Bool,
-                actual: type_of(&actual).unwrap(),
-                at_loc: "not".to_string(),
-            }),
+    let print_fn = build_invokable!(
+        "println",
+        ExprType::Unit,
+        vec![ExprType::Any],
+        |_cx, first| {
+            println!("{}", first);
+            Ok(Expr::None)
         }
-    });
-
-    let assert = build_invokable!("assert", false, |_ctx, first| {
-        match first.evaluated {
-            Expr::Bool(x) => {
-                assert!(x);
-                Ok(Expr::Unit)
-            }
-            actual => Err(EvaluationError::TypeError {
-                expected: ExprType::Bool,
-                actual: type_of(&actual).unwrap(),
-                at_loc: "assert".to_string(),
-            }),
-        }
-    });
-
-    let add = build_invokable!("+", true, |_ctx, first, second| {
-        match (first.evaluated, second.evaluated) {
-            (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x + y)),
-            (actual, _) if !matches!(actual, Expr::Int(_)) => {
-                Err(EvaluationError::TypeError {
-                    expected: ExprType::Int,
-                    actual: type_of(&actual).unwrap(),
-                    at_loc: "+".to_string(),
-                })
-            }
-            (_, actual) => Err(EvaluationError::TypeError {
-                expected: ExprType::Int,
-                actual: type_of(&actual).unwrap(),
-                at_loc: "+".to_string(),
-            }),
-        }
-    });
-
-    let div = build_invokable!("/", true, |_ctx, first, second| {
-        match (first.evaluated, second.evaluated) {
-            (Expr::Int(x), Expr::Int(y)) => Ok(Expr::Int(x / y)),
-            (actual, _) if !matches!(actual, Expr::Int(_)) => {
-                Err(EvaluationError::TypeError {
-                    expected: ExprType::Int,
-                    actual: type_of(&actual).unwrap(),
-                    at_loc: "/".to_string(),
-                })
-            }
-            (_, actual) => Err(EvaluationError::TypeError {
-                expected: ExprType::Int,
-                actual: type_of(&actual).unwrap(),
-                at_loc: "/".to_string(),
-            }),
-        }
-    });
-
-    let append = build_invokable!("++", true, |_ctx, first, second| {
-        match (first.evaluated, second.evaluated) {
-            (Expr::String(x), Expr::String(y)) => {
-                Ok(Expr::String(x.to_owned() + y.as_ref()))
-            }
-            (actual, _) if !matches!(actual, Expr::String(_)) => {
-                Err(EvaluationError::TypeError {
-                    expected: ExprType::String,
-                    actual: type_of(&actual).unwrap(),
-                    at_loc: "++".to_string(),
-                })?
-            }
-            (_, actual) => Err(EvaluationError::TypeError {
-                expected: ExprType::String,
-                actual: type_of(&actual).unwrap(),
-                at_loc: "++".to_string(),
-            }),
-        }
-    });
-
-    let uppercase = build_invokable!("uppercase", false, |_ctx, first| {
-        match first.evaluated {
-            Expr::String(x) => Ok(Expr::String(x.to_uppercase())),
-            actual => Err(EvaluationError::TypeError {
-                expected: ExprType::String,
-                actual: type_of(&actual).unwrap(),
-                at_loc: "uppercase".to_string(),
-            }),
-        }
-    });
-
-    let type_of_fn = build_invokable!("type_of", false, |_ctx, first| {
-        Ok(match type_of(&first.evaluated) {
-            Some(x) => Expr::Type(x),
-            None => Expr::None,
-        })
-    });
-
-    let pair_first_fn = build_invokable!("first", false, |_ctx, pair| {
-        match pair.evaluated {
-            Expr::Pair(x, _) => Ok(x.evaluated),
-            actual => Err(EvaluationError::TypeError {
-                expected: ExprType::Pair(
-                    Box::new(ExprType::Any),
-                    Box::new(ExprType::Any),
-                ),
-                actual: type_of(&actual).unwrap(),
-                at_loc: "first".to_string(),
-            }),
-        }
-    });
-
-    let pair_second_fn = build_invokable!("second", false, |_ctx, pair| {
-        match pair.evaluated {
-            Expr::Pair(_, y) => Ok(y.evaluated),
-            actual => Err(EvaluationError::TypeError {
-                expected: ExprType::Pair(
-                    Box::new(ExprType::Any),
-                    Box::new(ExprType::Any),
-                ),
-                actual: type_of(&actual).unwrap(),
-                at_loc: "second".to_string(),
-            }),
-        }
-    });
-
-    let pair_fn = build_invokable!("pair", false, |_ctx, first, second| {
-        Ok(Expr::Pair(Box::new(first), Box::new(second)))
-    });
-
-    let print_fn = build_invokable!("println", false, |_ctx, first| {
-        println!("{}", first);
-        Ok(Expr::None)
-    });
+    );
 
     let readln_fn = InvokableDefinition {
         name: "readln".to_string(),
-        infix: false,
+        argument_types: vec![],
+        result_type: ExprType::String,
         definition: |_, _: &[TracedExpr]| {
             let stdin = io::stdin();
             let result = stdin.lock().lines().next().unwrap().unwrap();
@@ -306,8 +309,11 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         },
     };
 
-    let update_node_fn =
-        build_invokable!("update_node", false, |ctx, first, second| {
+    let update_node_fn = build_invokable!(
+        "update_node",
+        ExprType::Unit,
+        vec![ExprType::Node(Box::new(ExprType::Any)), ExprType::Any],
+        |ctx, first, second| {
             match first.evaluated {
                 Expr::Node(node_id) => {
                     ctx.lock()
@@ -325,10 +331,14 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     at_loc: "update_node".to_string(),
                 }),
             }
-        });
+        }
+    );
 
-    let node_current_value_fn =
-        build_invokable!("current_value", false, |ctx, first| {
+    let node_current_value_fn = build_invokable!(
+        "current_value",
+        ExprType::Any,
+        vec![ExprType::Node(Box::new(ExprType::Any))],
+        |ctx, first| {
             match first.evaluated {
                 Expr::Node(node_id) => {
                     let value = ctx
@@ -347,10 +357,17 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     at_loc: "current_value".to_string(),
                 }),
             }
-        });
+        }
+    );
 
-    let new_node_fn =
-        build_invokable!("new_node", false, |ctx, first, second| {
+    let new_node_fn = build_invokable!(
+        "new_node",
+        ExprType::Pair(
+            Box::new(ExprType::Node(Box::new(ExprType::Any))),
+            Box::new(ExprType::Any)
+        ),
+        vec![ExprType::Type, ExprType::Any],
+        |ctx, first, second| {
             match first.evaluated {
                 Expr::Type(x) => {
                     if type_of(&second.evaluated) == Some(x.clone()) {
@@ -383,58 +400,78 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     at_loc: "new_node".to_string(),
                 }),
             }
-        });
-
-    let launch_fn = build_invokable!("launch", false, |ctx, first| {
-        let thread_ctx = ctx.clone();
-
-        thread::spawn(move || {
-            evaluate_function_application(
-                thread_ctx,
-                &Expr::Apply(Box::new(first), Box::new([])),
-            )
-        });
-        Ok(Expr::Unit)
-    });
-
-    let map_node_fn = build_invokable!("map", false, |ctx, first, second| {
-        match first.evaluated {
-            Expr::Node(node_id) => {
-                let ctx_clone = ctx.clone();
-                let second_clone = second.clone();
-                let transform =
-                    Arc::new(Mutex::new(move |expr: TracedExpr| {
-                        evaluate_function_application(
-                            ctx_clone.clone(),
-                            &Expr::Apply(
-                                Box::new(second_clone.clone()),
-                                Box::new([expr]),
-                            ),
-                        )
-                        .unwrap()
-                    }));
-
-                let fresh_id = map_node(
-                    |_| {},
-                    Arc::new(AtomicBool::new(false)),
-                    ctx.clone(),
-                    NodeIndex::new(node_id),
-                    ExprType::Any,
-                    transform,
-                );
-
-                Ok(Expr::Node(fresh_id.index()))
-            }
-            actual => Err(EvaluationError::TypeError {
-                expected: ExprType::Node(Box::new(ExprType::Any)),
-                actual: type_of(&actual).unwrap(),
-                at_loc: "map_node".to_string(),
-            }),
         }
-    });
+    );
 
-    let filter_node_fn =
-        build_invokable!("filter", false, |ctx, first, second| {
+    let launch_fn = build_invokable!(
+        "launch",
+        ExprType::Unit,
+        vec![ExprType::Func(vec![], Box::new(ExprType::Unit))],
+        |ctx, first| {
+            let thread_ctx = ctx.clone();
+
+            thread::spawn(move || {
+                evaluate_function_application(
+                    thread_ctx,
+                    &Expr::Apply(Box::new(first), Box::new([])),
+                )
+            });
+            Ok(Expr::Unit)
+        }
+    );
+
+    let map_node_fn = build_invokable!(
+        "map",
+        ExprType::Node(Box::new(ExprType::Any)),
+        vec![
+            ExprType::Node(Box::new(ExprType::Any)),
+            ExprType::Func(vec![ExprType::Any], Box::new(ExprType::Any))
+        ],
+        |ctx, first, second| {
+            match first.evaluated {
+                Expr::Node(node_id) => {
+                    let ctx_clone = ctx.clone();
+                    let second_clone = second.clone();
+                    let transform =
+                        Arc::new(Mutex::new(move |expr: TracedExpr| {
+                            evaluate_function_application(
+                                ctx_clone.clone(),
+                                &Expr::Apply(
+                                    Box::new(second_clone.clone()),
+                                    Box::new([expr]),
+                                ),
+                            )
+                            .unwrap()
+                        }));
+
+                    let fresh_id = map_node(
+                        |_| {},
+                        Arc::new(AtomicBool::new(false)),
+                        ctx.clone(),
+                        NodeIndex::new(node_id),
+                        ExprType::Any,
+                        transform,
+                    );
+
+                    Ok(Expr::Node(fresh_id.index()))
+                }
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Node(Box::new(ExprType::Any)),
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "map_node".to_string(),
+                }),
+            }
+        }
+    );
+
+    let filter_node_fn = build_invokable!(
+        "filter",
+        ExprType::Node(Box::new(ExprType::Any)),
+        vec![
+            ExprType::Node(Box::new(ExprType::Any)),
+            ExprType::Func(vec![ExprType::Any], Box::new(ExprType::Bool))
+        ],
+        |ctx, first, second| {
             match first.evaluated {
                 Expr::Node(node_id) => {
                     let ctx_clone = ctx.clone();
@@ -472,49 +509,65 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                     at_loc: "filter_node".to_string(),
                 }),
             }
-        });
-
-    let fold_node_fn = build_invokable!("fold", false, |ctx, first, second| {
-        match first.evaluated {
-            Expr::Node(node_id) => {
-                let ctx_clone = ctx.clone();
-                let second_clone = second.clone();
-                let transform =
-                    Box::new(move |expr: TracedExpr, acc: TracedExpr| {
-                        evaluate_function_application(
-                            ctx_clone.clone(),
-                            &Expr::Apply(
-                                Box::new(second_clone.clone()),
-                                Box::new([expr, acc]),
-                            ),
-                        )
-                        .unwrap()
-                    });
-
-                let fresh_id = fold_node(
-                    |_| {},
-                    Arc::new(AtomicBool::new(false)),
-                    &mut ctx.lock().unwrap().graph,
-                    NodeIndex::new(node_id),
-                    Expr::None.traced(),
-                    transform,
-                );
-
-                Ok(Expr::Node(fresh_id.index()))
-            }
-            actual => Err(EvaluationError::TypeError {
-                expected: ExprType::Node(Box::new(ExprType::Any)),
-                actual: type_of(&actual).unwrap(),
-                at_loc: "fold_node".to_string(),
-            }),
         }
-    });
+    );
 
-    let dbg_trace_full_fn =
-        build_invokable!("dbg_trace_full", false, |_ctx, first| {
+    let fold_node_fn = build_invokable!(
+        "fold",
+        ExprType::Node(Box::new(ExprType::Any)),
+        vec![
+            ExprType::Node(Box::new(ExprType::Any)),
+            ExprType::Func(
+                vec![ExprType::Any, ExprType::Any],
+                Box::new(ExprType::Any)
+            )
+        ],
+        |ctx, first, second| {
+            match first.evaluated {
+                Expr::Node(node_id) => {
+                    let ctx_clone = ctx.clone();
+                    let second_clone = second.clone();
+                    let transform =
+                        Box::new(move |expr: TracedExpr, acc: TracedExpr| {
+                            evaluate_function_application(
+                                ctx_clone.clone(),
+                                &Expr::Apply(
+                                    Box::new(second_clone.clone()),
+                                    Box::new([expr, acc]),
+                                ),
+                            )
+                            .unwrap()
+                        });
+
+                    let fresh_id = fold_node(
+                        |_| {},
+                        Arc::new(AtomicBool::new(false)),
+                        &mut ctx.lock().unwrap().graph,
+                        NodeIndex::new(node_id),
+                        Expr::None.traced(),
+                        transform,
+                    );
+
+                    Ok(Expr::Node(fresh_id.index()))
+                }
+                actual => Err(EvaluationError::TypeError {
+                    expected: ExprType::Node(Box::new(ExprType::Any)),
+                    actual: type_of(&actual).unwrap(),
+                    at_loc: "fold_node".to_string(),
+                }),
+            }
+        }
+    );
+
+    let dbg_trace_full_fn = build_invokable!(
+        "dbg_trace_full",
+        ExprType::Unit,
+        vec![ExprType::Any],
+        |_ctx, first| {
             println!("{}", first.get_trace());
             Ok(Expr::Unit)
-        });
+        }
+    );
 
     // Lookup table for the interpreter
     Context {

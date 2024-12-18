@@ -1,4 +1,7 @@
-use std::fmt::{Display, Pointer};
+use std::{
+    fmt::{Display, Pointer},
+    thread::JoinHandle,
+};
 
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
@@ -213,6 +216,96 @@ impl Display for Expr {
                 f.write_str(")")
             }
         }
+    }
+}
+
+/// Trait to map Rust types to ExprTypes
+pub trait ExprTypeable {
+    fn expr_type() -> ExprType;
+    fn try_from_expr(expr: &Expr) -> Option<Self>
+    where
+        Self: Sized;
+    fn to_expr(self) -> Expr;
+}
+
+// Implementations for basic types
+impl ExprTypeable for i32 {
+    fn expr_type() -> ExprType {
+        ExprType::Int
+    }
+    fn try_from_expr(expr: &Expr) -> Option<Self> {
+        if let Expr::Int(x) = expr {
+            Some(*x)
+        } else {
+            None
+        }
+    }
+    fn to_expr(self) -> Expr {
+        Expr::Int(self)
+    }
+}
+
+impl ExprTypeable for f32 {
+    fn expr_type() -> ExprType {
+        ExprType::Float
+    }
+    fn try_from_expr(expr: &Expr) -> Option<Self> {
+        if let Expr::Float(x) = expr {
+            Some(*x)
+        } else {
+            None
+        }
+    }
+    fn to_expr(self) -> Expr {
+        Expr::Float(self)
+    }
+}
+
+impl ExprTypeable for String {
+    fn expr_type() -> ExprType {
+        ExprType::String
+    }
+    fn try_from_expr(expr: &Expr) -> Option<Self> {
+        if let Expr::String(x) = expr {
+            Some(x.clone())
+        } else {
+            None
+        }
+    }
+    fn to_expr(self) -> Expr {
+        Expr::String(self)
+    }
+}
+
+impl ExprTypeable for bool {
+    fn expr_type() -> ExprType {
+        ExprType::Bool
+    }
+    fn try_from_expr(expr: &Expr) -> Option<Self> {
+        if let Expr::Bool(x) = expr {
+            Some(*x)
+        } else {
+            None
+        }
+    }
+    fn to_expr(self) -> Expr {
+        Expr::Bool(self)
+    }
+}
+
+impl ExprTypeable for () {
+    fn expr_type() -> ExprType {
+        ExprType::Unit
+    }
+    fn try_from_expr(expr: &Expr) -> Option<Self> {
+        if let Expr::Unit = expr {
+            Some(())
+        } else {
+            None
+        }
+    }
+    fn to_expr(self) -> Expr {
+        Expr::Unit
     }
 }
 
