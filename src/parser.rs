@@ -46,7 +46,7 @@ fn lambda_expr(input: &str) -> IResult<&str, RawExpr> {
     )(input)
 }
 
-use crate::ast::{Expr, RawExpr, Statement};
+use crate::ast::{RawExpr, Statement};
 use crate::types::ExprType;
 
 // Utility parsers
