@@ -309,6 +309,34 @@ impl ExprTypeable for () {
     }
 }
 
+impl ExprTypeable for Vec<TracedExpr> {
+    fn expr_type() -> ExprType {
+        ExprType::List(Box::new(ExprType::Any))
+    }
+    fn try_from_expr(expr: &Expr) -> Option<Self> {
+        if let Expr::List(x) = expr {
+            Some(x.clone())
+        } else {
+            None
+        }
+    }
+    fn to_expr(self) -> Expr {
+        Expr::List(self)
+    }
+}
+
+impl ExprTypeable for Expr {
+    fn expr_type() -> ExprType {
+        ExprType::Any
+    }
+    fn try_from_expr(expr: &Expr) -> Option<Self> {
+        Some(expr.clone())
+    }
+    fn to_expr(self) -> Expr {
+        self
+    }
+}
+
 ///
 /// An expression together with an optional un-evaluated
 ///  version of said expression, showing the history of how that expression has
