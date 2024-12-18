@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use ef3r::ast::{Expr, Statement};
+use ef3r::ast::{Expr, RawExpr, Statement};
 use ef3r::interpreter::interpret;
 use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
 
@@ -10,7 +10,7 @@ fn variable_assignment() {
 
     let cloned_ctx = context.clone();
 
-    let expression = Expr::Int(3);
+    let expression = RawExpr::Int(3);
     let statement = Statement {
         var: Some("x".to_string()),
         expr: expression.clone(),
@@ -27,7 +27,7 @@ fn variable_assignment() {
             .get("x")
             .unwrap()
             .evaluated,
-        expression
+        expression.from_raw()
     );
 }
 
@@ -39,11 +39,11 @@ fn reassignment_of_statement() {
 
     let statement1 = Statement {
         var: Some("x".to_string()),
-        expr: Expr::Int(2),
+        expr: RawExpr::Int(2),
     };
     let statement2 = Statement {
         var: Some("x".to_string()),
-        expr: Expr::Int(3),
+        expr: RawExpr::Int(3),
     };
 
     interpret(context, &vec![statement1, statement2]).unwrap();

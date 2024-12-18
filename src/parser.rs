@@ -35,20 +35,18 @@ fn lambda_body(input: &str) -> IResult<&str, Vec<Statement>> {
     )(input)
 }
 
-fn lambda_expr(input: &str) -> IResult<&str, Expr> {
+fn lambda_expr(input: &str) -> IResult<&str, RawExpr> {
     map(
         delimited(
             ws(char('{')),
             tuple((lambda_params, lambda_body)),
             ws(char('}')),
         ),
-        |(params, body)| {
-            Expr::Lambda(params, body, Box::new(Expr::Unit.traced()))
-        },
+        |(params, body)| RawExpr::Lambda(params, body, Box::new(RawExpr::Unit)),
     )(input)
 }
 
-use crate::ast::{Expr, Statement};
+use crate::ast::{Expr, RawExpr, Statement};
 use crate::types::ExprType;
 
 // Utility parsers
@@ -177,59 +175,59 @@ fn symbol(input: &str) -> IResult<&str, String> {
 }
 
 // Literal parsers
-fn float(input: &str) -> IResult<&str, Expr> {
+fn float(input: &str) -> IResult<&str, RawExpr> {
     map(
         tuple((recognize(digit1), char('.'), recognize(digit1))),
         |(int_digits, _, frac_digits): (&str, char, &str)| {
-            Expr::Float(
+            RawExpr::Float(
                 (int_digits.to_owned() + "." + frac_digits).parse().unwrap(),
             )
         },
     )(input)
 }
 
-fn integer(input: &str) -> IResult<&str, Expr> {
+fn integer(input: &str) -> IResult<&str, RawExpr> {
     map(recognize(digit1), |digits: &str| {
-        Expr::Int(digits.parse().unwrap())
+        RawExpr::Int(digits.parse().unwrap())
     })(input)
 }
 
-fn string_literal(input: &str) -> IResult<&str, Expr> {
+fn string_literal(input: &str) -> IResult<&str, RawExpr> {
     map(
         delimited(char('"'), take_while1(|c| c != '"'), char('"')),
-        |s: &str| Expr::String(s.to_string()),
+        |s: &str| RawExpr::String(s.to_string()),
     )(input)
 }
 
-fn boolean(input: &str) -> IResult<&str, Expr> {
+fn boolean(input: &str) -> IResult<&str, RawExpr> {
     alt((
-        map(tag("true"), |_| Expr::Bool(true)),
-        map(tag("false"), |_| Expr::Bool(false)),
+        map(tag("true"), |_| RawExpr::Bool(true)),
+        map(tag("false"), |_| RawExpr::Bool(false)),
     ))(input)
 }
 
-fn literal(input: &str) -> IResult<&str, Expr> {
+fn literal(input: &str) -> IResult<&str, RawExpr> {
     alt((
         float,
         integer,
         string_literal,
         boolean,
-        map(tag("None"), |_| Expr::None),
-        map(tag("()"), |_| Expr::Unit),
+        map(tag("None"), |_| RawExpr::None),
+        map(tag("()"), |_| RawExpr::Unit),
     ))(input)
 }
 
 // Expression parsers
-fn primary_expr(input: &str) -> IResult<&str, Expr> {
+fn primary_expr(input: &str) -> IResult<&str, RawExpr> {
     alt((
         ws(literal),
-        map(ws(type_expr), Expr::Type),
-        map(ws(identifier), Expr::Var),
+        map(ws(type_expr), RawExpr::Type),
+        map(ws(identifier), RawExpr::Var),
         delimited(ws(char('(')), expression, ws(char(')'))),
     ))(input)
 }
 
-fn function_call(input: &str) -> IResult<&str, Expr> {
+fn function_call(input: &str) -> IResult<&str, RawExpr> {
     let (input, func) = identifier(input)?;
 
     // Handle both cases: with parentheses (possibly with args) and without
@@ -258,18 +256,11 @@ fn function_call(input: &str) -> IResult<&str, Expr> {
 
     Ok((
         input,
-        Expr::Apply(
-            Box::new(Expr::Var(func).traced()),
-            final_args
-                .into_iter()
-                .map(|e| e.traced())
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        ),
+        RawExpr::Apply(Box::new(RawExpr::Var(func)), final_args.into()),
     ))
 }
 
-fn binary_expr(input: &str) -> IResult<&str, Expr> {
+fn binary_expr(input: &str) -> IResult<&str, RawExpr> {
     let (input, first) = non_binary_expression(input)?;
 
     let (input, rest) =
@@ -277,16 +268,16 @@ fn binary_expr(input: &str) -> IResult<&str, Expr> {
 
     // Build up the binary expression chain
     let result = rest.into_iter().fold(first, |acc, (sym, right)| {
-        Expr::Apply(
-            Box::new(Expr::Var(sym.to_string()).traced()),
-            vec![acc.traced(), right.traced()].into_boxed_slice(),
+        RawExpr::Apply(
+            Box::new(RawExpr::Var(sym.to_string())),
+            vec![acc, right].into_boxed_slice(),
         )
     });
 
     Ok((input, result))
 }
 
-fn method_call(input: &str) -> IResult<&str, Expr> {
+fn method_call(input: &str) -> IResult<&str, RawExpr> {
     let (input, initial) = primary_expr(input)?;
 
     // Parse zero or more method calls
@@ -305,12 +296,12 @@ fn method_call(input: &str) -> IResult<&str, Expr> {
             .into_iter()
             .fold(initial, |acc, (method, args)| {
                 // Create a new argument list with the receiver as the first argument
-                let mut full_args = vec![acc.traced()];
-                full_args.extend(args.into_iter().map(|e| e.traced()));
+                let mut full_args = vec![acc];
+                full_args.extend(args);
 
                 // Construct the function call expression
-                Expr::Apply(
-                    Box::new(Expr::Var(method).traced()),
+                RawExpr::Apply(
+                    Box::new(RawExpr::Var(method)),
                     full_args.into_boxed_slice(),
                 )
             });
@@ -318,11 +309,11 @@ fn method_call(input: &str) -> IResult<&str, Expr> {
     Ok((input, result))
 }
 
-fn expression(input: &str) -> IResult<&str, Expr> {
+fn expression(input: &str) -> IResult<&str, RawExpr> {
     alt((binary_expr, non_binary_expression))(input)
 }
 
-fn non_binary_expression(input: &str) -> IResult<&str, Expr> {
+fn non_binary_expression(input: &str) -> IResult<&str, RawExpr> {
     alt((lambda_expr, function_call, method_call, primary_expr))(input)
 }
 

@@ -8,7 +8,7 @@ use std::{
 use daggy::{Dag, NodeIndex};
 
 use crate::{
-    ast::{Expr, ExprTypeable, Statement, TracedExpr},
+    ast::{Expr, ExprTypeable, RawExpr, Statement, TracedExpr},
     frp::{filter_node, fold_node, map_node, Node},
     interpreter::{
         evaluate_function_application, Context, EvaluationError,
@@ -863,57 +863,38 @@ fn replace_variables_in_statement(
 ) -> Statement {
     Statement {
         var: stmt.var,
-        expr: replace_variables_in_expr(stmt.expr, stdlib_functions),
+        expr: replace_variables_in_expr_raw(stmt.expr, stdlib_functions),
     }
 }
 
-fn replace_variables_in_traced_expr(
-    traced: TracedExpr,
+fn replace_variables_in_expr_raw(
+    expr: RawExpr,
     stdlib_functions: &HashMap<&str, u32>,
-) -> TracedExpr {
-    let replaced_eval =
-        replace_variables_in_expr(traced.evaluated, stdlib_functions);
-    let replaced_trace = traced
-        .stored_trace
-        .map(|t| replace_variables_in_expr(t, stdlib_functions));
-
-    TracedExpr::build(replaced_eval, replaced_trace)
-}
-
-fn replace_variables_in_expr(
-    expr: Expr,
-    stdlib_functions: &HashMap<&str, u32>,
-) -> Expr {
+) -> RawExpr {
     match expr {
-        Expr::Var(var_name) => {
+        RawExpr::Var(var_name) => {
             if let Some(func_id) = stdlib_functions.get(var_name.as_str()) {
-                Expr::BuiltinFunction(*func_id)
+                RawExpr::BuiltinFunction(*func_id)
             } else {
-                Expr::Var(var_name)
+                RawExpr::Var(var_name)
             }
         }
-        Expr::Apply(func, args) => Expr::Apply(
-            Box::new(replace_variables_in_traced_expr(*func, stdlib_functions)),
+        RawExpr::Apply(func, args) => RawExpr::Apply(
+            Box::new(replace_variables_in_expr_raw(*func, stdlib_functions)),
             args.into_vec()
                 .into_iter()
-                .map(|a| replace_variables_in_traced_expr(a, stdlib_functions))
+                .map(|a| replace_variables_in_expr_raw(a, stdlib_functions))
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         ),
-        Expr::Pair(first, second) => Expr::Pair(
-            Box::new(replace_variables_in_traced_expr(
-                *first,
-                stdlib_functions,
-            )),
-            Box::new(replace_variables_in_traced_expr(
-                *second,
-                stdlib_functions,
-            )),
+        RawExpr::Pair(first, second) => RawExpr::Pair(
+            Box::new(replace_variables_in_expr_raw(*first, stdlib_functions)),
+            Box::new(replace_variables_in_expr_raw(*second, stdlib_functions)),
         ),
-        Expr::Lambda(vars, stmts, body) => Expr::Lambda(
+        RawExpr::Lambda(vars, stmts, body) => RawExpr::Lambda(
             vars,
             resolve_builtin_functions(stmts, stdlib_functions),
-            Box::new(replace_variables_in_traced_expr(*body, stdlib_functions)),
+            Box::new(replace_variables_in_expr_raw(*body, stdlib_functions)),
         ),
         _ => expr,
     }

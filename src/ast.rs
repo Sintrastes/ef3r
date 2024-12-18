@@ -50,9 +50,110 @@ pub enum Expr {
     Var(VariableID),
 }
 
+///
+/// A more compact representation of an expression that does not include any
+///  traces.
+///
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum RawExpr {
+    None,
+    Unit,
+    Int(i32),
+    String(String),
+    Float(f32),
+    Bool(bool),
+    Type(ExprType),
+    Pair(Box<RawExpr>, Box<RawExpr>),
+    List(Vec<RawExpr>),
+    Node(usize),
+    BuiltinFunction(FunctionID),
+    /// Lambda expression with 0+ parameters: \x y z -> f x
+    /// Can either be an "effectful" lambda with statements and a final
+    /// return result, or (if there are no statements), a pure function.
+    Lambda(Vec<VariableID>, Vec<Statement>, Box<RawExpr>),
+    /// Function application: f x
+    Apply(Box<RawExpr>, Box<[RawExpr]>),
+    /// Locally defined variable.
+    Var(VariableID),
+}
+
+impl RawExpr {
+    /// Convert a "raw" format expression into one traced with
+    ///  expression data.
+    pub fn from_raw(&self) -> Expr {
+        match self {
+            RawExpr::None => Expr::None,
+            RawExpr::Unit => Expr::Unit,
+            RawExpr::Int(x) => Expr::Int(*x),
+            RawExpr::String(x) => Expr::String(x.clone()),
+            RawExpr::Float(x) => Expr::Float(*x),
+            RawExpr::Bool(x) => Expr::Bool(*x),
+            RawExpr::Type(x) => Expr::Type(x.clone()),
+            RawExpr::Pair(x, y) => Expr::Pair(
+                Box::new(x.from_raw().traced()),
+                Box::new(y.from_raw().traced()),
+            ),
+            RawExpr::List(xs) => {
+                Expr::List(xs.iter().map(|x| x.from_raw().traced()).collect())
+            }
+            RawExpr::Node(x) => Expr::Node(*x),
+            RawExpr::BuiltinFunction(x) => Expr::BuiltinFunction(*x),
+            RawExpr::Lambda(vars, stmts, body) => Expr::Lambda(
+                vars.clone(),
+                stmts.clone(),
+                Box::new(body.from_raw().traced()),
+            ),
+            RawExpr::Apply(f, args) => Expr::Apply(
+                Box::new(f.from_raw().traced()),
+                args.iter()
+                    .map(|x| x.from_raw().traced())
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            RawExpr::Var(x) => Expr::Var(x.clone()),
+        }
+    }
+}
+
 impl Expr {
     pub fn traced(self) -> TracedExpr {
         TracedExpr::new(self)
+    }
+
+    /// Strip an expression of any "trace" data, converting it into the "raw"
+    ///  format.
+    pub fn to_raw(&self) -> RawExpr {
+        match self {
+            Expr::None => RawExpr::None,
+            Expr::Unit => RawExpr::Unit,
+            Expr::Int(x) => RawExpr::Int(*x),
+            Expr::String(x) => RawExpr::String(x.clone()),
+            Expr::Float(x) => RawExpr::Float(*x),
+            Expr::Bool(x) => RawExpr::Bool(*x),
+            Expr::Type(x) => RawExpr::Type(x.clone()),
+            Expr::Pair(x, y) => RawExpr::Pair(
+                Box::new(x.evaluated.to_raw()),
+                Box::new(y.evaluated.to_raw()),
+            ),
+            Expr::List(xs) => {
+                RawExpr::List(xs.iter().map(|x| x.evaluated.to_raw()).collect())
+            }
+            Expr::Node(x) => RawExpr::Node(*x),
+            Expr::BuiltinFunction(x) => RawExpr::BuiltinFunction(*x),
+            Expr::Lambda(vars, stmts, body) => RawExpr::Lambda(
+                vars.clone(),
+                stmts.clone(),
+                Box::new(body.evaluated.to_raw()),
+            ),
+            Expr::Apply(f, args) => RawExpr::Apply(
+                Box::new(f.evaluated.to_raw()),
+                args.iter()
+                    .map(|x| x.evaluated.to_raw())
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            Expr::Var(x) => RawExpr::Var(x.clone()),
+        }
     }
 }
 
@@ -472,7 +573,7 @@ mod tests {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct Statement {
     pub var: Option<VariableID>,
-    pub expr: Expr,
+    pub expr: RawExpr,
 }
 
 ///
@@ -488,36 +589,31 @@ pub struct DebugInfo {
 }
 
 // Question: How would this work with traced expressions?
-pub fn substitute(variable: String, with: Expr, in_expr: Expr) -> Expr {
+pub fn substitute(
+    variable: String,
+    with: RawExpr,
+    in_expr: RawExpr,
+) -> RawExpr {
     match in_expr {
-        Expr::Pair(x, y) => Expr::Pair(
-            Box::new(
-                substitute(variable.clone(), with.clone(), x.evaluated)
-                    .traced(),
-            ),
-            Box::new(substitute(variable, with, y.evaluated).traced()),
+        RawExpr::Pair(x, y) => RawExpr::Pair(
+            Box::new(substitute(variable.clone(), with.clone(), *x)),
+            Box::new(substitute(variable, with, *y)),
         ),
-        Expr::Apply(f, xs) => Expr::Apply(
-            Box::new(
-                substitute(variable.clone(), with.clone(), f.evaluated)
-                    .traced(),
-            ),
+        RawExpr::Apply(f, xs) => RawExpr::Apply(
+            Box::new(substitute(variable.clone(), with.clone(), *f)),
             xs.into_vec()
                 .into_iter()
-                .map(|x| {
-                    substitute(variable.clone(), with.clone(), x.evaluated)
-                        .traced()
-                })
+                .map(|x| substitute(variable.clone(), with.clone(), x))
                 .collect(),
         ),
-        Expr::Var(x) => {
+        RawExpr::Var(x) => {
             if variable == x {
                 with
             } else {
-                Expr::Var(x)
+                RawExpr::Var(x)
             }
         }
-        Expr::Lambda(_, _, _) => todo!(),
+        RawExpr::Lambda(_, _, _) => todo!(),
         _ => in_expr,
     }
 }

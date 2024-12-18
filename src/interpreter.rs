@@ -206,7 +206,8 @@ pub fn interpret(
     statements: &[Statement],
 ) -> Result<(), EvaluationError> {
     for statement in statements {
-        let evaluated = evaluate(ctx.clone(), statement.expr.clone())?;
+        let evaluated =
+            evaluate(ctx.clone(), statement.expr.clone().from_raw())?;
 
         if let Some(var) = &statement.var {
             ctx.lock()
@@ -314,7 +315,10 @@ fn function_from_expression(
                                     |acc, (var, var_value)| {
                                         substitute(
                                             var.clone(),
-                                            var_value.evaluated.clone(),
+                                            var_value
+                                                .evaluated
+                                                .clone()
+                                                .to_raw(),
                                             acc,
                                         )
                                     },
@@ -336,9 +340,10 @@ fn function_from_expression(
                             |acc, (var, var_value)| {
                                 substitute(
                                     var.clone(),
-                                    var_value.evaluated.clone(),
-                                    acc,
+                                    var_value.evaluated.clone().to_raw(),
+                                    acc.to_raw(),
                                 )
+                                .from_raw()
                             },
                         );
 
