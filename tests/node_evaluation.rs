@@ -199,6 +199,7 @@ fn test_combined_node() {
         context.clone(),
         first_node_index,
         second_node_index,
+        ExprType::Int,
         Box::new(move |x, y| {
             apply_traced(
                 cloned_ctx.clone(),

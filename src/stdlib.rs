@@ -8,7 +8,8 @@ use std::{
 use daggy::{Dag, NodeIndex};
 
 use crate::{
-    ast::{Expr, ExprTypeable, RawExpr, Statement, TracedExpr},
+    ast::{Expr, RawExpr, Statement, TracedExpr},
+    extern_utils::{build_function, ExprTypeable},
     frp::{filter_node, fold_node, map_node, Node},
     interpreter::{
         evaluate_function_application, Context, EvaluationError,
@@ -63,173 +64,6 @@ pub const FOLD_LIST_ID: u32 = 31;
 pub const FIRST_LIST_ID: u32 = 32;
 pub const LAST_LIST_ID: u32 = 33;
 pub const LIST_ID: u32 = 34;
-
-macro_rules! build_function {
-    // Pattern for single argument function with type checking
-    ($name:expr, $res_type:expr, |$ctx:ident, $param:ident: $type:ty| $body:expr) => {
-        FunctionDefinition {
-            argument_types: vec![<$type>::expr_type()],
-            result_type: $res_type,
-            name: $name.to_string(),
-            definition: |$ctx, xs: &[TracedExpr]| {
-                let expr = xs.get(0).ok_or(
-                    EvaluationError::WrongNumberOfArguments {
-                        expected: 1,
-                        actual: 0,
-                        for_function: $name.to_string(),
-                    },
-                )?;
-
-                let $param = <$type>::try_from_expr(&expr.evaluated).ok_or(
-                    EvaluationError::TypeError {
-                        expected: <$type>::expr_type(),
-                        actual: type_of(&expr.evaluated)
-                            .unwrap_or(ExprType::Any),
-                        at_loc: $name.to_string(),
-                    },
-                )?;
-
-                $body.map(|x| x.to_expr())
-            },
-        }
-    };
-
-    // Pattern for two argument function with type checking
-    ($name:expr, $res_type:expr, |$ctx:ident, $param1:ident: $type1:ty, $param2:ident: $type2:ty| $body:expr) => {
-        FunctionDefinition {
-            name: $name.to_string(),
-            argument_types: vec![<$type1>::expr_type(), <$type2>::expr_type()],
-            result_type: $res_type,
-            definition: |$ctx, xs: &[TracedExpr]| {
-                let expr1 = xs.get(0).ok_or(
-                    EvaluationError::WrongNumberOfArguments {
-                        expected: 2,
-                        actual: 0,
-                        for_function: $name.to_string(),
-                    },
-                )?;
-
-                let expr2 = xs.get(1).ok_or(
-                    EvaluationError::WrongNumberOfArguments {
-                        expected: 2,
-                        actual: 1,
-                        for_function: $name.to_string(),
-                    },
-                )?;
-
-                let $param1 = <$type1>::try_from_expr(&expr1.evaluated).ok_or(
-                    EvaluationError::TypeError {
-                        expected: <$type1>::expr_type(),
-                        actual: type_of(&expr1.evaluated)
-                            .unwrap_or(ExprType::Any),
-                        at_loc: $name.to_string(),
-                    },
-                )?;
-
-                let $param2 = <$type2>::try_from_expr(&expr2.evaluated).ok_or(
-                    EvaluationError::TypeError {
-                        expected: <$type2>::expr_type(),
-                        actual: type_of(&expr2.evaluated)
-                            .unwrap_or(ExprType::Any),
-                        at_loc: $name.to_string(),
-                    },
-                )?;
-
-                $body.map(|x| x.to_expr())
-            },
-        }
-    };
-
-    // Pattern for single argument function without type checking
-    ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param:ident| $body:expr) => {
-        FunctionDefinition {
-            name: $name.to_string(),
-            argument_types: $arg_types,
-            result_type: $res_type,
-            definition: |$ctx, xs: &[TracedExpr]| {
-                let $param = xs
-                    .get(0)
-                    .ok_or(EvaluationError::WrongNumberOfArguments {
-                        expected: 1,
-                        actual: 0,
-                        for_function: $name.to_string(),
-                    })?
-                    .clone();
-
-                $body
-            },
-        }
-    };
-
-    // Pattern for two argument function without type checking.
-    ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident| $body:expr) => {
-        FunctionDefinition {
-            name: $name.to_string(),
-            argument_types: $arg_types,
-            result_type: $res_type,
-            definition: |$ctx, xs: &[TracedExpr]| {
-                let $param1 = xs
-                    .get(0)
-                    .ok_or(EvaluationError::WrongNumberOfArguments {
-                        expected: 2,
-                        actual: 0,
-                        for_function: $name.to_string(),
-                    })?
-                    .clone();
-
-                let $param2 = xs
-                    .get(1)
-                    .ok_or(EvaluationError::WrongNumberOfArguments {
-                        expected: 2,
-                        actual: 1,
-                        for_function: $name.to_string(),
-                    })?
-                    .clone();
-
-                $body
-            },
-        }
-    };
-
-    // Pattern for three argument function without type checking.
-    ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident, $param3:ident| $body:expr) => {
-        FunctionDefinition {
-            name: $name.to_string(),
-            argument_types: $arg_types,
-            result_type: $res_type,
-            definition: |$ctx, xs: &[TracedExpr]| {
-                let $param1 = xs
-                    .get(0)
-                    .ok_or(EvaluationError::WrongNumberOfArguments {
-                        expected: 3,
-                        actual: 0,
-                        for_function: $name.to_string(),
-                    })?
-                    .clone();
-
-                let $param2 = xs
-                    .get(1)
-                    .ok_or(EvaluationError::WrongNumberOfArguments {
-                        expected: 3,
-                        actual: 1,
-                        for_function: $name.to_string(),
-                    })?
-                    .clone();
-
-                let $param3 = xs
-                    .get(2)
-                    .ok_or(EvaluationError::WrongNumberOfArguments {
-                        expected: 3,
-                        actual: 2,
-                        for_function: $name.to_string(),
-                    })?
-                    .clone();
-
-                $body
-            },
-        }
-    };
-}
 
 pub fn ef3r_stdlib<'a>() -> Context<'a> {
     let mul = build_function!("*", ExprType::Int, |_cx, x: i32, y: i32| {
@@ -665,6 +499,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
                         Arc::new(AtomicBool::new(false)),
                         ctx.clone(),
                         NodeIndex::new(node_id),
+                        // TODO: Actually get type of function here.
                         ExprType::Any,
                         transform,
                     );
@@ -774,6 +609,8 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
             }
         }
     );
+
+    // TODO: Implement a combine operation for nodes.
 
     let dbg_trace_full_fn = build_function!(
         "dbg_trace_full",

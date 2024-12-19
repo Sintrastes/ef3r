@@ -128,7 +128,7 @@ pub fn map_node(
     let parent_value = {
         let mut context_lock = context.lock().unwrap();
         let graph = &mut context_lock.graph;
-        println!("GOT MAP NODE LOCK");
+
         let value = graph
             .node_weight(parent_index)
             .unwrap()
@@ -233,6 +233,7 @@ pub fn combined_node(
     context: Arc<Mutex<Context>>,
     first_node_index: NodeIndex,
     second_node_index: NodeIndex,
+    result_type: ExprType,
     transform: Box<dyn Fn(TracedExpr, TracedExpr) -> TracedExpr>,
 ) -> NodeIndex {
     let (first_value, second_value) = with_lock(context.as_ref(), |lock| {
@@ -296,8 +297,7 @@ pub fn combined_node(
         });
 
     let new_node = Node {
-        // TODO: Need to derive the actual type here somehow.
-        expr_type: ExprType::Any,
+        expr_type: result_type,
         value: value.clone(),
         dirty,
         traced,
