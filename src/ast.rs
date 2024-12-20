@@ -3,7 +3,12 @@ use std::fmt::{Display, Pointer};
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
-use crate::{interpreter::Context, stdlib::ef3r_stdlib, types::ExprType};
+use crate::{
+    debugging::{Debugger, NoOpDebugger},
+    interpreter::Context,
+    stdlib::ef3r_stdlib,
+    types::ExprType,
+};
 
 pub type FunctionID = u32;
 
@@ -156,15 +161,15 @@ impl Expr {
 
 impl Arbitrary for Expr {
     fn arbitrary(g: &mut Gen) -> Self {
-        let context = ef3r_stdlib();
+        let context = ef3r_stdlib::<NoOpDebugger>();
 
         Self::arbitrary_with_depth(&context, g, 0)
     }
 }
 
 impl Expr {
-    fn arbitrary_with_depth(
-        context: &Context,
+    fn arbitrary_with_depth<T: Debugger + 'static>(
+        context: &Context<T>,
         g: &mut Gen,
         depth: usize,
     ) -> Self {
@@ -238,7 +243,7 @@ impl Expr {
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let context = ef3r_stdlib();
+        let context = ef3r_stdlib::<NoOpDebugger>();
 
         match self {
             Expr::None => f.write_str("None"),
@@ -365,13 +370,14 @@ mod tests {
 
     use crate::{
         ast::Expr,
+        debugging::NoOpDebugger,
         interpreter::{evaluate_traced, unwind_trace},
         stdlib::{ef3r_stdlib, ADD_ID, MUL_ID},
     };
 
     #[test]
     fn evaluation_keeps_trace() {
-        let context = Arc::new(Mutex::new(ef3r_stdlib()));
+        let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
 
         // Example expression.
         let expression = Expr::Apply(
@@ -400,7 +406,7 @@ mod tests {
 
     #[test]
     fn evaluating_twice_keeps_entire_trace() {
-        let context = Arc::new(Mutex::new(ef3r_stdlib()));
+        let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
 
         // Example expression.
         let expression = Expr::Apply(

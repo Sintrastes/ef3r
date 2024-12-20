@@ -123,8 +123,8 @@ impl ExprTypeable for Expr {
 
 macro_rules! build_function {
     // Pattern for single argument function with type checking
-    ($name:expr, $res_type:expr, |$ctx:ident, $param:ident: $type:ty| $body:expr) => {
-        FunctionDefinition {
+    ($debugger:ty, $name:expr, $res_type:expr, |$ctx:ident, $param:ident: $type:ty| $body:expr) => {
+        FunctionDefinition::<$debugger> {
             argument_types: vec![<$type>::expr_type()],
             result_type: $res_type,
             name: $name.to_string(),
@@ -152,8 +152,8 @@ macro_rules! build_function {
     };
 
     // Pattern for two argument function with type checking
-    ($name:expr, $res_type:expr, |$ctx:ident, $param1:ident: $type1:ty, $param2:ident: $type2:ty| $body:expr) => {
-        FunctionDefinition {
+    ($debugger:ty, $name:expr, $res_type:expr, |$ctx:ident, $param1:ident: $type1:ty, $param2:ident: $type2:ty| $body:expr) => {
+        FunctionDefinition::<$debugger> {
             name: $name.to_string(),
             argument_types: vec![<$type1>::expr_type(), <$type2>::expr_type()],
             result_type: $res_type,
@@ -198,8 +198,8 @@ macro_rules! build_function {
     };
 
     // Pattern for single argument function without type checking
-    ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param:ident| $body:expr) => {
-        FunctionDefinition {
+    ($debugger:ty, $name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param:ident| $body:expr) => {
+        FunctionDefinition::<$debugger> {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
@@ -219,8 +219,8 @@ macro_rules! build_function {
     };
 
     // Pattern for two argument function without type checking.
-    ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident| $body:expr) => {
-        FunctionDefinition {
+    ($debugger:ty, $name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident| $body:expr) => {
+        FunctionDefinition::<$debugger> {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
@@ -249,8 +249,8 @@ macro_rules! build_function {
     };
 
     // Pattern for three argument function without type checking.
-    ($name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident, $param3:ident| $body:expr) => {
-        FunctionDefinition {
+    ($debugger:ty, $name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident, $param3:ident| $body:expr) => {
+        FunctionDefinition::<$debugger> {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,

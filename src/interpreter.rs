@@ -7,7 +7,8 @@ use daggy::Dag;
 
 use crate::{
     ast::{substitute, Expr, FunctionID, Statement, TracedExpr, VariableID},
-    frp::Node,
+    debugging::{Debugger, NoOpDebugger, StepDebugger},
+    frp::{with_lock, Node},
     types::ExprType,
 };
 
@@ -16,15 +17,15 @@ use crate::{
 ///  update the FRP event loop.
 ///
 #[derive(Clone)]
-pub struct Context<'a>
+pub struct Context<'a, T: Debugger + 'static>
 where
     'a: 'static,
 {
-    pub expression_context: ExpressionContext,
-    pub graph: Dag<Node<'a>, (), u32>,
+    pub expression_context: ExpressionContext<T>,
+    pub graph: Dag<Node<'a, T>, (), u32>,
 }
 
-unsafe impl<'a> Send for Context<'a> {}
+unsafe impl<'a, T: Debugger> Send for Context<'a, T> {}
 
 #[derive(PartialEq, Debug)]
 pub enum EvaluationError {
@@ -44,17 +45,19 @@ pub enum EvaluationError {
 }
 
 #[derive(Clone)]
-pub struct FunctionDefinition {
+pub struct FunctionDefinition<T: Debugger + 'static> {
     pub argument_types: Vec<ExprType>,
     pub result_type: ExprType,
-    pub definition:
-        fn(Arc<Mutex<Context>>, &[TracedExpr]) -> Result<Expr, EvaluationError>,
+    pub definition: fn(
+        Arc<Mutex<Context<T>>>,
+        &[TracedExpr],
+    ) -> Result<Expr, EvaluationError>,
     pub name: String,
 }
 
 #[derive(Clone)]
-pub struct ExpressionContext {
-    pub functions: HashMap<FunctionID, FunctionDefinition>,
+pub struct ExpressionContext<T: Debugger + 'static> {
+    pub functions: HashMap<FunctionID, FunctionDefinition<T>>,
     pub variables: HashMap<VariableID, TracedExpr>,
 }
 
@@ -83,12 +86,12 @@ pub fn unwind_trace(expr: TracedExpr) -> TracedExpr {
 }
 
 // Apply an expression to a list of arguments in a traced manner.
-pub fn apply_traced(
-    ctx: Arc<Mutex<Context>>,
+pub fn apply_traced<T: Debugger + 'static>(
+    ctx: Arc<Mutex<Context<T>>>,
     expr: TracedExpr,
     args: &[TracedExpr],
 ) -> Result<TracedExpr, EvaluationError> {
-    let evaluated = evaluate(
+    let evaluated = evaluate::<T>(
         ctx.clone(),
         Expr::Apply(
             Box::new(expr.evaluated.clone().traced()),
@@ -131,42 +134,45 @@ pub fn apply_traced(
     })
 }
 
-pub fn evaluate_traced(
-    ctx: Arc<Mutex<Context>>,
+pub fn evaluate_traced<T: Debugger + 'static>(
+    ctx: Arc<Mutex<Context<T>>>,
     expr: TracedExpr,
 ) -> Result<TracedExpr, EvaluationError> {
-    evaluate_traced_rec(ctx, expr.evaluated.clone())
+    evaluate_traced_rec::<T>(ctx, expr.evaluated.clone())
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::{ast::Expr, interpreter::evaluate, stdlib::ef3r_stdlib};
+    use crate::{
+        ast::Expr, debugging::NoOpDebugger, interpreter::evaluate,
+        stdlib::ef3r_stdlib,
+    };
 
     quickcheck! {
         fn evaluation_is_idempotent(expr: Expr) -> bool {
             let context = Arc::new(Mutex::new(ef3r_stdlib()));
 
             println!("Evaluating: {}", expr.clone());
-            let evaluated = evaluate(context.clone(), expr);
+            let evaluated = evaluate::<NoOpDebugger>(context.clone(), expr);
             match evaluated {
                 Err(_) => true, // Property does not apply if expression is malformed.
-                Ok(inner) => Ok(inner.clone()) == evaluate(context, inner.evaluated),
+                Ok(inner) => Ok(inner.clone()) == evaluate::<NoOpDebugger>(context, inner.evaluated),
             }
         }
     }
 }
 
-pub fn evaluate(
-    ctx: Arc<Mutex<Context>>,
+pub fn evaluate<T: Debugger + 'static>(
+    ctx: Arc<Mutex<Context<T>>>,
     expr: Expr,
 ) -> Result<TracedExpr, EvaluationError> {
-    evaluate_traced_rec(ctx, expr)
+    evaluate_traced_rec::<T>(ctx, expr)
 }
 
-fn evaluate_traced_rec(
-    ctx: Arc<Mutex<Context>>,
+fn evaluate_traced_rec<T: Debugger + 'static>(
+    ctx: Arc<Mutex<Context<T>>>,
     expr: Expr,
 ) -> Result<TracedExpr, EvaluationError> {
     match expr {
@@ -185,7 +191,7 @@ fn evaluate_traced_rec(
         Expr::List(_) => Ok(expr.traced()),
         // Function applications need to be reduced.
         Expr::Apply(_, _) => {
-            evaluate_function_application(ctx, &(expr.clone()))
+            evaluate_function_application::<T>(ctx, &(expr.clone()))
         }
         // Variables are looked up in the current context.
         Expr::Var(x) => Ok(ctx
@@ -201,13 +207,16 @@ fn evaluate_traced_rec(
 
 /// Entrypoint for the ef3r interpreter. Takes a list of a statements
 ///  and executes them.
-pub fn interpret(
-    ctx: Arc<Mutex<Context>>,
+pub fn interpret<T>(
+    ctx: Arc<Mutex<Context<T>>>,
     statements: &[Statement],
-) -> Result<(), EvaluationError> {
+) -> Result<(), EvaluationError>
+where
+    T: Debugger + 'static,
+{
     for statement in statements {
         let evaluated =
-            evaluate(ctx.clone(), statement.expr.clone().from_raw())?;
+            evaluate::<T>(ctx.clone(), statement.expr.clone().from_raw())?;
 
         if let Some(var) = &statement.var {
             ctx.lock()
@@ -216,25 +225,28 @@ pub fn interpret(
                 .variables
                 .insert(var.clone(), evaluated);
         };
+
+        with_lock(ctx.as_ref(), |locked| T::suspend(locked));
     }
 
     Ok(())
 }
 
-pub fn evaluate_function_application(
-    ctx: Arc<Mutex<Context>>,
+pub fn evaluate_function_application<T: Debugger + 'static>(
+    ctx: Arc<Mutex<Context<T>>>,
     action_expr: &Expr,
 ) -> Result<TracedExpr, EvaluationError> {
     match &action_expr {
         Expr::Apply(action, args) => {
             let evaluated_args: Result<Vec<TracedExpr>, _> = args
                 .into_iter()
-                .map(|arg| evaluate_traced(ctx.clone(), arg.clone()))
+                .map(|arg| evaluate_traced::<T>(ctx.clone(), arg.clone()))
                 .collect();
 
-            let evaluated_fn = evaluate(ctx.clone(), action.clone().evaluated)?
-                .evaluated
-                .clone();
+            let evaluated_fn =
+                evaluate::<T>(ctx.clone(), action.clone().evaluated)?
+                    .evaluated
+                    .clone();
 
             let expanded_args = args
                 .iter()
@@ -258,7 +270,7 @@ pub fn evaluate_function_application(
                 .collect();
 
             let action_fn =
-                function_from_expression(ctx.clone(), evaluated_fn)?;
+                function_from_expression::<T>(ctx.clone(), evaluated_fn)?;
 
             Ok(TracedExpr::build(
                 (action_fn)(ctx, &evaluated_args?.as_mut_slice())?,
@@ -269,13 +281,13 @@ pub fn evaluate_function_application(
     }
 }
 
-fn function_from_expression(
-    ctx: Arc<Mutex<Context>>,
+fn function_from_expression<T: Debugger + 'static>(
+    ctx: Arc<Mutex<Context<T>>>,
     resolved: Expr,
 ) -> Result<
     Box<
         dyn Fn(
-            Arc<Mutex<Context>>,
+            Arc<Mutex<Context<T>>>,
             &[TracedExpr],
         ) -> Result<Expr, EvaluationError>,
     >,
@@ -296,7 +308,8 @@ fn function_from_expression(
             let statements = statements.clone();
             let result = result.clone();
             Box::new(
-                move |ctx: Arc<Mutex<Context>>, var_values: &[TracedExpr]| {
+                move |ctx: Arc<Mutex<Context<T>>>,
+                      var_values: &[TracedExpr]| {
                     if vars.len() != var_values.len() {
                         return Err(EvaluationError::WrongNumberOfArguments {
                             expected: vars.len(),
@@ -331,7 +344,7 @@ fn function_from_expression(
                         .collect();
 
                     // Run the substituted statements
-                    interpret(ctx.clone(), &substituted_statements)?;
+                    interpret::<T>(ctx.clone(), &substituted_statements)?;
 
                     // Substitute variables in result expression
                     let substituted_result_expr =
@@ -349,7 +362,7 @@ fn function_from_expression(
 
                     // Run the result to get the return value
                     let result: Result<Expr, EvaluationError> =
-                        evaluate(ctx, substituted_result_expr)
+                        evaluate::<T>(ctx, substituted_result_expr)
                             .map(|x| x.evaluated);
 
                     result

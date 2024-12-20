@@ -1,12 +1,13 @@
 use std::sync::{Arc, Mutex};
 
 use ef3r::ast::{Expr, RawExpr, Statement};
+use ef3r::debugging::NoOpDebugger;
 use ef3r::interpreter::interpret;
 use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
 
 #[test]
 fn variable_assignment() {
-    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
 
     let cloned_ctx = context.clone();
 
@@ -33,7 +34,7 @@ fn variable_assignment() {
 
 #[test]
 fn reassignment_of_statement() {
-    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
 
     let cloned_ctx = context.clone();
 
@@ -110,7 +111,7 @@ fn execute_example_program() {
         };
     "#;
 
-    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
     let mut parsed_program = ef3r::parser::parse(&program).unwrap();
 
     let context_lock = context.lock().unwrap();
@@ -132,7 +133,7 @@ fn execute_example_program() {
 
 #[test]
 fn pair_accessors_fail_on_nonpair() {
-    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
 
     let program = r#"
         let x = 42;
@@ -155,7 +156,7 @@ fn pair_accessors_fail_on_nonpair() {
 
 #[test]
 fn arithmetic_operators_wrong_args() {
-    let context = Arc::new(Mutex::new(ef3r_stdlib()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
 
     let program = r#"
         let x = "test" + 42;

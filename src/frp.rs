@@ -9,8 +9,8 @@ use daggy::{
 };
 
 use crate::{
-    ast::TracedExpr, interpreter::Context, typechecking::type_of,
-    types::ExprType,
+    ast::TracedExpr, debugging::Debugger, interpreter::Context,
+    typechecking::type_of, types::ExprType,
 };
 
 ///
@@ -39,7 +39,7 @@ use crate::{
 /// In other words, `Event<T>` can be thought of as just a `Behavior<Option<T>>`.
 ///
 #[derive(Clone)]
-pub struct Node<'a: 'static> {
+pub struct Node<'a: 'static, T: Debugger + 'static> {
     /// The type of expressions used in the node.
     expr_type: ExprType,
     /// The underlying value held by this node.
@@ -59,10 +59,10 @@ pub struct Node<'a: 'static> {
     /// Action to perform to update state of this node when one of its dependencies
     /// has updated one of its values.
     on_dependency_update:
-        Arc<dyn Fn(Arc<Mutex<Context<'a>>>, NodeIndex, TracedExpr)>,
+        Arc<dyn Fn(Arc<Mutex<Context<'a, T>>>, NodeIndex, TracedExpr)>,
 }
 
-impl<'a> Node<'a> {
+impl<'a, T: Debugger + 'static> Node<'a, T> {
     ///
     /// Get the current value of the node.
     ///
@@ -76,7 +76,7 @@ impl<'a> Node<'a> {
     pub fn new(
         on_update: fn(TracedExpr),
         traced: Arc<AtomicBool>,
-        graph: &mut Dag<Node<'a>, (), u32>,
+        graph: &mut Dag<Node<'a, T>, (), u32>,
         expr_type: ExprType,
         initial: TracedExpr,
     ) -> NodeIndex {
@@ -117,10 +117,10 @@ impl<'a> Node<'a> {
 ///
 /// Build a variant of a node whose values are mapped.
 ///
-pub fn map_node(
+pub fn map_node<T: Debugger + 'static>(
     on_update: fn(TracedExpr),
     traced: Arc<AtomicBool>,
-    context: Arc<Mutex<Context>>,
+    context: Arc<Mutex<Context<T>>>,
     parent_index: NodeIndex,
     result_type: ExprType,
     transform: Arc<Mutex<dyn Fn(TracedExpr) -> TracedExpr>>,
@@ -152,7 +152,7 @@ pub fn map_node(
     let cloned = value.clone();
 
     let on_dependency_update =
-        Arc::new(move |_ctx: Arc<Mutex<Context>>, id, new_value| {
+        Arc::new(move |_ctx: Arc<Mutex<Context<T>>>, id, new_value| {
             if id == parent_index {
                 // Update the value to transform of new_value.
                 *cloned.write().unwrap() =
@@ -182,10 +182,10 @@ pub fn map_node(
 ///
 /// Build a variant of a node whose values are filtered by the given predicate.
 ///
-pub fn filter_node(
+pub fn filter_node<T: Debugger + 'static>(
     on_update: fn(TracedExpr),
     traced: Arc<AtomicBool>,
-    graph: &mut Dag<Node, (), u32>,
+    graph: &mut Dag<Node<T>, (), u32>,
     parent_index: NodeIndex,
     predicate: Box<dyn Fn(TracedExpr) -> bool>,
 ) -> NodeIndex {
@@ -199,12 +199,13 @@ pub fn filter_node(
 
     let cloned = value.clone();
 
-    let on_dependency_update =
-        Arc::new(move |_: Arc<Mutex<Context>>, id, new_value: TracedExpr| {
+    let on_dependency_update = Arc::new(
+        move |_: Arc<Mutex<Context<T>>>, id, new_value: TracedExpr| {
             if id == parent_index && predicate(new_value.clone()) {
                 *cloned.write().unwrap() = new_value;
             }
-        });
+        },
+    );
 
     let new_node = Node {
         expr_type: parent.expr_type.clone(),
@@ -227,10 +228,10 @@ pub fn filter_node(
 ///
 /// The resultant node will update whenever either of the input nodes updates.
 ///
-pub fn combined_node(
+pub fn combined_node<T: Debugger + 'static>(
     on_update: fn(TracedExpr),
     traced: Arc<AtomicBool>,
-    context: Arc<Mutex<Context>>,
+    context: Arc<Mutex<Context<T>>>,
     first_node_index: NodeIndex,
     second_node_index: NodeIndex,
     result_type: ExprType,
@@ -257,8 +258,8 @@ pub fn combined_node(
 
     let cloned = value.clone();
 
-    let on_dependency_update =
-        Arc::new(move |ctx: Arc<Mutex<Context>>, id, new_value: TracedExpr| {
+    let on_dependency_update = Arc::new(
+        move |ctx: Arc<Mutex<Context<T>>>, id, new_value: TracedExpr| {
             let ctx = ctx.lock().unwrap();
 
             println!("Updating node {:?}", id);
@@ -294,7 +295,8 @@ pub fn combined_node(
                 }
                 _ => (),
             }
-        });
+        },
+    );
 
     let new_node = Node {
         expr_type: result_type,
@@ -322,10 +324,10 @@ pub fn combined_node(
     })
 }
 
-pub fn fold_node<'a>(
+pub fn fold_node<'a, T: Debugger + 'static>(
     on_update: fn(TracedExpr),
     traced: Arc<AtomicBool>,
-    graph: &mut Dag<Node, (), u32>,
+    graph: &mut Dag<Node<T>, (), u32>,
     event_index: NodeIndex,
     initial: TracedExpr,
     fold: Box<dyn Fn(TracedExpr, TracedExpr) -> TracedExpr>,
@@ -386,7 +388,7 @@ pub fn fold_node<'a>(
 ///  and the same odering of external events, the resulting state of the entire
 ///  FRP network is gaurnteed to be the same.
 ///
-pub fn event_loop(ctx: Arc<Mutex<Context>>) {
+pub fn event_loop<T: Debugger + 'static>(ctx: Arc<Mutex<Context<T>>>) {
     loop {
         process_event_frame(ctx.clone());
     }
@@ -396,7 +398,7 @@ pub fn event_loop(ctx: Arc<Mutex<Context>>) {
 /// Runs a single iteration of the [event_loop], for testing purposes, or for integrating
 /// into a custom workflow.
 ///
-pub fn process_event_frame(ctx: Arc<Mutex<Context>>) {
+pub fn process_event_frame<T: Debugger + 'static>(ctx: Arc<Mutex<Context<T>>>) {
     let ctx_copy = ctx.clone();
 
     let ctx_lock = ctx.lock().unwrap();

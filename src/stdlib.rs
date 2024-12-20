@@ -9,6 +9,7 @@ use daggy::{Dag, NodeIndex};
 
 use crate::{
     ast::{Expr, RawExpr, Statement, TracedExpr},
+    debugging::Debugger,
     extern_utils::{build_function, ExprTypeable},
     frp::{filter_node, fold_node, map_node, Node},
     interpreter::{
@@ -65,50 +66,57 @@ pub const FIRST_LIST_ID: u32 = 32;
 pub const LAST_LIST_ID: u32 = 33;
 pub const LIST_ID: u32 = 34;
 
-pub fn ef3r_stdlib<'a>() -> Context<'a> {
-    let mul = build_function!("*", ExprType::Int, |_cx, x: i32, y: i32| {
+pub fn ef3r_stdlib<'a, T: Debugger + 'static>() -> Context<'a, T> {
+    let mul = build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
         Ok(x * y)
     });
 
-    let and = build_function!("&&", ExprType::Bool, |_cx, x: bool, y: bool| {
-        Ok(x && y)
-    });
+    let and =
+        build_function!(T, "&&", ExprType::Bool, |_cx, x: bool, y: bool| {
+            Ok(x && y)
+        });
 
-    let or = build_function!("||", ExprType::Bool, |_cx, x: bool, y: bool| {
-        Ok(x || y)
-    });
+    let or =
+        build_function!(T, "||", ExprType::Bool, |_cx, x: bool, y: bool| {
+            Ok(x || y)
+        });
 
-    let not = build_function!("not", ExprType::Bool, |_cx, x: bool| { Ok(!x) });
+    let not =
+        build_function!(T, "not", ExprType::Bool, |_cx, x: bool| { Ok(!x) });
 
-    let assert = build_function!("assert", ExprType::Unit, |_cx, x: bool| {
-        assert!(x);
-        Ok(())
-    });
+    let assert =
+        build_function!(T, "assert", ExprType::Unit, |_cx, x: bool| {
+            assert!(x);
+            Ok(())
+        });
 
-    let add = build_function!("+", ExprType::Int, |_cx, x: i32, y: i32| {
+    let add = build_function!(T, "+", ExprType::Int, |_cx, x: i32, y: i32| {
         Ok(x + y)
     });
 
-    let div = build_function!("/", ExprType::Int, |_cx, x: i32, y: i32| {
+    let div = build_function!(T, "/", ExprType::Int, |_cx, x: i32, y: i32| {
         Ok(x / y)
     });
 
-    let append =
-        build_function!("++", ExprType::String, |_cx, x: String, y: String| {
-            Ok(x.to_owned() + y.as_ref())
-        });
+    let append = build_function!(
+        T,
+        "++",
+        ExprType::String,
+        |_cx, x: String, y: String| { Ok(x.to_owned() + y.as_ref()) }
+    );
 
     let uppercase =
-        build_function!("uppercase", ExprType::String, |_cx, x: String| {
+        build_function!(T, "uppercase", ExprType::String, |_cx, x: String| {
             Ok(x.to_uppercase())
         });
 
     let lowercase =
-        build_function!("lowercase", ExprType::String, |_cx, x: String| {
+        build_function!(T, "lowercase", ExprType::String, |_cx, x: String| {
             Ok(x.to_lowercase())
         });
 
     let drop_list_fn = build_function!(
+        T,
         "drop",
         ExprType::List(Box::new(ExprType::Any)),
         |_cx, list: Vec<TracedExpr>, n: i32| {
@@ -121,6 +129,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let drop_last_list_fn = build_function!(
+        T,
         "drop_last",
         ExprType::List(Box::new(ExprType::Any)),
         |_cx, list: Vec<TracedExpr>, n: i32| {
@@ -143,12 +152,14 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     };
 
     let length_list_fn = build_function!(
+        T,
         "length",
         ExprType::Int,
         |_cx, list: Vec<TracedExpr>| { Ok(list.len() as i32) }
     );
 
     let append_lists_fn = build_function!(
+        T,
         "++",
         ExprType::List(Box::new(ExprType::Any)),
         |_cx, list1: Vec<TracedExpr>, list2: Vec<TracedExpr>| {
@@ -159,6 +170,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let map_list_fn = build_function!(
+        T,
         "map",
         ExprType::List(Box::new(ExprType::Any)),
         vec![
@@ -189,6 +201,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let filter_list_fn = build_function!(
+        T,
         "filter",
         ExprType::List(Box::new(ExprType::Any)),
         vec![
@@ -224,6 +237,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let fold_list_fn = build_function!(
+        T,
         "fold",
         ExprType::Any,
         vec![
@@ -254,25 +268,32 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
         }
     );
 
-    let first_list_fn = build_function!("first", ExprType::Any, |_cx,
-                                                                 list: Vec<
-        TracedExpr,
-    >| {
-        Ok(list
-            .first()
-            .map(|x| x.evaluated.clone())
-            .unwrap_or(Expr::None))
-    });
+    let first_list_fn = build_function!(
+        T,
+        "first",
+        ExprType::Any,
+        |_cx, list: Vec<TracedExpr>| {
+            Ok(list
+                .first()
+                .map(|x| x.evaluated.clone())
+                .unwrap_or(Expr::None))
+        }
+    );
 
-    let last_list_fn =
-        build_function!("last", ExprType::Any, |_cx, list: Vec<TracedExpr>| {
+    let last_list_fn = build_function!(
+        T,
+        "last",
+        ExprType::Any,
+        |_cx, list: Vec<TracedExpr>| {
             Ok(list
                 .last()
                 .map(|x| x.evaluated.clone())
                 .unwrap_or(Expr::None))
-        });
+        }
+    );
 
     let type_of_fn = build_function!(
+        T,
         "type_of",
         ExprType::Type,
         vec![ExprType::Any],
@@ -285,6 +306,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let pair_first_fn = build_function!(
+        T,
         "first",
         ExprType::Any,
         vec![ExprType::Pair(
@@ -307,6 +329,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let pair_second_fn = build_function!(
+        T,
         "second",
         ExprType::Any,
         vec![ExprType::Pair(
@@ -329,6 +352,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let pair_fn = build_function!(
+        T,
         "pair",
         ExprType::Pair(Box::new(ExprType::Any), Box::new(ExprType::Any)),
         vec![ExprType::Any, ExprType::Any],
@@ -338,6 +362,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let print_fn = build_function!(
+        T,
         "println",
         ExprType::Unit,
         vec![ExprType::Any],
@@ -360,6 +385,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     };
 
     let update_node_fn = build_function!(
+        T,
         "update_node",
         ExprType::Unit,
         vec![ExprType::Node(Box::new(ExprType::Any)), ExprType::Any],
@@ -385,6 +411,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let node_current_value_fn = build_function!(
+        T,
         "current_value",
         ExprType::Any,
         vec![ExprType::Node(Box::new(ExprType::Any))],
@@ -411,6 +438,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let new_node_fn = build_function!(
+        T,
         "new_node",
         ExprType::Pair(
             Box::new(ExprType::Node(Box::new(ExprType::Any))),
@@ -454,6 +482,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let launch_fn = build_function!(
+        T,
         "launch",
         ExprType::Unit,
         vec![ExprType::Func(vec![], Box::new(ExprType::Unit))],
@@ -471,6 +500,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let map_node_fn = build_function!(
+        T,
         "map",
         ExprType::Node(Box::new(ExprType::Any)),
         vec![
@@ -516,6 +546,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let filter_node_fn = build_function!(
+        T,
         "filter",
         ExprType::Node(Box::new(ExprType::Any)),
         vec![
@@ -564,6 +595,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     );
 
     let fold_node_fn = build_function!(
+        T,
         "fold",
         ExprType::Node(Box::new(ExprType::Any)),
         vec![
@@ -613,6 +645,7 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     // TODO: Implement a combine operation for nodes.
 
     let dbg_trace_full_fn = build_function!(
+        T,
         "dbg_trace_full",
         ExprType::Unit,
         vec![ExprType::Any],
@@ -669,7 +702,9 @@ pub fn ef3r_stdlib<'a>() -> Context<'a> {
     }
 }
 
-pub fn get_stdlib_functions<'a>(stdlib: &'a Context) -> HashMap<&'a str, u32> {
+pub fn get_stdlib_functions<'a, T: Debugger + 'static>(
+    stdlib: &'a Context<T>,
+) -> HashMap<&'a str, u32> {
     stdlib
         .expression_context
         .functions

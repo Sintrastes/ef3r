@@ -1,4 +1,5 @@
 use ef3r::ast::Statement;
+use ef3r::debugging::{NoOpDebugger, StepDebugger};
 use ef3r::interpreter::{self};
 use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
 use std::sync::{Arc, Mutex};
@@ -20,7 +21,19 @@ fn main() -> Result<(), String> {
                 bincode::deserialize_from(File::open(file_path).unwrap())
                     .unwrap();
 
-            let context = Arc::new(Mutex::new(ef3r_stdlib()));
+            let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
+
+            interpreter::interpret(context, &program).unwrap();
+        }
+        "debug" => {
+            // Executes an ef3r bytecode file.
+            let file_path = args.get(2).ok_or("File not specified")?.as_str();
+
+            let program: Vec<Statement> =
+                bincode::deserialize_from(File::open(file_path).unwrap())
+                    .unwrap();
+
+            let context = Arc::new(Mutex::new(ef3r_stdlib::<StepDebugger>()));
 
             interpreter::interpret(context, &program).unwrap();
         }
@@ -35,7 +48,7 @@ fn main() -> Result<(), String> {
 
             let mut parsed_program = ef3r::parser::parse(&source)?;
 
-            let stdlib = ef3r_stdlib();
+            let stdlib = ef3r_stdlib::<NoOpDebugger>();
             let stdlib_functions = get_stdlib_functions(&stdlib);
 
             parsed_program = ef3r::stdlib::resolve_builtin_functions(
@@ -46,9 +59,6 @@ fn main() -> Result<(), String> {
             let mut out_file = File::create(out_path).unwrap();
             let encoded: Vec<u8> = bincode::serialize(&parsed_program).unwrap();
             out_file.write(&encoded).unwrap();
-        }
-        "debug" => {
-            // Debug a running ef3r process.
         }
         _ => Err(UNKNOWN_COMMAND)?,
     }
