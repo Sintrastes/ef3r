@@ -657,6 +657,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>() -> Context<'a, T> {
 
     // Lookup table for the interpreter
     Context {
+        debugger: T::new(),
         expression_context: ExpressionContext {
             functions: HashMap::from([
                 (MUL_ID, mul),
@@ -728,6 +729,7 @@ fn replace_variables_in_statement(
     stdlib_functions: &HashMap<&str, u32>,
 ) -> Statement {
     Statement {
+        location: stmt.location,
         var: stmt.var,
         expr: replace_variables_in_expr_raw(stmt.expr, stdlib_functions),
     }

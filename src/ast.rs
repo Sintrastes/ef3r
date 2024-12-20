@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     debugging::{Debugger, NoOpDebugger},
     interpreter::Context,
+    parser::CodeLocation,
     stdlib::ef3r_stdlib,
     types::ExprType,
 };
@@ -457,6 +458,7 @@ mod tests {
 ///
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct Statement {
+    pub location: CodeLocation,
     pub var: Option<VariableID>,
     pub expr: RawExpr,
 }

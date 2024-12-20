@@ -36,7 +36,9 @@
 // See also: https://crates.io/crates/tower-lsp
 //
 
-use crate::interpreter::Context;
+use std::collections::HashSet;
+
+use crate::{interpreter::Context, parser::CodeLocation};
 
 ///
 /// Interface for an ef3r debugger.
@@ -44,7 +46,9 @@ use crate::interpreter::Context;
 pub trait Debugger: Sized {
     /// Suspend execution of the interpreter and
     ///  inject the debugging environment.
-    fn suspend(ctx: &mut Context<Self>);
+    fn suspend(&mut self, location: CodeLocation, ctx: &mut Context<Self>);
+
+    fn new() -> Self;
 }
 
 /// A debugger that does nothing, allowing
@@ -52,32 +56,76 @@ pub trait Debugger: Sized {
 pub struct NoOpDebugger {}
 
 impl Debugger for NoOpDebugger {
-    fn suspend(ctx: &mut Context<Self>) {}
+    fn suspend(&mut self, location: CodeLocation, ctx: &mut Context<Self>) {}
+
+    fn new() -> Self {
+        NoOpDebugger {}
+    }
 }
 
 /// A simple "stepping" debugger that allows execution
 ///  to occur one step at a time and allows the user to
 ///  enter simple commands manipulating the environment.
-pub struct StepDebugger {}
+pub struct StepDebugger {
+    breakpoints: HashSet<(usize, u32)>,
+    initial_suspend: bool,
+}
 
 impl Debugger for StepDebugger {
-    fn suspend(ctx: &mut Context<Self>) {
-        println!("DBG - type :k to continue, :show [var] to examine the value of variables.");
-        loop {
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
-            let input = input.trim();
+    fn new() -> StepDebugger {
+        StepDebugger {
+            breakpoints: HashSet::new(),
+            // Suspend initially to give the user a chance to set breakpoints.
+            initial_suspend: true,
+        }
+    }
 
-            if input == ":k" {
-                break;
-            } else if input.starts_with(":show ") {
-                let var_name = input.trim_start_matches(":show ").trim();
-                match ctx.expression_context.variables.get(var_name) {
-                    Some(val) => println!("{} = {:?}", var_name, val),
-                    None => println!("DBG - Variable '{}' not found", var_name),
+    fn suspend(&mut self, location: CodeLocation, ctx: &mut Context<Self>) {
+        if self.initial_suspend
+            || self.breakpoints.contains(&(location.column, location.line))
+        {
+            println!("PAUSED AT (line {}, column {}): Type :k to continue, :show [var] to examine the value of variables.", location.line, location.column);
+            loop {
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).unwrap();
+                let input = input.trim();
+
+                if input == ":k" {
+                    break;
+                } else if input.starts_with(":show ") {
+                    let var_name = input.trim_start_matches(":show ").trim();
+                    match ctx.expression_context.variables.get(var_name) {
+                        Some(val) => println!("{} = {:?}", var_name, val),
+                        None => {
+                            println!(
+                                "DEBUGGER: Variable '{}' not found",
+                                var_name
+                            )
+                        }
+                    }
+                } else if input.starts_with(":break ") {
+                    let mut parts =
+                        input.trim_start_matches(":break ").split_whitespace();
+                    if let (Some(line), Some(col)) =
+                        (parts.next(), parts.next())
+                    {
+                        if let (Ok(line), Ok(col)) =
+                            (line.parse::<u32>(), col.parse::<usize>())
+                        {
+                            self.breakpoints.insert((col, line));
+                            println!(
+                                "Added breakpoint at line {}, column {}",
+                                line, col
+                            );
+                        } else {
+                            println!("DEBUGGER: Invalid line/column numbers");
+                        }
+                    } else {
+                        println!("DEBUGGER: Expected ':break [line] [col]'");
+                    }
+                } else {
+                    println!("DEBUGGER: Unknown command");
                 }
-            } else {
-                println!("DBG - Unknown command");
             }
         }
     }
