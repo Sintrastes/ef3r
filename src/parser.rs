@@ -9,10 +9,11 @@ use nom::{
     IResult,
 };
 use nom_locate::LocatedSpan;
+use serde::{Deserialize, Serialize};
 
 type Span<'a> = LocatedSpan<&'a str>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CodeLocation {
     pub line: u32,
     pub column: usize,
@@ -46,6 +47,7 @@ fn lambda_body(input: Span) -> IResult<Span, Vec<Statement>> {
             alt((
                 let_statement,
                 map(expression, |expr| Statement {
+                    location: input.into(),
                     var: None,
                     expr: expr,
                 }),
@@ -346,6 +348,7 @@ fn let_statement(input: Span) -> IResult<Span, Statement> {
     map(
         tuple((ws(tag("let")), ws(identifier), ws(char('=')), expression)),
         |(_, id, _, expr)| Statement {
+            location: input.into(),
             var: Some(id),
             expr: expr,
         },

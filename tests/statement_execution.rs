@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use ef3r::ast::{Expr, RawExpr, Statement};
 use ef3r::debugging::NoOpDebugger;
 use ef3r::interpreter::interpret;
+use ef3r::parser::CodeLocation;
 use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
 
 #[test]
@@ -13,6 +14,11 @@ fn variable_assignment() {
 
     let expression = RawExpr::Int(3);
     let statement = Statement {
+        location: CodeLocation {
+            line: 0,
+            column: 0,
+            offset: 0,
+        },
         var: Some("x".to_string()),
         expr: expression.clone(),
     };
@@ -39,10 +45,20 @@ fn reassignment_of_statement() {
     let cloned_ctx = context.clone();
 
     let statement1 = Statement {
+        location: CodeLocation {
+            line: 0,
+            column: 0,
+            offset: 0,
+        },
         var: Some("x".to_string()),
         expr: RawExpr::Int(2),
     };
     let statement2 = Statement {
+        location: CodeLocation {
+            line: 0,
+            column: 0,
+            offset: 0,
+        },
         var: Some("x".to_string()),
         expr: RawExpr::Int(3),
     };

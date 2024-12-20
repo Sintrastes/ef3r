@@ -23,6 +23,7 @@ where
 {
     pub expression_context: ExpressionContext<T>,
     pub graph: Dag<Node<'a, T>, (), u32>,
+    pub debugger: T,
 }
 
 unsafe impl<'a, T: Debugger> Send for Context<'a, T> {}
@@ -215,6 +216,10 @@ where
     T: Debugger + 'static,
 {
     for statement in statements {
+        with_lock(ctx.as_ref(), |locked| {
+            T::suspend(statement.location, locked)
+        });
+
         let evaluated =
             evaluate::<T>(ctx.clone(), statement.expr.clone().from_raw())?;
 
@@ -225,8 +230,6 @@ where
                 .variables
                 .insert(var.clone(), evaluated);
         };
-
-        with_lock(ctx.as_ref(), |locked| T::suspend(locked));
     }
 
     Ok(())
@@ -337,6 +340,7 @@ fn function_from_expression<T: Debugger + 'static>(
                                     },
                                 );
                             Statement {
+                                location: statement.location,
                                 var: statement.var.clone(),
                                 expr: substituted_expr,
                             }
