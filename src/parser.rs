@@ -8,8 +8,28 @@ use nom::{
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
+use nom_locate::LocatedSpan;
 
-fn lambda_params(input: &str) -> IResult<&str, Vec<String>> {
+type Span<'a> = LocatedSpan<&'a str>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct CodeLocation {
+    pub line: u32,
+    pub column: usize,
+    pub offset: usize,
+}
+
+impl From<Span<'_>> for CodeLocation {
+    fn from(span: Span) -> Self {
+        CodeLocation {
+            line: span.location_line(),
+            column: span.get_column(),
+            offset: span.location_offset(),
+        }
+    }
+}
+
+fn lambda_params(input: Span) -> IResult<Span, Vec<String>> {
     map(
         opt(terminated(
             separated_list0(ws(char(',')), identifier),
@@ -19,7 +39,7 @@ fn lambda_params(input: &str) -> IResult<&str, Vec<String>> {
     )(input)
 }
 
-fn lambda_body(input: &str) -> IResult<&str, Vec<Statement>> {
+fn lambda_body(input: Span) -> IResult<Span, Vec<Statement>> {
     terminated(
         separated_list0(
             ws(char(';')),
@@ -35,7 +55,7 @@ fn lambda_body(input: &str) -> IResult<&str, Vec<Statement>> {
     )(input)
 }
 
-fn lambda_expr(input: &str) -> IResult<&str, RawExpr> {
+fn lambda_expr(input: Span) -> IResult<Span, RawExpr> {
     map(
         delimited(
             ws(char('{')),
@@ -50,9 +70,9 @@ use crate::ast::{RawExpr, Statement};
 use crate::types::ExprType;
 
 // Utility parsers
-fn ws<'a, F: 'a, O>(inner: F) -> impl FnMut(&'a str) -> IResult<&'a str, O>
+fn ws<'a, F: 'a, O>(inner: F) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, O>
 where
-    F: FnMut(&'a str) -> IResult<&'a str, O>,
+    F: FnMut(Span<'a>) -> IResult<Span<'a>, O>,
 {
     delimited(
         delimited(multispace0, opt(comment), multispace0),
@@ -61,7 +81,7 @@ where
     )
 }
 
-fn comment(input: &str) -> IResult<&str, ()> {
+fn comment(input: Span) -> IResult<Span, ()> {
     alt((
         block_comment,
         map(
@@ -71,7 +91,7 @@ fn comment(input: &str) -> IResult<&str, ()> {
     ))(input)
 }
 
-fn block_comment(input: &str) -> IResult<&str, ()> {
+fn block_comment(input: Span) -> IResult<Span, ()> {
     let (input, _) = tag("/*")(input)?;
     let mut depth = 1;
     let mut pos = 0;
@@ -83,7 +103,7 @@ fn block_comment(input: &str) -> IResult<&str, ()> {
         } else if &input[pos..pos + 2] == "*/" {
             depth -= 1;
             if depth == 0 {
-                return Ok((&input[pos + 2..], ()));
+                return Ok((Span::new(&input[pos + 2..]), ()));
             }
             pos += 2;
         } else {
@@ -98,22 +118,22 @@ fn block_comment(input: &str) -> IResult<&str, ()> {
 }
 
 // Identifier parser
-fn identifier(input: &str) -> IResult<&str, String> {
+fn identifier(input: Span) -> IResult<Span, String> {
     map(
         recognize(pair(
             satisfy(|c| c.is_ascii_lowercase()),
             many0(alt((alphanumeric1, tag("_")))),
         )),
-        String::from,
+        |s: Span| s.fragment().to_string(),
     )(input)
 }
 
 // Type parsers
-fn type_expr(input: &str) -> IResult<&str, ExprType> {
+fn type_expr(input: Span) -> IResult<Span, ExprType> {
     alt((type_arrow, non_arrow_type))(input)
 }
 
-fn type_arrow(input: &str) -> IResult<&str, ExprType> {
+fn type_arrow(input: Span) -> IResult<Span, ExprType> {
     let (input, first) = non_arrow_type(input)?;
     let (input, rest) = many0(preceded(ws(tag("->")), non_arrow_type))(input)?;
 
@@ -125,7 +145,7 @@ fn type_arrow(input: &str) -> IResult<&str, ExprType> {
     Ok((input, result))
 }
 
-fn non_arrow_type(input: &str) -> IResult<&str, ExprType> {
+fn non_arrow_type(input: Span) -> IResult<Span, ExprType> {
     alt((
         map(tag("Int"), |_| ExprType::Int),
         map(tag("String"), |_| ExprType::String),
@@ -157,7 +177,7 @@ fn non_arrow_type(input: &str) -> IResult<&str, ExprType> {
 }
 
 // Symbol parser
-fn symbol(input: &str) -> IResult<&str, String> {
+fn symbol(input: Span) -> IResult<Span, String> {
     map(
         recognize(many0(alt((
             char('='),
@@ -170,43 +190,47 @@ fn symbol(input: &str) -> IResult<&str, String> {
             char('|'),
             char('!'),
         )))),
-        String::from,
+        |s: Span| s.fragment().to_string(),
     )(input)
 }
 
 // Literal parsers
-fn float(input: &str) -> IResult<&str, RawExpr> {
+fn float(input: Span) -> IResult<Span, RawExpr> {
     map(
         tuple((recognize(digit1), char('.'), recognize(digit1))),
-        |(int_digits, _, frac_digits): (&str, char, &str)| {
+        |(int_digits, _, frac_digits): (Span, char, Span)| {
             RawExpr::Float(
-                (int_digits.to_owned() + "." + frac_digits).parse().unwrap(),
+                (int_digits.fragment().to_string().to_owned()
+                    + "."
+                    + frac_digits.fragment())
+                .parse()
+                .unwrap(),
             )
         },
     )(input)
 }
 
-fn integer(input: &str) -> IResult<&str, RawExpr> {
-    map(recognize(digit1), |digits: &str| {
+fn integer(input: Span) -> IResult<Span, RawExpr> {
+    map(recognize(digit1), |digits: Span| {
         RawExpr::Int(digits.parse().unwrap())
     })(input)
 }
 
-fn string_literal(input: &str) -> IResult<&str, RawExpr> {
+fn string_literal(input: Span) -> IResult<Span, RawExpr> {
     map(
         delimited(char('"'), take_while1(|c| c != '"'), char('"')),
-        |s: &str| RawExpr::String(s.to_string()),
+        |s: Span| RawExpr::String(s.to_string()),
     )(input)
 }
 
-fn boolean(input: &str) -> IResult<&str, RawExpr> {
+fn boolean(input: Span) -> IResult<Span, RawExpr> {
     alt((
         map(tag("true"), |_| RawExpr::Bool(true)),
         map(tag("false"), |_| RawExpr::Bool(false)),
     ))(input)
 }
 
-fn literal(input: &str) -> IResult<&str, RawExpr> {
+fn literal(input: Span) -> IResult<Span, RawExpr> {
     alt((
         float,
         integer,
@@ -218,7 +242,7 @@ fn literal(input: &str) -> IResult<&str, RawExpr> {
 }
 
 // Expression parsers
-fn primary_expr(input: &str) -> IResult<&str, RawExpr> {
+fn primary_expr(input: Span) -> IResult<Span, RawExpr> {
     alt((
         ws(literal),
         map(ws(type_expr), RawExpr::Type),
@@ -227,7 +251,7 @@ fn primary_expr(input: &str) -> IResult<&str, RawExpr> {
     ))(input)
 }
 
-fn function_call(input: &str) -> IResult<&str, RawExpr> {
+fn function_call(input: Span) -> IResult<Span, RawExpr> {
     let (input, func) = identifier(input)?;
 
     // Handle both cases: with parentheses (possibly with args) and without
@@ -260,7 +284,7 @@ fn function_call(input: &str) -> IResult<&str, RawExpr> {
     ))
 }
 
-fn binary_expr(input: &str) -> IResult<&str, RawExpr> {
+fn binary_expr(input: Span) -> IResult<Span, RawExpr> {
     let (input, first) = non_binary_expression(input)?;
 
     let (input, rest) =
@@ -277,7 +301,7 @@ fn binary_expr(input: &str) -> IResult<&str, RawExpr> {
     Ok((input, result))
 }
 
-fn method_call(input: &str) -> IResult<&str, RawExpr> {
+fn method_call(input: Span) -> IResult<Span, RawExpr> {
     let (input, initial) = primary_expr(input)?;
 
     // Parse zero or more method calls
@@ -309,16 +333,16 @@ fn method_call(input: &str) -> IResult<&str, RawExpr> {
     Ok((input, result))
 }
 
-fn expression(input: &str) -> IResult<&str, RawExpr> {
+fn expression(input: Span) -> IResult<Span, RawExpr> {
     alt((binary_expr, non_binary_expression))(input)
 }
 
-fn non_binary_expression(input: &str) -> IResult<&str, RawExpr> {
+fn non_binary_expression(input: Span) -> IResult<Span, RawExpr> {
     alt((lambda_expr, function_call, method_call, primary_expr))(input)
 }
 
 // Statement parsers
-fn let_statement(input: &str) -> IResult<&str, Statement> {
+fn let_statement(input: Span) -> IResult<Span, Statement> {
     map(
         tuple((ws(tag("let")), ws(identifier), ws(char('=')), expression)),
         |(_, id, _, expr)| Statement {
@@ -328,13 +352,13 @@ fn let_statement(input: &str) -> IResult<&str, Statement> {
     )(input)
 }
 
-pub fn parse_program(input: &str) -> IResult<&str, Vec<Statement>> {
+pub fn parse_program(input: Span) -> IResult<Span, Vec<Statement>> {
     // A full program is basically a top-level lambda we're executing.
     lambda_body(input)
 }
 
 pub fn parse(input: &str) -> Result<Vec<Statement>, String> {
-    match parse_program(input) {
+    match parse_program(Span::new(input)) {
         Ok((remaining, program)) => {
             if remaining.trim().is_empty() {
                 Ok(program)
@@ -350,46 +374,46 @@ pub fn parse(input: &str) -> Result<Vec<Statement>, String> {
 }
 #[test]
 fn test_literal_expressions() {
-    assert!(literal("42").is_ok());
-    assert!(literal("4.2").is_ok());
-    assert!(literal("\"hello\"").is_ok());
-    assert!(literal("true").is_ok());
-    assert!(literal("false").is_ok());
-    assert!(literal("None").is_ok());
-    assert!(literal("()").is_ok());
-    assert!(expression("Int").is_ok());
+    assert!(literal(Span::new("42")).is_ok());
+    assert!(literal(Span::new("4.2")).is_ok());
+    assert!(literal(Span::new("\"hello\"")).is_ok());
+    assert!(literal(Span::new("true")).is_ok());
+    assert!(literal(Span::new("false")).is_ok());
+    assert!(literal(Span::new("None")).is_ok());
+    assert!(literal(Span::new("()")).is_ok());
+    assert!(expression(Span::new("Int")).is_ok());
 }
 
 #[test]
 fn test_function_calls() {
-    assert!(expression("foo()").is_ok());
-    assert!(expression("bar(1, 2)").is_ok());
-    assert!(expression("baz(\"hello\", 42, true)").is_ok());
+    assert!(expression(Span::new("foo()")).is_ok());
+    assert!(expression(Span::new("bar(1, 2)")).is_ok());
+    assert!(expression(Span::new("baz(\"hello\", 42, true)")).is_ok());
 }
 
 #[test]
 fn test_function_type() {
-    assert!(expression("Int -> Int").is_ok());
-    assert!(expression("Int -> Int -> String").is_ok());
+    assert!(expression(Span::new("Int -> Int")).is_ok());
+    assert!(expression(Span::new("Int -> Int -> String")).is_ok());
 }
 
 #[test]
 fn test_method_calls() {
-    assert!(expression("foo.bar(x)").is_ok());
-    assert!(expression("foo.bar(x, y).baz(z)").is_ok());
-    assert!(expression("node.value()").is_ok());
+    assert!(expression(Span::new("foo.bar(x)")).is_ok());
+    assert!(expression(Span::new("foo.bar(x, y).baz(z)")).is_ok());
+    assert!(expression(Span::new("node.value()")).is_ok());
 }
 
 #[test]
 fn test_eq_calls() {
-    assert!(expression("x == 42").is_ok());
-    assert!(expression("node.value == 42").is_ok());
+    assert!(expression(Span::new("x == 42")).is_ok());
+    assert!(expression(Span::new("node.value == 42")).is_ok());
 }
 
 #[test]
 fn test_lambda() {
     let input = r#"{ 42 }"#;
-    assert!(expression(input).is_ok());
+    assert!(expression(Span::new(input)).is_ok());
 }
 
 #[test]
@@ -398,7 +422,7 @@ fn test_multiline_lambda() {
         println("x");
         println("y")
     }"#;
-    assert!(expression(input).is_ok());
+    assert!(expression(Span::new(input)).is_ok());
 }
 
 #[test]
@@ -407,25 +431,27 @@ fn test_launch_lambda() {
         println("x");
         println("y");
     }"#;
-    assert!(expression(input).is_ok());
+    assert!(expression(Span::new(input)).is_ok());
 }
 
 #[test]
 fn test_await() {
     let input = r#"task.await()"#;
-    assert!(expression(input).is_ok());
+    assert!(expression(Span::new(input)).is_ok());
 }
 
 #[test]
 fn test_assert() {
-    assert!(expression("assert(node.value == 0)").is_ok());
-    assert!(let_statement("let x = assert(node.value == 0);").is_ok());
+    assert!(expression(Span::new("assert(node.value == 0)")).is_ok());
+    assert!(
+        let_statement(Span::new("let x = assert(node.value == 0);")).is_ok()
+    );
 }
 
 #[test]
 fn test_statements() {
-    assert!(let_statement("let x = 42;").is_ok());
-    assert!(expression("foo()").is_ok());
+    assert!(let_statement(Span::new("let x = 42;")).is_ok());
+    assert!(expression(Span::new("foo()")).is_ok());
 }
 
 #[cfg(test)]

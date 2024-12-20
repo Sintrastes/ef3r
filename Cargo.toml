@@ -12,3 +12,4 @@ getrandom = { version = "0.2", features = ["js"] }
 rand = "0.7"
 ordered-float = "4.2.2"
 nom = "7.1"
+nom_locate = "4.0"
