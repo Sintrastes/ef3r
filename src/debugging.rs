@@ -46,7 +46,7 @@ use crate::{interpreter::Context, parser::CodeLocation};
 pub trait Debugger: Sized {
     /// Suspend execution of the interpreter and
     ///  inject the debugging environment.
-    fn suspend(&mut self, location: CodeLocation, ctx: &mut Context<Self>);
+    fn suspend(location: CodeLocation, ctx: &mut Context<Self>);
 
     fn new() -> Self;
 }
@@ -56,7 +56,7 @@ pub trait Debugger: Sized {
 pub struct NoOpDebugger {}
 
 impl Debugger for NoOpDebugger {
-    fn suspend(&mut self, location: CodeLocation, ctx: &mut Context<Self>) {}
+    fn suspend(location: CodeLocation, ctx: &mut Context<Self>) {}
 
     fn new() -> Self {
         NoOpDebugger {}
@@ -80,17 +80,22 @@ impl Debugger for StepDebugger {
         }
     }
 
-    fn suspend(&mut self, location: CodeLocation, ctx: &mut Context<Self>) {
-        if self.initial_suspend
-            || self.breakpoints.contains(&(location.column, location.line))
+    fn suspend(location: CodeLocation, ctx: &mut Context<Self>) {
+        if ctx.debugger.initial_suspend
+            || ctx
+                .debugger
+                .breakpoints
+                .contains(&(location.column, location.line))
         {
-            println!("PAUSED AT (line {}, column {}): Type :k to continue, :show [var] to examine the value of variables.", location.line, location.column);
+            ctx.debugger.initial_suspend = false;
+
+            println!("PAUSED AT (line {}, column {}): Type enter to continue, :break [line] [col] to set breakpoints, and :show [var] to examine the value of variables.", location.line, location.column);
             loop {
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input).unwrap();
                 let input = input.trim();
 
-                if input == ":k" {
+                if input == "" {
                     break;
                 } else if input.starts_with(":show ") {
                     let var_name = input.trim_start_matches(":show ").trim();
@@ -112,7 +117,7 @@ impl Debugger for StepDebugger {
                         if let (Ok(line), Ok(col)) =
                             (line.parse::<u32>(), col.parse::<usize>())
                         {
-                            self.breakpoints.insert((col, line));
+                            ctx.debugger.breakpoints.insert((col, line));
                             println!(
                                 "Added breakpoint at line {}, column {}",
                                 line, col

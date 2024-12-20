@@ -217,7 +217,7 @@ where
 {
     for statement in statements {
         with_lock(ctx.as_ref(), |locked| {
-            T::suspend(&mut locked.debugger, statement.location, locked)
+            T::suspend(statement.location, locked)
         });
 
         let evaluated =
