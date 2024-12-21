@@ -1,8 +1,8 @@
 use macroquad::prelude::*;
 
-const VERTEX_SIZE: f32 = 0.03;
+const VERTEX_SIZE: f32 = 32.0;
 const VERTEX_COLOR: Color = BLACK;
-const CAMERA_SPEED: f32 = 0.07;
+const CAMERA_SPEED: f32 = 0.1;
 
 pub async fn node_visualization() {
     let mut vertices: Vec<(f32, f32)> = vec![];
@@ -10,7 +10,7 @@ pub async fn node_visualization() {
     let mut camera_x = 0.0;
     let mut camera_y = 0.0;
 
-    let mut zoom = 1.0;
+    let mut zoom = 0.001;
 
     let aspect_ratio = screen_width() / screen_height();
 
@@ -38,11 +38,26 @@ pub async fn node_visualization() {
         set_camera(&camera);
 
         for vertex in &mut vertices {
-            draw_circle(vertex.0, vertex.1, VERTEX_SIZE, VERTEX_COLOR);
+            draw_node("TESTING", *vertex);
         }
+
+        set_default_camera();
+
+        draw_text("3f3r node debugger", 20.0, 20.0, 30.0, DARKGRAY);
 
         next_frame().await
     }
+}
+
+fn draw_node(name: &str, location: (f32, f32)) {
+    draw_text(
+        name,
+        location.0 - 1.6 * VERTEX_SIZE,
+        location.1 - 1.6 * VERTEX_SIZE,
+        62.0,
+        VERTEX_COLOR,
+    );
+    draw_circle(location.0, location.1, VERTEX_SIZE, VERTEX_COLOR);
 }
 
 fn camera_control(camera_x: &mut f32, camera_y: &mut f32, aspect_ratio: f32) {
