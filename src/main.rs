@@ -1,13 +1,15 @@
 use ef3r::ast::Statement;
 use ef3r::debugging::{NoOpDebugger, StepDebugger};
 use ef3r::interpreter::{self};
+use ef3r::node_visualization::node_visualization;
 use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
 use std::sync::{Arc, Mutex};
 use std::{env, fs::File, io::Write};
 
 const UNKNOWN_COMMAND: &str = "Unknown sub-command";
 
-fn main() -> Result<(), String> {
+#[macroquad::main("ef3r")]
+async fn main() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
 
     let sub_command = args.get(1).ok_or(UNKNOWN_COMMAND)?.as_str();
@@ -24,6 +26,9 @@ fn main() -> Result<(), String> {
             let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
 
             interpreter::interpret(context, &program).unwrap();
+        }
+        "viz" => {
+            node_visualization().await;
         }
         "debug" => {
             // Executes an ef3r bytecode file.
