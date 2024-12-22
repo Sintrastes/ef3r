@@ -66,7 +66,7 @@ pub const FIRST_LIST_ID: u32 = 32;
 pub const LAST_LIST_ID: u32 = 33;
 pub const LIST_ID: u32 = 34;
 
-pub fn ef3r_stdlib<'a, T: Debugger + 'static>() -> Context<'a, T> {
+pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
     let mul = build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
         Ok(x * y)
     });
@@ -657,7 +657,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>() -> Context<'a, T> {
 
     // Lookup table for the interpreter
     Context {
-        debugger: T::new(),
+        debugger: debugger,
         expression_context: ExpressionContext {
             functions: HashMap::from([
                 (MUL_ID, mul),

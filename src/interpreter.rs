@@ -153,13 +153,13 @@ mod tests {
 
     quickcheck! {
         fn evaluation_is_idempotent(expr: Expr) -> bool {
-            let context = Arc::new(Mutex::new(ef3r_stdlib()));
+            let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
 
             println!("Evaluating: {}", expr.clone());
-            let evaluated = evaluate::<NoOpDebugger>(context.clone(), expr);
+            let evaluated = evaluate(context.clone(), expr);
             match evaluated {
                 Err(_) => true, // Property does not apply if expression is malformed.
-                Ok(inner) => Ok(inner.clone()) == evaluate::<NoOpDebugger>(context, inner.evaluated),
+                Ok(inner) => Ok(inner.clone()) == evaluate(context, inner.evaluated),
             }
         }
     }

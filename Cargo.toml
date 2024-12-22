@@ -14,3 +14,12 @@ ordered-float = "4.2.2"
 nom = "7.1"
 nom_locate = "4.0"
 macroquad = "0.4.13"
+tonic = "*"
+prost = "0.13"
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+
+[profile.dev.package.'*']
+opt-level = 3
+
+[build-dependencies]
+tonic-build = "*"

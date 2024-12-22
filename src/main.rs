@@ -1,14 +1,16 @@
 use ef3r::ast::Statement;
 use ef3r::debugging::{NoOpDebugger, StepDebugger};
 use ef3r::interpreter::{self};
-use ef3r::node_visualization::node_visualization;
+use ef3r::node_visualization::node_visualizer_server::NodeVisualizerServer;
+use ef3r::node_visualization::{node_visualization, NodeVisualizerState};
 use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::{env, fs::File, io::Write};
+use tonic::transport::Server;
 
 const UNKNOWN_COMMAND: &str = "Unknown sub-command";
 
-#[macroquad::main("ef3r")]
+#[tokio::main]
 async fn main() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
 
@@ -23,12 +25,27 @@ async fn main() -> Result<(), String> {
                 bincode::deserialize_from(File::open(file_path).unwrap())
                     .unwrap();
 
-            let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
+            let context =
+                Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
 
             interpreter::interpret(context, &program).unwrap();
         }
         "viz" => {
-            node_visualization().await;
+            let state = NodeVisualizerState {
+                vertices: Arc::new(RwLock::new(vec![])),
+            };
+
+            let state_clone = state.clone();
+            tokio::spawn(async {
+                let addr = "[::1]:50051".parse().unwrap();
+
+                Server::builder()
+                    .add_service(NodeVisualizerServer::new(state_clone))
+                    .serve(addr)
+                    .await
+            });
+
+            macroquad::Window::new("ef3r", node_visualization(state));
         }
         "debug" => {
             // Executes an ef3r bytecode file.
@@ -38,7 +55,8 @@ async fn main() -> Result<(), String> {
                 bincode::deserialize_from(File::open(file_path).unwrap())
                     .unwrap();
 
-            let context = Arc::new(Mutex::new(ef3r_stdlib::<StepDebugger>()));
+            let context =
+                Arc::new(Mutex::new(ef3r_stdlib(StepDebugger::new())));
 
             interpreter::interpret(context, &program).unwrap();
         }
@@ -53,7 +71,7 @@ async fn main() -> Result<(), String> {
 
             let mut parsed_program = ef3r::parser::parse(&source)?;
 
-            let stdlib = ef3r_stdlib::<NoOpDebugger>();
+            let stdlib = ef3r_stdlib(NoOpDebugger::new());
             let stdlib_functions = get_stdlib_functions(&stdlib);
 
             parsed_program = ef3r::stdlib::resolve_builtin_functions(

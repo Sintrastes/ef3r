@@ -20,7 +20,7 @@ fn test_map_node() {
 
     // Setup our FRP graph with two nodes: An input node and a mapped node.
 
-    let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
 
     let mut context_lock = context.lock().unwrap();
 
@@ -96,7 +96,7 @@ fn test_filter_node() {
 
     // Setup our FRP graph with two nodes: An input node and a mapped node.
 
-    let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
 
     let (node_index, filtered_node_index) =
         with_lock(context.as_ref(), |lock| {
@@ -170,7 +170,7 @@ fn test_combined_node() {
 
     // Setup our FRP graph with three nodes: Two input nodes, and a combined output node.
 
-    let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
 
     let mut context_lock = context.lock().unwrap();
 
@@ -246,7 +246,7 @@ fn test_fold_node() {
 
     // Setup our FRP graph with an input node and a folded node
 
-    let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
+    let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
 
     let mut context_lock = context.lock().unwrap();
 

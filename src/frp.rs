@@ -41,9 +41,9 @@ use crate::{
 #[derive(Clone)]
 pub struct Node<'a: 'static, T: Debugger + 'static> {
     /// The type of expressions used in the node.
-    expr_type: ExprType,
+    pub expr_type: ExprType,
     /// The underlying value held by this node.
-    value: Arc<RwLock<TracedExpr>>,
+    pub value: Arc<RwLock<TracedExpr>>,
     /// Flag to check if the value has been changed since the last event loop.
     dirty: Arc<AtomicBool>,
     /// Flag to check if this node is currently being traced or not.

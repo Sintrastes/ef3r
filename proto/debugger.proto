@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package debugger;
+
+// Service exposed by the node visualization tool
+service NodeVisualizer {
+  // Handle notification of new nodes being added to the frp graph
+  rpc AddNodes(AddNodesRequest) returns (AddNodesResponse);
+
+  // Handle notification of new edges being added between nodes
+  rpc AddEdges(AddEdgesRequest) returns (AddEdgesResponse);
+
+  // Handle updates to node values in batches
+  rpc UpdateNodeValues(UpdateNodeValuesRequest) returns (UpdateNodeValuesResponse);
+}
+
+message NodeData {
+  uint64 id = 1;
+  string label = 2;
+  string node_type = 3;
+}
+
+message EdgeData {
+  uint64 from_node_id = 1;
+  uint64 to_node_id = 2;
+  string edge_label = 3;
+}
+
+message NodeValue {
+  uint64 node_id = 1;
+  string value = 2;
+}
+
+message AddNodesRequest {
+  repeated NodeData nodes = 1;
+}
+
+message AddNodesResponse {}
+
+message AddEdgesRequest {
+  repeated EdgeData edges = 1;
+}
+
+message AddEdgesResponse {}
+
+message UpdateNodeValuesRequest {
+  repeated NodeValue node_values = 1;
+}
+
+message UpdateNodeValuesResponse {}

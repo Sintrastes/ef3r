@@ -162,7 +162,7 @@ impl Expr {
 
 impl Arbitrary for Expr {
     fn arbitrary(g: &mut Gen) -> Self {
-        let context = ef3r_stdlib::<NoOpDebugger>();
+        let context = ef3r_stdlib(NoOpDebugger::new());
 
         Self::arbitrary_with_depth(&context, g, 0)
     }
@@ -244,7 +244,7 @@ impl Expr {
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let context = ef3r_stdlib::<NoOpDebugger>();
+        let context = ef3r_stdlib(NoOpDebugger::new());
 
         match self {
             Expr::None => f.write_str("None"),
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn evaluation_keeps_trace() {
-        let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
+        let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
 
         // Example expression.
         let expression = Expr::Apply(
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn evaluating_twice_keeps_entire_trace() {
-        let context = Arc::new(Mutex::new(ef3r_stdlib::<NoOpDebugger>()));
+        let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
 
         // Example expression.
         let expression = Expr::Apply(
