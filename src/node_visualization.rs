@@ -1,7 +1,5 @@
 use macroquad::prelude::*;
 use std::{
-    borrow::BorrowMut,
-    cell::RefCell,
     future::Future,
     pin::Pin,
     sync::{Arc, RwLock},
@@ -15,6 +13,7 @@ tonic::include_proto!("debugger");
 #[derive(Clone)]
 pub struct NodeVisualizerState {
     pub vertices: Arc<RwLock<Vec<VisualNode>>>,
+    pub nodes_added: Arc<RwLock<i32>>,
 }
 
 impl NodeVisualizer for NodeVisualizerState {
@@ -35,13 +34,19 @@ impl NodeVisualizer for NodeVisualizerState {
         Box::pin(async move {
             let nodes = request.get_ref().nodes.iter();
 
+            let nodes_added = self.nodes_added.read().unwrap().clone() as f32;
+
             for node in nodes {
-                self.vertices.write().unwrap().push(VisualNode {
+                let mut vertex_writer = self.vertices.write().unwrap();
+
+                vertex_writer.push(VisualNode {
                     id: node.id,
                     label: node.label.to_string(),
                     // TODO: Need an algorithm for determing where to place new nodes.
-                    position: (0.0, 0.0),
+                    position: (200.0 * nodes_added, 200.0 * nodes_added),
                 });
+
+                *self.nodes_added.write().unwrap() += 1;
             }
 
             Ok(Response::new(AddNodesResponse {}))
@@ -126,17 +131,16 @@ pub async fn node_visualization(state: NodeVisualizerState) {
             ..Default::default()
         };
 
-        let mut vertices_guard = state.vertices.write().unwrap();
-
-        let vertices: &mut Vec<VisualNode> = vertices_guard.as_mut();
-
         clear_background(WHITE);
 
         // For debugging purposes, we can place vertices by right-clicking.
         if is_mouse_button_released(MouseButton::Right) {
+            let mut writer = state.vertices.write().unwrap();
+            let vertices_mut: &mut Vec<VisualNode> = writer.as_mut();
+
             let position = camera.screen_to_world(mouse_position().into());
 
-            vertices.push(VisualNode {
+            vertices_mut.push(VisualNode {
                 id: 0,
                 label: "test".to_string(),
                 position: (position.x, position.y),
@@ -149,7 +153,9 @@ pub async fn node_visualization(state: NodeVisualizerState) {
 
         set_camera(&camera);
 
-        for vertex in vertices {
+        let vertices = state.vertices.read().unwrap();
+
+        for vertex in vertices.iter() {
             draw_node(&vertex.label, vertex.position);
         }
 

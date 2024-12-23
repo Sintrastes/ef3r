@@ -64,7 +64,21 @@ fn lambda_expr(input: Span) -> IResult<Span, RawExpr> {
             tuple((lambda_params, lambda_body)),
             ws(char('}')),
         ),
-        |(params, body)| RawExpr::Lambda(params, body, Box::new(RawExpr::Unit)),
+        |(params, body)| {
+            // Get the last statement from the body
+            let (statements, return_expr) =
+                if let Some((last, rest)) = body.split_last() {
+                    if last.var.is_none() {
+                        (rest.to_vec(), last.expr.clone())
+                    } else {
+                        (body, RawExpr::Unit)
+                    }
+                } else {
+                    (body, RawExpr::Unit)
+                };
+
+            RawExpr::Lambda(params, statements, Box::new(return_expr))
+        },
     )(input)
 }
 
@@ -416,6 +430,10 @@ fn test_eq_calls() {
 #[test]
 fn test_lambda() {
     let input = r#"{ 42 }"#;
+    assert!(expression(Span::new(input)).is_ok());
+
+    let input = "{ x -> x + 2 }";
+
     assert!(expression(Span::new(input)).is_ok());
 }
 

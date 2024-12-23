@@ -88,15 +88,13 @@ fn execute_example_program() {
 
         let node = new_node(Int, 0);
 
-        let set_node = node.second();
-
-        let current_value = node.first().current_value();
+        let current_value = node.current_value();
 
         println(current_value);
 
-        node.first().set_node(2);
+        node.update_node(2);
 
-        println(node.first().current_value());
+        println(node.current_value());
 
         println(pair(1,2));
 

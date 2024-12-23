@@ -11,7 +11,7 @@ use crate::{
     ast::{Expr, RawExpr, Statement, TracedExpr},
     debugging::Debugger,
     extern_utils::{build_function, ExprTypeable},
-    frp::{filter_node, fold_node, map_node, Node},
+    frp::{filter_node, fold_node, map_node, with_lock, Node},
     interpreter::{
         evaluate_function_application, Context, EvaluationError,
         ExpressionContext, FunctionDefinition,
@@ -440,10 +440,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
     let new_node_fn = build_function!(
         T,
         "new_node",
-        ExprType::Pair(
-            Box::new(ExprType::Node(Box::new(ExprType::Any))),
-            Box::new(ExprType::Any)
-        ),
+        ExprType::Node(Box::new(ExprType::Any)),
         vec![ExprType::Type, ExprType::Any],
         |ctx, first, second| {
             match first.evaluated {
@@ -460,10 +457,14 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                             second,
                         );
 
-                        Ok(Expr::Pair(
-                            Box::new(Expr::Node(fresh_id.index()).traced()),
-                            Box::new(update_fn),
-                        ))
+                        with_lock(ctx.as_ref(), |lock| {
+                            let node =
+                                lock.graph.node_weight(fresh_id).unwrap();
+
+                            lock.debugger.on_node_added(node, fresh_id.index());
+                        });
+
+                        Ok(Expr::Node(fresh_id.index()))
                     } else {
                         Err(EvaluationError::TypeError {
                             expected: x,
@@ -534,6 +535,12 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                         transform,
                     );
 
+                    with_lock(ctx.as_ref(), |lock| {
+                        let node = lock.graph.node_weight(fresh_id).unwrap();
+
+                        lock.debugger.on_node_added(node, fresh_id.index());
+                    });
+
                     Ok(Expr::Node(fresh_id.index()))
                 }
                 actual => Err(EvaluationError::TypeError {
@@ -583,6 +590,12 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                         Box::new(transform),
                     );
 
+                    with_lock(ctx.as_ref(), |lock| {
+                        let node = lock.graph.node_weight(fresh_id).unwrap();
+
+                        lock.debugger.on_node_added(node, fresh_id.index());
+                    });
+
                     Ok(Expr::Node(fresh_id.index()))
                 }
                 actual => Err(EvaluationError::TypeError {
@@ -630,6 +643,12 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                         Expr::None.traced(),
                         transform,
                     );
+
+                    with_lock(ctx.as_ref(), |lock| {
+                        let node = lock.graph.node_weight(fresh_id).unwrap();
+
+                        lock.debugger.on_node_added(node, fresh_id.index());
+                    });
 
                     Ok(Expr::Node(fresh_id.index()))
                 }
@@ -688,7 +707,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 (DROP_LAST_LIST_ID, drop_last_list_fn),
                 (LENGTH_LIST_ID, length_list_fn),
                 (APPEND_LISTS_ID, append_lists_fn),
-                (MAP_LIST_ID, map_list_fn),
+                // (MAP_LIST_ID, map_list_fn),
                 (FILTER_LIST_ID, filter_list_fn),
                 (FOLD_LIST_ID, fold_list_fn),
                 // TODO: Currently conflicts with pair's first.

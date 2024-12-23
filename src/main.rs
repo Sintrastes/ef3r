@@ -1,5 +1,5 @@
 use ef3r::ast::Statement;
-use ef3r::debugging::{NoOpDebugger, StepDebugger};
+use ef3r::debugging::{GrpcDebugger, NoOpDebugger, StepDebugger};
 use ef3r::interpreter::{self};
 use ef3r::node_visualization::node_visualizer_server::NodeVisualizerServer;
 use ef3r::node_visualization::{node_visualization, NodeVisualizerState};
@@ -21,9 +21,7 @@ async fn main() -> Result<(), String> {
             // Executes an ef3r bytecode file.
             let file_path = args.get(2).ok_or("File not specified")?.as_str();
 
-            let program: Vec<Statement> =
-                bincode::deserialize_from(File::open(file_path).unwrap())
-                    .unwrap();
+            let program: Vec<Statement> = load_efrs_or_ef3r(file_path)?;
 
             let context =
                 Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
@@ -33,6 +31,7 @@ async fn main() -> Result<(), String> {
         "viz" => {
             let state = NodeVisualizerState {
                 vertices: Arc::new(RwLock::new(vec![])),
+                nodes_added: Arc::new(RwLock::new(0)),
             };
 
             let state_clone = state.clone();
@@ -51,12 +50,21 @@ async fn main() -> Result<(), String> {
             // Executes an ef3r bytecode file.
             let file_path = args.get(2).ok_or("File not specified")?.as_str();
 
-            let program: Vec<Statement> =
-                bincode::deserialize_from(File::open(file_path).unwrap())
-                    .unwrap();
+            let program: Vec<Statement> = load_efrs_or_ef3r(file_path)?;
 
             let context =
                 Arc::new(Mutex::new(ef3r_stdlib(StepDebugger::new())));
+
+            interpreter::interpret(context, &program).unwrap();
+        }
+        "debug-viz" => {
+            // Executes an ef3r bytecode file.
+            let file_path = args.get(2).ok_or("File not specified")?.as_str();
+
+            let program: Vec<Statement> = load_efrs_or_ef3r(file_path)?;
+
+            let context =
+                Arc::new(Mutex::new(ef3r_stdlib(GrpcDebugger::new().await)));
 
             interpreter::interpret(context, &program).unwrap();
         }
@@ -64,20 +72,12 @@ async fn main() -> Result<(), String> {
             // Parses ef3r source code and converts it into a ef3r bytecode file.
             let file_path =
                 args.get(2).ok_or("Source file not specified")?.as_str();
-            let out_path =
-                args.get(3).ok_or("Output file not specified")?.as_str();
 
-            let source = std::fs::read_to_string(file_path).unwrap();
+            let default_out_path = &file_path.replace(".efrs", ".ef3r");
 
-            let mut parsed_program = ef3r::parser::parse(&source)?;
+            let out_path = args.get(3).unwrap_or(default_out_path).as_str();
 
-            let stdlib = ef3r_stdlib(NoOpDebugger::new());
-            let stdlib_functions = get_stdlib_functions(&stdlib);
-
-            parsed_program = ef3r::stdlib::resolve_builtin_functions(
-                parsed_program,
-                &stdlib_functions,
-            );
+            let parsed_program = load_efrs(file_path)?;
 
             let mut out_file = File::create(out_path).unwrap();
             let encoded: Vec<u8> = bincode::serialize(&parsed_program).unwrap();
@@ -87,4 +87,25 @@ async fn main() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn load_efrs_or_ef3r(file_path: &str) -> Result<Vec<Statement>, String> {
+    if file_path.ends_with(".efrs") {
+        load_efrs(file_path)
+    } else {
+        Ok(bincode::deserialize_from(File::open(file_path).unwrap()).unwrap())
+    }
+}
+
+fn load_efrs(file_path: &str) -> Result<Vec<Statement>, String> {
+    let source = std::fs::read_to_string(file_path).unwrap();
+    let parsed_program = ef3r::parser::parse(&source)?;
+
+    let stdlib = ef3r_stdlib(NoOpDebugger::new());
+    let stdlib_functions = get_stdlib_functions(&stdlib);
+
+    Ok(ef3r::stdlib::resolve_builtin_functions(
+        parsed_program,
+        &stdlib_functions,
+    ))
 }

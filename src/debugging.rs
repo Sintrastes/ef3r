@@ -147,20 +147,29 @@ impl Debugger for GrpcDebugger {
         let label = node.value.read().unwrap().to_string();
         let id: u64 = node_id.try_into().unwrap();
 
-        tokio::spawn(async move {
-            if let Err(e) = client
-                .add_nodes(AddNodesRequest {
-                    nodes: vec![NodeData {
-                        label,
-                        node_type,
-                        id,
-                    }],
-                })
-                .await
-            {
-                eprintln!("Failed to notify debugger: {}", e);
-            }
-        });
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+
+            rt.block_on(async {
+                if let Err(e) = client
+                    .add_nodes(AddNodesRequest {
+                        nodes: vec![NodeData {
+                            label,
+                            node_type,
+                            id,
+                        }],
+                    })
+                    .await
+                {
+                    eprintln!("Failed to notify debugger: {}", e);
+                }
+            });
+        })
+        .join()
+        .unwrap();
     }
 
     fn on_node_removed(&self, node_id: usize) {}

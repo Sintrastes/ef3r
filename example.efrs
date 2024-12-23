@@ -1,8 +1,14 @@
 println("Hello, world!");
 
+let node = new_node(Int, 2);
+
 let response = readln();
 
 println(response.uppercase());
+
+let mapped = node
+    .map({ x -> x + 3 })
+    .map({ x -> x * 7 });
 
 let x = 2;
 let y = 3;
