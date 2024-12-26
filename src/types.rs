@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// The type of types that can be assigned to ef3r terms.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ExprType {
     Any,
     Unit,

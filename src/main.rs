@@ -3,7 +3,9 @@ use ef3r::debugging::{GrpcDebugger, NoOpDebugger, StepDebugger};
 use ef3r::interpreter::{self};
 use ef3r::node_visualization::node_visualizer_server::NodeVisualizerServer;
 use ef3r::node_visualization::{node_visualization, NodeVisualizerState};
-use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
+use ef3r::stdlib::{
+    ef3r_stdlib, get_stdlib_functions, get_stdlib_polymorphic_functions,
+};
 use std::sync::{Arc, Mutex, RwLock};
 use std::{env, fs::File, io::Write};
 use tonic::transport::Server;
@@ -28,24 +30,13 @@ async fn main() -> Result<(), String> {
 
             interpreter::interpret(context, &program).unwrap();
         }
-        "viz" => {
-            let state = NodeVisualizerState {
-                vertices: Arc::new(RwLock::new(vec![])),
-                nodes_added: Arc::new(RwLock::new(0)),
-            };
-
-            let state_clone = state.clone();
-            tokio::spawn(async {
-                let addr = "[::1]:50051".parse().unwrap();
-
-                Server::builder()
-                    .add_service(NodeVisualizerServer::new(state_clone))
-                    .serve(addr)
-                    .await
-            });
-
-            macroquad::Window::new("ef3r", node_visualization(state));
+        // Launch the node visualizer that can be connected to a debugging
+        // interpreter via gRPC.
+        "standalone-viz" => {
+            let state = start_visualizer_server().await;
+            start_visualizer(state);
         }
+        // Run a simple command-line debugger.
         "debug" => {
             // Executes an ef3r bytecode file.
             let file_path = args.get(2).ok_or("File not specified")?.as_str();
@@ -57,8 +48,10 @@ async fn main() -> Result<(), String> {
 
             interpreter::interpret(context, &program).unwrap();
         }
+        // Debug an ef3r program with a visual debugger.
         "debug-viz" => {
-            // Executes an ef3r bytecode file.
+            let state = start_visualizer_server().await;
+
             let file_path = args.get(2).ok_or("File not specified")?.as_str();
 
             let program: Vec<Statement> = load_efrs_or_ef3r(file_path)?;
@@ -66,7 +59,11 @@ async fn main() -> Result<(), String> {
             let context =
                 Arc::new(Mutex::new(ef3r_stdlib(GrpcDebugger::new().await)));
 
-            interpreter::interpret(context, &program).unwrap();
+            tokio::spawn(async move {
+                interpreter::interpret(context, &program).unwrap();
+            });
+
+            start_visualizer(state);
         }
         "pack" => {
             // Parses ef3r source code and converts it into a ef3r bytecode file.
@@ -103,9 +100,35 @@ fn load_efrs(file_path: &str) -> Result<Vec<Statement>, String> {
 
     let stdlib = ef3r_stdlib(NoOpDebugger::new());
     let stdlib_functions = get_stdlib_functions(&stdlib);
+    let polymorphic_functions = get_stdlib_polymorphic_functions(&stdlib);
 
     Ok(ef3r::stdlib::resolve_builtin_functions(
         parsed_program,
+        &polymorphic_functions,
         &stdlib_functions,
     ))
+}
+
+async fn start_visualizer_server() -> NodeVisualizerState {
+    let state = NodeVisualizerState {
+        vertices: Arc::new(RwLock::new(vec![])),
+        nodes_added: Arc::new(RwLock::new(0)),
+    };
+
+    let state_clone = state.clone();
+
+    tokio::spawn(async {
+        let addr = "[::1]:50051".parse().unwrap();
+
+        Server::builder()
+            .add_service(NodeVisualizerServer::new(state_clone))
+            .serve(addr)
+            .await
+    });
+
+    state
+}
+
+fn start_visualizer(state: NodeVisualizerState) {
+    macroquad::Window::new("ef3r", node_visualization(state));
 }

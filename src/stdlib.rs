@@ -14,11 +14,16 @@ use crate::{
     frp::{filter_node, fold_node, map_node, with_lock, Node},
     interpreter::{
         evaluate_function_application, Context, EvaluationError,
-        ExpressionContext, FunctionDefinition,
+        ExpressionContext, FunctionDefinition, PolymorphicIndex,
     },
     typechecking::type_of,
     types::ExprType,
 };
+
+// Polymorphic function IDs
+
+pub const POLYMORPHIC_MAP_ID: u32 = 0;
+pub const POLYMORPHIC_FIRST_ID: u32 = 1;
 
 // Function IDs
 
@@ -446,9 +451,6 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
             match first.evaluated {
                 Expr::Type(x) => {
                     if type_of(&second.evaluated) == Some(x.clone()) {
-                        let update_fn =
-                            Expr::BuiltinFunction(UPDATE_NODE_ID).traced();
-
                         let fresh_id = Node::new(
                             |_| {},
                             Arc::new(AtomicBool::new(false)),
@@ -678,6 +680,45 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
     Context {
         debugger: debugger,
         expression_context: ExpressionContext {
+            polymorphic_functions: HashMap::from([
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_MAP_ID,
+                        arg_types: vec![ExprType::List(Box::new(
+                            ExprType::Any,
+                        ))],
+                    },
+                    MAP_LIST_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_MAP_ID,
+                        arg_types: vec![ExprType::Node(Box::new(
+                            ExprType::Any,
+                        ))],
+                    },
+                    MAP_NODE_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_FIRST_ID,
+                        arg_types: vec![ExprType::List(Box::new(
+                            ExprType::Any,
+                        ))],
+                    },
+                    FIRST_LIST_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_FIRST_ID,
+                        arg_types: vec![ExprType::Pair(
+                            Box::new(ExprType::Any),
+                            Box::new(ExprType::Any),
+                        )],
+                    },
+                    PAIR_FIRST_ID,
+                ),
+            ]),
             functions: HashMap::from([
                 (MUL_ID, mul),
                 (ADD_ID, add),
@@ -707,12 +748,10 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 (DROP_LAST_LIST_ID, drop_last_list_fn),
                 (LENGTH_LIST_ID, length_list_fn),
                 (APPEND_LISTS_ID, append_lists_fn),
-                // (MAP_LIST_ID, map_list_fn),
+                (MAP_LIST_ID, map_list_fn),
                 (FILTER_LIST_ID, filter_list_fn),
                 (FOLD_LIST_ID, fold_list_fn),
-                // TODO: Currently conflicts with pair's first.
-                // Need to implement dynamic dispatch for this to work.
-                // (FIRST_LIST_ID, first_list_fn),
+                (FIRST_LIST_ID, first_list_fn),
                 (LAST_LIST_ID, last_list_fn),
                 (LIST_ID, list_fn),
             ]),
@@ -733,55 +772,122 @@ pub fn get_stdlib_functions<'a, T: Debugger + 'static>(
         .collect()
 }
 
+pub fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
+    stdlib: &'a Context<T>,
+) -> HashMap<&'a str, u32> {
+    stdlib
+        .expression_context
+        .polymorphic_functions
+        .iter()
+        .map(|(id, func_id)| {
+            (
+                stdlib
+                    .expression_context
+                    .functions
+                    .get(func_id)
+                    .unwrap()
+                    .name
+                    .as_str(),
+                id.id,
+            )
+        })
+        .collect()
+}
+
 pub fn resolve_builtin_functions(
     statements: Vec<Statement>,
+    polymorphic_functions: &HashMap<&str, u32>,
     stdlib_functions: &HashMap<&str, u32>,
 ) -> Vec<Statement> {
     statements
         .into_iter()
-        .map(|stmt| replace_variables_in_statement(stmt, stdlib_functions))
+        .map(|stmt| {
+            replace_variables_in_statement(
+                stmt,
+                polymorphic_functions,
+                stdlib_functions,
+            )
+        })
         .collect()
 }
 
 fn replace_variables_in_statement(
     stmt: Statement,
+    polymorphic_functions: &HashMap<&str, u32>,
     stdlib_functions: &HashMap<&str, u32>,
 ) -> Statement {
     Statement {
         location: stmt.location,
         var: stmt.var,
-        expr: replace_variables_in_expr_raw(stmt.expr, stdlib_functions),
+        expr: replace_variables_in_expr_raw(
+            stmt.expr,
+            polymorphic_functions,
+            stdlib_functions,
+        ),
     }
 }
 
 fn replace_variables_in_expr_raw(
     expr: RawExpr,
+    polymorphic_functions: &HashMap<&str, u32>,
     stdlib_functions: &HashMap<&str, u32>,
 ) -> RawExpr {
     match expr {
         RawExpr::Var(var_name) => {
-            if let Some(func_id) = stdlib_functions.get(var_name.as_str()) {
+            if let Some(poly_func_id) =
+                polymorphic_functions.get(var_name.as_str())
+            {
+                RawExpr::PolymorphicFunction(*poly_func_id)
+            } else if let Some(func_id) =
+                stdlib_functions.get(var_name.as_str())
+            {
                 RawExpr::BuiltinFunction(*func_id)
             } else {
                 RawExpr::Var(var_name)
             }
         }
         RawExpr::Apply(func, args) => RawExpr::Apply(
-            Box::new(replace_variables_in_expr_raw(*func, stdlib_functions)),
+            Box::new(replace_variables_in_expr_raw(
+                *func,
+                polymorphic_functions,
+                stdlib_functions,
+            )),
             args.into_vec()
                 .into_iter()
-                .map(|a| replace_variables_in_expr_raw(a, stdlib_functions))
+                .map(|a| {
+                    replace_variables_in_expr_raw(
+                        a,
+                        polymorphic_functions,
+                        stdlib_functions,
+                    )
+                })
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         ),
         RawExpr::Pair(first, second) => RawExpr::Pair(
-            Box::new(replace_variables_in_expr_raw(*first, stdlib_functions)),
-            Box::new(replace_variables_in_expr_raw(*second, stdlib_functions)),
+            Box::new(replace_variables_in_expr_raw(
+                *first,
+                polymorphic_functions,
+                stdlib_functions,
+            )),
+            Box::new(replace_variables_in_expr_raw(
+                *second,
+                polymorphic_functions,
+                stdlib_functions,
+            )),
         ),
         RawExpr::Lambda(vars, stmts, body) => RawExpr::Lambda(
             vars,
-            resolve_builtin_functions(stmts, stdlib_functions),
-            Box::new(replace_variables_in_expr_raw(*body, stdlib_functions)),
+            resolve_builtin_functions(
+                stmts,
+                polymorphic_functions,
+                stdlib_functions,
+            ),
+            Box::new(replace_variables_in_expr_raw(
+                *body,
+                polymorphic_functions,
+                stdlib_functions,
+            )),
         ),
         _ => expr,
     }

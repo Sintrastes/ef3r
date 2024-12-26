@@ -1,11 +1,11 @@
-use std::fmt::{Display, Pointer};
+use std::fmt::Display;
 
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     debugging::{Debugger, NoOpDebugger},
-    interpreter::Context,
+    interpreter::{Context, PolymorphicFunctionID},
     parser::CodeLocation,
     stdlib::ef3r_stdlib,
     types::ExprType,
@@ -42,7 +42,10 @@ pub enum Expr {
     /// Reference to a node that has been created and stored in the
     ///  interpreter context.
     Node(usize),
+    /// Reference to a built-in monomorphic function in the interpreter.
     BuiltinFunction(FunctionID),
+    /// Reference to a polymorphic function defined in the interpreter.
+    PolymorphicFunction(PolymorphicFunctionID),
     /// Lambda expression with 0+ parameters: \x y z -> f x
     /// Can either be an "effectful" lambda with statements and a final
     /// return result, or (if there are no statements), a pure function.
@@ -70,6 +73,7 @@ pub enum RawExpr {
     List(Vec<RawExpr>),
     Node(usize),
     BuiltinFunction(FunctionID),
+    PolymorphicFunction(PolymorphicFunctionID),
     /// Lambda expression with 0+ parameters: \x y z -> f x
     /// Can either be an "effectful" lambda with statements and a final
     /// return result, or (if there are no statements), a pure function.
@@ -101,6 +105,7 @@ impl RawExpr {
             }
             RawExpr::Node(x) => Expr::Node(*x),
             RawExpr::BuiltinFunction(x) => Expr::BuiltinFunction(*x),
+            RawExpr::PolymorphicFunction(x) => Expr::PolymorphicFunction(*x),
             RawExpr::Lambda(vars, stmts, body) => Expr::Lambda(
                 vars.clone(),
                 stmts.clone(),
@@ -143,6 +148,7 @@ impl Expr {
             }
             Expr::Node(x) => RawExpr::Node(*x),
             Expr::BuiltinFunction(x) => RawExpr::BuiltinFunction(*x),
+            Expr::PolymorphicFunction(x) => RawExpr::PolymorphicFunction(*x),
             Expr::Lambda(vars, stmts, body) => RawExpr::Lambda(
                 vars.clone(),
                 stmts.clone(),
@@ -278,6 +284,24 @@ impl Display for Expr {
 
                 f.write_str(name.as_str())
             }
+            Expr::PolymorphicFunction(id) => {
+                let index = context
+                    .expression_context
+                    .polymorphic_functions
+                    .keys()
+                    .find(|x| x.id == *id)
+                    .unwrap();
+
+                let name = context
+                    .expression_context
+                    .functions
+                    .get(&index.id)
+                    .unwrap()
+                    .name
+                    .clone();
+
+                f.write_str(name.as_str())
+            }
             Expr::List(elements) => {
                 f.write_str("[")?;
                 for (i, element) in elements.iter().enumerate() {
@@ -307,9 +331,8 @@ impl Display for Expr {
             }
             Expr::Var(x) => x.fmt(f),
             Expr::Node(idx) => {
-                f.write_str("Node(")?;
-                idx.fmt(f)?;
-                f.write_str(")")
+                f.write_str("Node#")?;
+                idx.fmt(f)
             }
             Expr::Bool(value) => value.fmt(f),
             Expr::Pair(traced_expr, traced_expr1) => {

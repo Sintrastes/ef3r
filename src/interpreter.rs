@@ -7,8 +7,9 @@ use daggy::Dag;
 
 use crate::{
     ast::{substitute, Expr, FunctionID, Statement, TracedExpr, VariableID},
-    debugging::{Debugger, NoOpDebugger, StepDebugger},
+    debugging::Debugger,
     frp::{with_lock, Node},
+    typechecking::type_of,
     types::ExprType,
 };
 
@@ -56,9 +57,18 @@ pub struct FunctionDefinition<T: Debugger + 'static> {
     pub name: String,
 }
 
+pub type PolymorphicFunctionID = u32;
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct PolymorphicIndex {
+    pub id: PolymorphicFunctionID,
+    pub arg_types: Vec<ExprType>,
+}
+
 #[derive(Clone)]
 pub struct ExpressionContext<T: Debugger + 'static> {
     pub functions: HashMap<FunctionID, FunctionDefinition<T>>,
+    pub polymorphic_functions: HashMap<PolymorphicIndex, FunctionID>,
     pub variables: HashMap<VariableID, TracedExpr>,
 }
 
@@ -188,6 +198,7 @@ fn evaluate_traced_rec<T: Debugger + 'static>(
         Expr::Type(_) => Ok(expr.traced()),
         Expr::Lambda(_, _, _) => Ok(expr.traced()),
         Expr::BuiltinFunction(_) => Ok(expr.traced()),
+        Expr::PolymorphicFunction(_) => Ok(expr.traced()),
         Expr::Node(_) => Ok(expr.traced()),
         Expr::List(_) => Ok(expr.traced()),
         // Function applications need to be reduced.
@@ -272,8 +283,18 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
                 })
                 .collect();
 
-            let action_fn =
-                function_from_expression::<T>(ctx.clone(), evaluated_fn)?;
+            let arg_types = evaluated_args
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|arg| type_of(&arg.evaluated))
+                .collect();
+
+            let action_fn = function_from_expression::<T>(
+                ctx.clone(),
+                arg_types,
+                evaluated_fn,
+            )?;
 
             Ok(TracedExpr::build(
                 (action_fn)(ctx, &evaluated_args?.as_mut_slice())?,
@@ -286,6 +307,7 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
 
 fn function_from_expression<T: Debugger + 'static>(
     ctx: Arc<Mutex<Context<T>>>,
+    arg_types: Vec<Option<ExprType>>,
     resolved: Expr,
 ) -> Result<
     Box<
@@ -306,6 +328,28 @@ fn function_from_expression<T: Debugger + 'static>(
                 .ok_or(EvaluationError::NotAFunction(resolved.clone()))?
                 .definition,
         ),
+        Expr::PolymorphicFunction(polymorphic_id) => {
+            let polymorphic_index = PolymorphicIndex {
+                id: *polymorphic_id,
+                arg_types: arg_types.into_iter().flatten().collect(),
+            };
+
+            let ctx = ctx.lock().unwrap();
+
+            let resolved_function_id = ctx
+                .expression_context
+                .polymorphic_functions
+                .get(&polymorphic_index)
+                .ok_or(EvaluationError::NotAFunction(resolved.clone()))?;
+
+            Box::new(
+                ctx.expression_context
+                    .functions
+                    .get(resolved_function_id)
+                    .ok_or(EvaluationError::NotAFunction(resolved.clone()))?
+                    .definition,
+            )
+        }
         Expr::Lambda(vars, statements, result) => {
             let vars = vars.clone();
             let statements = statements.clone();

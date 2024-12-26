@@ -38,7 +38,8 @@ pub fn type_of(term: &Expr) -> Option<ExprType> {
 
             Some(ExprType::Func(arg_types, Box::new(return_type)))
         }
-        Expr::Apply(_, _) => todo!(),
+        Expr::PolymorphicFunction(_) => None,
+        Expr::Apply(_, _) => None,
         Expr::Var(_) => Some(ExprType::Any),
     }
 }

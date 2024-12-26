@@ -1,9 +1,8 @@
-use std::{collections::HashSet, error::Error, future::Future};
+use std::collections::HashSet;
 
 use tonic::transport::Channel;
 
 use crate::{
-    ast::TracedExpr,
     frp::Node,
     interpreter::Context,
     node_visualization::{
@@ -40,11 +39,11 @@ impl NoOpDebugger {
 }
 
 impl Debugger for NoOpDebugger {
-    fn suspend(location: CodeLocation, ctx: &mut Context<Self>) {}
+    fn suspend(_location: CodeLocation, _ctx: &mut Context<Self>) {}
 
-    fn on_node_added(&self, node: &Node<Self>, node_id: usize) {}
+    fn on_node_added(&self, _node: &Node<Self>, _node_id: usize) {}
 
-    fn on_node_removed(&self, node_id: usize) {}
+    fn on_node_removed(&self, _node_id: usize) {}
 }
 
 /// A simple "stepping" debugger that allows execution
@@ -66,9 +65,9 @@ impl StepDebugger {
 }
 
 impl Debugger for StepDebugger {
-    fn on_node_added(&self, node: &Node<Self>, node_id: usize) {}
+    fn on_node_added(&self, _node: &Node<Self>, _node_id: usize) {}
 
-    fn on_node_removed(&self, node_id: usize) {}
+    fn on_node_removed(&self, _node_id: usize) {}
 
     fn suspend(location: CodeLocation, ctx: &mut Context<Self>) {
         if ctx.debugger.initial_suspend
@@ -172,7 +171,7 @@ impl Debugger for GrpcDebugger {
         .unwrap();
     }
 
-    fn on_node_removed(&self, node_id: usize) {}
+    fn on_node_removed(&self, _node_id: usize) {}
 
     fn suspend(_location: CodeLocation, _ctx: &mut Context<Self>) {}
 }

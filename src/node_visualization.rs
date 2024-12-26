@@ -55,7 +55,7 @@ impl NodeVisualizer for NodeVisualizerState {
 
     fn add_edges<'a, 'b>(
         &'a self,
-        request: Request<AddEdgesRequest>,
+        _request: Request<AddEdgesRequest>,
     ) -> Pin<
         Box<
             dyn Future<Output = Result<Response<AddEdgesResponse>, Status>>

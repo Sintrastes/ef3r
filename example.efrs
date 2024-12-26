@@ -4,6 +4,13 @@ let node = new_node(Int, 2);
 
 let response = readln();
 
+let xs = list(1, 2, 3);
+
+let mapped_list = xs.map({ x -> x + 2 });
+
+println(xs);
+println(mapped_list);
+
 println(response.uppercase());
 
 let mapped = node
