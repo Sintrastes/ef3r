@@ -24,6 +24,10 @@ use crate::{
 
 pub const POLYMORPHIC_MAP_ID: u32 = 0;
 pub const POLYMORPHIC_FIRST_ID: u32 = 1;
+pub const POLYMORPHIC_ADD: u32 = 2;
+pub const POLYMORPHIC_SUB: u32 = 3;
+pub const POLYMORPHIC_DIV: u32 = 4;
+pub const POLYMORPHIC_MUL: u32 = 5;
 
 // Function IDs
 
@@ -752,6 +756,62 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                         )],
                     },
                     PAIR_FIRST_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_ADD,
+                        arg_types: vec![ExprType::Int, ExprType::Int],
+                    },
+                    INT_ADD_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_ADD,
+                        arg_types: vec![ExprType::Float, ExprType::Float],
+                    },
+                    FLOAT_ADD_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_MUL,
+                        arg_types: vec![ExprType::Int, ExprType::Int],
+                    },
+                    INT_MUL_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_MUL,
+                        arg_types: vec![ExprType::Float, ExprType::Float],
+                    },
+                    FLOAT_MUL_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_DIV,
+                        arg_types: vec![ExprType::Int, ExprType::Int],
+                    },
+                    INT_DIV_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_DIV,
+                        arg_types: vec![ExprType::Float, ExprType::Float],
+                    },
+                    FLOAT_DIV_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_SUB,
+                        arg_types: vec![ExprType::Int, ExprType::Int],
+                    },
+                    INT_SUB_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_SUB,
+                        arg_types: vec![ExprType::Float, ExprType::Float],
+                    },
+                    FLOAT_SUB_ID,
                 ),
             ]),
             functions: HashMap::from([
