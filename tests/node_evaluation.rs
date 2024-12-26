@@ -8,7 +8,7 @@ use ef3r::{
         with_lock, Node,
     },
     interpreter::apply_traced,
-    stdlib::{ef3r_stdlib, MUL_ID},
+    stdlib::{ef3r_stdlib, INT_MUL_ID},
     types::ExprType,
 };
 
@@ -47,7 +47,7 @@ fn test_map_node() {
         Arc::new(Mutex::new(move |x| {
             apply_traced(
                 context_cloned.clone(),
-                Expr::BuiltinFunction(MUL_ID).traced(),
+                Expr::BuiltinFunction(INT_MUL_ID).traced(),
                 &[Expr::Int(2).traced(), x],
             )
             .unwrap()
@@ -204,7 +204,7 @@ fn test_combined_node() {
         Box::new(move |x, y| {
             apply_traced(
                 cloned_ctx.clone(),
-                Expr::BuiltinFunction(MUL_ID).traced(),
+                Expr::BuiltinFunction(INT_MUL_ID).traced(),
                 &[x, y],
             )
             .unwrap()

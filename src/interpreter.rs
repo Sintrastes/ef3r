@@ -257,6 +257,8 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
                 .map(|arg| evaluate_traced::<T>(ctx.clone(), arg.clone()))
                 .collect();
 
+            let mut evaluated_args = evaluated_args?;
+
             let evaluated_fn =
                 evaluate::<T>(ctx.clone(), action.clone().evaluated)?
                     .evaluated
@@ -283,21 +285,14 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
                 })
                 .collect();
 
-            let arg_types = evaluated_args
-                .as_ref()
-                .unwrap()
-                .iter()
-                .map(|arg| type_of(&arg.evaluated))
-                .collect();
-
             let action_fn = function_from_expression::<T>(
                 ctx.clone(),
-                arg_types,
+                &evaluated_args,
                 evaluated_fn,
             )?;
 
             Ok(TracedExpr::build(
-                (action_fn)(ctx, &evaluated_args?.as_mut_slice())?,
+                (action_fn)(ctx, &evaluated_args.as_mut_slice())?,
                 Some(Expr::Apply(action.clone(), expanded_args)),
             ))
         }
@@ -307,7 +302,7 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
 
 fn function_from_expression<T: Debugger + 'static>(
     ctx: Arc<Mutex<Context<T>>>,
-    arg_types: Vec<Option<ExprType>>,
+    evaluated_args: &Vec<TracedExpr>,
     resolved: Expr,
 ) -> Result<
     Box<
@@ -329,6 +324,11 @@ fn function_from_expression<T: Debugger + 'static>(
                 .definition,
         ),
         Expr::PolymorphicFunction(polymorphic_id) => {
+            let arg_types: Vec<_> = evaluated_args
+                .iter()
+                .map(|arg| type_of(&arg.evaluated))
+                .collect();
+
             let polymorphic_index = PolymorphicIndex {
                 id: *polymorphic_id,
                 arg_types: arg_types.into_iter().flatten().collect(),

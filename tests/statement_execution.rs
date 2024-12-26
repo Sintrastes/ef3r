@@ -4,7 +4,9 @@ use ef3r::ast::{Expr, RawExpr, Statement};
 use ef3r::debugging::NoOpDebugger;
 use ef3r::interpreter::interpret;
 use ef3r::parser::CodeLocation;
-use ef3r::stdlib::{ef3r_stdlib, get_stdlib_functions};
+use ef3r::stdlib::{
+    ef3r_stdlib, get_stdlib_functions, get_stdlib_polymorphic_functions,
+};
 
 #[test]
 fn variable_assignment() {
@@ -130,9 +132,11 @@ fn execute_example_program() {
 
     let context_lock = context.lock().unwrap();
     let stdlib_functions = get_stdlib_functions(&context_lock);
+    let polymorphic_functions = get_stdlib_polymorphic_functions(&context_lock);
 
     parsed_program = ef3r::stdlib::resolve_builtin_functions(
         parsed_program,
+        &polymorphic_functions,
         &stdlib_functions,
     );
 

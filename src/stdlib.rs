@@ -28,10 +28,10 @@ pub const POLYMORPHIC_FIRST_ID: u32 = 1;
 // Function IDs
 
 // Arithmetic
-pub const MUL_ID: u32 = 0;
-pub const ADD_ID: u32 = 1;
-pub const DIV_ID: u32 = 2;
-pub const SUB_ID: u32 = 3;
+pub const INT_MUL_ID: u32 = 0;
+pub const INT_ADD_ID: u32 = 1;
+pub const INT_DIV_ID: u32 = 2;
+pub const INT_SUB_ID: u32 = 3;
 
 // String processing
 
@@ -71,10 +71,53 @@ pub const FIRST_LIST_ID: u32 = 32;
 pub const LAST_LIST_ID: u32 = 33;
 pub const LIST_ID: u32 = 34;
 
+// Float arithmetic
+
+pub const FLOAT_MUL_ID: u32 = 35;
+pub const FLOAT_ADD_ID: u32 = 36;
+pub const FLOAT_DIV_ID: u32 = 37;
+pub const FLOAT_SUB_ID: u32 = 38;
+
 pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
-    let mul = build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
-        Ok(x * y)
-    });
+    let int_mul =
+        build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
+            Ok(x * y)
+        });
+
+    let int_add =
+        build_function!(T, "+", ExprType::Int, |_cx, x: i32, y: i32| {
+            Ok(x + y)
+        });
+
+    let int_div =
+        build_function!(T, "/", ExprType::Int, |_cx, x: i32, y: i32| {
+            Ok(x / y)
+        });
+
+    let int_sub =
+        build_function!(T, "-", ExprType::Int, |_cx, x: i32, y: i32| {
+            Ok(x - y)
+        });
+
+    let float_mul =
+        build_function!(T, "*", ExprType::Float, |_cx, x: i32, y: i32| {
+            Ok(x * y)
+        });
+
+    let float_add =
+        build_function!(T, "+", ExprType::Float, |_cx, x: i32, y: i32| {
+            Ok(x + y)
+        });
+
+    let float_div =
+        build_function!(T, "/", ExprType::Float, |_cx, x: i32, y: i32| {
+            Ok(x / y)
+        });
+
+    let float_sub =
+        build_function!(T, "-", ExprType::Float, |_cx, x: i32, y: i32| {
+            Ok(x - y)
+        });
 
     let and =
         build_function!(T, "&&", ExprType::Bool, |_cx, x: bool, y: bool| {
@@ -94,14 +137,6 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
             assert!(x);
             Ok(())
         });
-
-    let add = build_function!(T, "+", ExprType::Int, |_cx, x: i32, y: i32| {
-        Ok(x + y)
-    });
-
-    let div = build_function!(T, "/", ExprType::Int, |_cx, x: i32, y: i32| {
-        Ok(x / y)
-    });
 
     let append = build_function!(
         T,
@@ -720,9 +755,14 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 ),
             ]),
             functions: HashMap::from([
-                (MUL_ID, mul),
-                (ADD_ID, add),
-                (DIV_ID, div),
+                (INT_MUL_ID, int_mul),
+                (INT_ADD_ID, int_add),
+                (INT_DIV_ID, int_div),
+                (INT_SUB_ID, int_sub),
+                (FLOAT_MUL_ID, float_mul),
+                (FLOAT_ADD_ID, float_add),
+                (FLOAT_DIV_ID, float_div),
+                (FLOAT_SUB_ID, float_sub),
                 (APPEND_ID, append),
                 (UPPERCASE_ID, uppercase),
                 (PAIR_FIRST_ID, pair_first_fn),

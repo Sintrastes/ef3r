@@ -396,7 +396,7 @@ mod tests {
         ast::Expr,
         debugging::NoOpDebugger,
         interpreter::{evaluate_traced, unwind_trace},
-        stdlib::{ef3r_stdlib, ADD_ID, MUL_ID},
+        stdlib::{ef3r_stdlib, INT_ADD_ID, INT_MUL_ID},
     };
 
     #[test]
@@ -405,11 +405,11 @@ mod tests {
 
         // Example expression.
         let expression = Expr::Apply(
-            Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+            Box::new(Expr::BuiltinFunction(INT_MUL_ID).traced()),
             Box::new([
                 Expr::Int(2).traced(),
                 Expr::Apply(
-                    Box::new(Expr::BuiltinFunction(ADD_ID).traced()),
+                    Box::new(Expr::BuiltinFunction(INT_ADD_ID).traced()),
                     Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
                 )
                 .traced(),
@@ -434,11 +434,11 @@ mod tests {
 
         // Example expression.
         let expression = Expr::Apply(
-            Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+            Box::new(Expr::BuiltinFunction(INT_MUL_ID).traced()),
             Box::new([
                 Expr::Int(2).traced(),
                 Expr::Apply(
-                    Box::new(Expr::BuiltinFunction(ADD_ID).traced()),
+                    Box::new(Expr::BuiltinFunction(INT_ADD_ID).traced()),
                     Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
                 )
                 .traced(),
@@ -450,7 +450,7 @@ mod tests {
                 .unwrap();
 
         let second_expression = Expr::Apply(
-            Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+            Box::new(Expr::BuiltinFunction(INT_MUL_ID).traced()),
             Box::new([Expr::Int(2).traced(), evaluated]),
         );
 
@@ -459,7 +459,7 @@ mod tests {
                 .unwrap();
 
         let expected = Expr::Apply(
-            Box::new(Expr::BuiltinFunction(MUL_ID).traced()),
+            Box::new(Expr::BuiltinFunction(INT_MUL_ID).traced()),
             Box::new([Expr::Int(2).traced(), expression.traced()]),
         );
 
