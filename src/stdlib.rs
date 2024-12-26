@@ -89,6 +89,7 @@ pub const FLOAT_SUB_ID: u32 = 38;
 
 pub const STRING_LENGTH_ID: u32 = 39;
 pub const LIST_LENGTH_ID: u32 = 40;
+pub const STRING_SPLIT_ID: u32 = 41;
 
 pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
     let int_mul =
@@ -736,6 +737,25 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         }
     );
 
+    let string_split_fn = build_function!(
+        T,
+        "split",
+        ExprType::List(Box::new(ExprType::String)),
+        vec![ExprType::String, ExprType::String],
+        |_ctx, first, second| {
+            match (first.evaluated, second.evaluated) {
+                (Expr::String(s), Expr::String(delim)) => {
+                    let split = s
+                        .split(&delim)
+                        .map(|s| Expr::String(s.to_string()).traced())
+                        .collect();
+                    Ok(Expr::List(split))
+                }
+                _ => unreachable!(),
+            }
+        }
+    );
+
     // TODO: Implement a combine operation for nodes.
 
     let dbg_trace_full_fn = build_function!(
@@ -906,6 +926,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 (LIST_ID, list_fn),
                 (LIST_LENGTH_ID, list_length_fn),
                 (STRING_LENGTH_ID, string_length_fn),
+                (STRING_SPLIT_ID, string_split_fn),
             ]),
             variables: HashMap::new(),
         },
