@@ -28,6 +28,9 @@ pub const POLYMORPHIC_ADD: u32 = 2;
 pub const POLYMORPHIC_SUB: u32 = 3;
 pub const POLYMORPHIC_DIV: u32 = 4;
 pub const POLYMORPHIC_MUL: u32 = 5;
+pub const POLYMORPHIC_LENGTH_ID: u32 = 6;
+pub const POLYMORPHIC_FILTER_ID: u32 = 7;
+pub const POLYMORPHIC_FOLD_ID: u32 = 8;
 
 // Function IDs
 
@@ -81,6 +84,11 @@ pub const FLOAT_MUL_ID: u32 = 35;
 pub const FLOAT_ADD_ID: u32 = 36;
 pub const FLOAT_DIV_ID: u32 = 37;
 pub const FLOAT_SUB_ID: u32 = 38;
+
+//
+
+pub const STRING_LENGTH_ID: u32 = 39;
+pub const LIST_LENGTH_ID: u32 = 40;
 
 pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
     let int_mul =
@@ -702,6 +710,32 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         }
     );
 
+    let list_length_fn = build_function!(
+        T,
+        "length",
+        ExprType::Int,
+        vec![ExprType::List(Box::new(ExprType::Any))],
+        |_ctx, first| {
+            match first.evaluated {
+                Expr::List(xs) => Ok(Expr::Int(xs.len() as i32)),
+                _ => unreachable!(),
+            }
+        }
+    );
+
+    let string_length_fn = build_function!(
+        T,
+        "length",
+        ExprType::Int,
+        vec![ExprType::String],
+        |_ctx, first| {
+            match first.evaluated {
+                Expr::String(s) => Ok(Expr::Int(s.len() as i32)),
+                _ => unreachable!(),
+            }
+        }
+    );
+
     // TODO: Implement a combine operation for nodes.
 
     let dbg_trace_full_fn = build_function!(
@@ -813,6 +847,22 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                     },
                     FLOAT_SUB_ID,
                 ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_LENGTH_ID,
+                        arg_types: vec![ExprType::String],
+                    },
+                    STRING_LENGTH_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_LENGTH_ID,
+                        arg_types: vec![ExprType::List(Box::new(
+                            ExprType::Any,
+                        ))],
+                    },
+                    LIST_LENGTH_ID,
+                ),
             ]),
             functions: HashMap::from([
                 (INT_MUL_ID, int_mul),
@@ -854,6 +904,8 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 (FIRST_LIST_ID, first_list_fn),
                 (LAST_LIST_ID, last_list_fn),
                 (LIST_ID, list_fn),
+                (LIST_LENGTH_ID, list_length_fn),
+                (STRING_LENGTH_ID, string_length_fn),
             ]),
             variables: HashMap::new(),
         },
