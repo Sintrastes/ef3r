@@ -103,6 +103,48 @@ impl NodeVisualizer for NodeVisualizerState {
             Ok(Response::new(UpdateNodeValuesResponse {}))
         })
     }
+
+    fn begin_session<'life0, 'async_trait>(
+        &'life0 self,
+        _request: tonic::Request<BeginSessionRequest>,
+    ) -> ::core::pin::Pin<
+        Box<
+            dyn ::core::future::Future<
+                    Output = std::result::Result<
+                        tonic::Response<()>,
+                        tonic::Status,
+                    >,
+                > + ::core::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        todo!()
+    }
+
+    fn end_session<'life0, 'async_trait>(
+        &'life0 self,
+        _request: tonic::Request<EndSessionRequest>,
+    ) -> ::core::pin::Pin<
+        Box<
+            dyn ::core::future::Future<
+                    Output = std::result::Result<
+                        tonic::Response<()>,
+                        tonic::Status,
+                    >,
+                > + ::core::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        todo!()
+    }
 }
 
 const VERTEX_SIZE: f32 = 32.0;

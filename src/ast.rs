@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use bimap::BiMap;
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +21,7 @@ pub type VariableID = String;
 ///  ef3f.
 ///
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Expr {
+pub enum Expr<V> {
     /// Null symbol.
     None,
     /// Unit symbol
@@ -36,9 +37,9 @@ pub enum Expr {
     /// Type of types
     Type(ExprType),
     /// Pair type,
-    Pair(Box<TracedExpr>, Box<TracedExpr>),
+    Pair(Box<TracedExpr<V>>, Box<TracedExpr<V>>),
     /// Type of lists
-    List(Vec<TracedExpr>),
+    List(Vec<TracedExpr<V>>),
     /// Reference to a node that has been created and stored in the
     ///  interpreter context.
     Node(usize),
@@ -49,11 +50,11 @@ pub enum Expr {
     /// Lambda expression with 0+ parameters: \x y z -> f x
     /// Can either be an "effectful" lambda with statements and a final
     /// return result, or (if there are no statements), a pure function.
-    Lambda(Vec<VariableID>, Vec<Statement>, Box<TracedExpr>),
+    Lambda(Vec<V>, Vec<Statement<V>>, Box<TracedExpr<V>>),
     /// Function application: f x
-    Apply(Box<TracedExpr>, Box<[TracedExpr]>),
+    Apply(Box<TracedExpr<V>>, Box<[TracedExpr<V>]>),
     /// Locally defined variable.
-    Var(VariableID),
+    Var(V),
 }
 
 ///
@@ -61,7 +62,7 @@ pub enum Expr {
 ///  traces.
 ///
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum RawExpr {
+pub enum RawExpr<V> {
     None,
     Unit,
     Int(i32),
@@ -69,25 +70,25 @@ pub enum RawExpr {
     Float(f32),
     Bool(bool),
     Type(ExprType),
-    Pair(Box<RawExpr>, Box<RawExpr>),
-    List(Vec<RawExpr>),
+    Pair(Box<RawExpr<V>>, Box<RawExpr<V>>),
+    List(Vec<RawExpr<V>>),
     Node(usize),
     BuiltinFunction(FunctionID),
     PolymorphicFunction(PolymorphicFunctionID),
     /// Lambda expression with 0+ parameters: \x y z -> f x
     /// Can either be an "effectful" lambda with statements and a final
     /// return result, or (if there are no statements), a pure function.
-    Lambda(Vec<VariableID>, Vec<Statement>, Box<RawExpr>),
+    Lambda(Vec<V>, Vec<Statement<V>>, Box<RawExpr<V>>),
     /// Function application: f x
-    Apply(Box<RawExpr>, Box<[RawExpr]>),
+    Apply(Box<RawExpr<V>>, Box<[RawExpr<V>]>),
     /// Locally defined variable.
-    Var(VariableID),
+    Var(V),
 }
 
-impl RawExpr {
+impl<V: Clone> RawExpr<V> {
     /// Convert a "raw" format expression into one traced with
     ///  expression data.
-    pub fn from_raw(&self) -> Expr {
+    pub fn from_raw(&self) -> Expr<V> {
         match self {
             RawExpr::None => Expr::None,
             RawExpr::Unit => Expr::Unit,
@@ -123,14 +124,14 @@ impl RawExpr {
     }
 }
 
-impl Expr {
-    pub fn traced(self) -> TracedExpr {
+impl<V: Clone> Expr<V> {
+    pub fn traced(self) -> TracedExpr<V> {
         TracedExpr::new(self)
     }
 
     /// Strip an expression of any "trace" data, converting it into the "raw"
     ///  format.
-    pub fn to_raw(&self) -> RawExpr {
+    pub fn to_raw(&self) -> RawExpr<V> {
         match self {
             Expr::None => RawExpr::None,
             Expr::Unit => RawExpr::Unit,
@@ -166,15 +167,15 @@ impl Expr {
     }
 }
 
-impl Arbitrary for Expr {
+impl Arbitrary for Expr<String> {
     fn arbitrary(g: &mut Gen) -> Self {
-        let context = ef3r_stdlib(NoOpDebugger::new());
+        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
         Self::arbitrary_with_depth(&context, g, 0)
     }
 }
 
-impl Expr {
+impl Expr<String> {
     fn arbitrary_with_depth<T: Debugger + 'static>(
         context: &Context<T>,
         g: &mut Gen,
@@ -248,9 +249,9 @@ impl Expr {
     }
 }
 
-impl Display for Expr {
+impl<V: Display> Display for Expr<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let context = ef3r_stdlib(NoOpDebugger::new());
+        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
         match self {
             Expr::None => f.write_str("None"),
@@ -288,14 +289,15 @@ impl Display for Expr {
                 let index = context
                     .expression_context
                     .polymorphic_functions
-                    .keys()
-                    .find(|x| x.id == *id)
-                    .unwrap();
+                    .iter()
+                    .find(|(x, _)| x.id == *id)
+                    .unwrap()
+                    .1;
 
                 let name = context
                     .expression_context
                     .functions
-                    .get(&index.id)
+                    .get(&index)
                     .unwrap()
                     .name
                     .clone();
@@ -315,7 +317,7 @@ impl Display for Expr {
             Expr::Lambda(vars, _, body) => {
                 f.write_str("\\")?;
                 for var in vars {
-                    f.write_str(var)?;
+                    var.fmt(f)?;
                 }
                 f.write_str(" -> ")?;
                 body.as_ref().fmt(f)
@@ -354,27 +356,27 @@ impl Display for Expr {
 /// If it exists, the trace should evaluate to evaluated.
 ///
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub struct TracedExpr {
-    pub evaluated: Expr,
-    pub stored_trace: Option<Expr>,
+pub struct TracedExpr<V> {
+    pub evaluated: Expr<V>,
+    pub stored_trace: Option<Expr<V>>,
 }
 
-impl TracedExpr {
-    pub fn build(evaluated: Expr, trace: Option<Expr>) -> TracedExpr {
+impl<V: Clone> TracedExpr<V> {
+    pub fn build(evaluated: Expr<V>, trace: Option<Expr<V>>) -> TracedExpr<V> {
         TracedExpr {
             evaluated: evaluated,
             stored_trace: trace,
         }
     }
 
-    pub fn get_trace(&self) -> Expr {
+    pub fn get_trace(&self) -> Expr<V> {
         match &self.stored_trace {
             Some(expr) => expr.clone(),
             None => self.evaluated.clone(),
         }
     }
 
-    pub fn new(expr: Expr) -> TracedExpr {
+    pub fn new(expr: Expr<V>) -> TracedExpr<V> {
         TracedExpr {
             evaluated: expr,
             stored_trace: None,
@@ -382,7 +384,7 @@ impl TracedExpr {
     }
 }
 
-impl Display for TracedExpr {
+impl<V: Display> Display for TracedExpr<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.evaluated.fmt(f)
     }
@@ -391,6 +393,8 @@ impl Display for TracedExpr {
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
+
+    use bimap::BiMap;
 
     use crate::{
         ast::Expr,
@@ -401,7 +405,10 @@ mod tests {
 
     #[test]
     fn evaluation_keeps_trace() {
-        let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
+        let context = Arc::new(Mutex::new(ef3r_stdlib(
+            NoOpDebugger::new(),
+            BiMap::new(),
+        )));
 
         // Example expression.
         let expression = Expr::Apply(
@@ -419,18 +426,17 @@ mod tests {
         let evaluated =
             evaluate_traced(context, expression.clone().traced()).unwrap();
 
-        println!("Evaluated: {}", evaluated.evaluated);
-
         assert_eq!(evaluated.evaluated, Expr::Int(6));
-
-        println!("Trace: {}", evaluated.stored_trace.clone().unwrap());
 
         assert_eq!(evaluated.stored_trace, Some(expression));
     }
 
     #[test]
     fn evaluating_twice_keeps_entire_trace() {
-        let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
+        let context = Arc::new(Mutex::new(ef3r_stdlib(
+            NoOpDebugger::new(),
+            BiMap::new(),
+        )));
 
         // Example expression.
         let expression = Expr::Apply(
@@ -463,12 +469,6 @@ mod tests {
             Box::new([Expr::Int(2).traced(), expression.traced()]),
         );
 
-        println!(
-            "Evaluated: {}",
-            unwind_trace(second_evaluated.clone()).clone()
-        );
-        println!("Expected: {}", expected);
-
         assert_eq!(unwind_trace(second_evaluated).clone().evaluated, expected);
     }
 }
@@ -480,10 +480,10 @@ mod tests {
 ///  its result to a variable.
 ///
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub struct Statement {
+pub struct Statement<V> {
     pub location: CodeLocation,
-    pub var: Option<VariableID>,
-    pub expr: RawExpr,
+    pub var: Option<V>,
+    pub expr: RawExpr<V>,
 }
 
 ///
@@ -499,11 +499,11 @@ pub struct DebugInfo {
 }
 
 // Question: How would this work with traced expressions?
-pub fn substitute(
-    variable: &String,
-    with: &RawExpr,
-    in_expr: RawExpr,
-) -> RawExpr {
+pub fn substitute<V: Clone + PartialEq + Eq>(
+    variable: &V,
+    with: &RawExpr<V>,
+    in_expr: RawExpr<V>,
+) -> RawExpr<V> {
     match in_expr {
         RawExpr::Pair(x, y) => RawExpr::Pair(
             Box::new(substitute(variable, with, *x)),
@@ -537,11 +537,11 @@ pub fn substitute(
     }
 }
 
-pub fn substitute_statement(
-    variable: &String,
-    with: &RawExpr,
-    statement: Statement,
-) -> Statement {
+pub fn substitute_statement<V: Clone + PartialEq + Eq>(
+    variable: &V,
+    with: &RawExpr<V>,
+    statement: Statement<V>,
+) -> Statement<V> {
     Statement {
         location: statement.location,
         var: statement.var,

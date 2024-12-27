@@ -41,7 +41,7 @@ fn lambda_params(input: Span) -> IResult<Span, Vec<String>> {
     )(input)
 }
 
-fn lambda_body(input: Span) -> IResult<Span, Vec<Statement>> {
+fn lambda_body(input: Span) -> IResult<Span, Vec<Statement<String>>> {
     terminated(
         separated_list0(
             ws(char(';')),
@@ -58,7 +58,7 @@ fn lambda_body(input: Span) -> IResult<Span, Vec<Statement>> {
     )(input)
 }
 
-fn lambda_expr(input: Span) -> IResult<Span, RawExpr> {
+fn lambda_expr(input: Span) -> IResult<Span, RawExpr<String>> {
     map(
         delimited(
             ws(char('{')),
@@ -216,7 +216,7 @@ fn symbol(input: Span) -> IResult<Span, String> {
 }
 
 // Literal parsers
-fn float(input: Span) -> IResult<Span, RawExpr> {
+fn float(input: Span) -> IResult<Span, RawExpr<String>> {
     map(
         tuple((recognize(digit1), char('.'), recognize(digit1))),
         |(int_digits, _, frac_digits): (Span, char, Span)| {
@@ -231,27 +231,27 @@ fn float(input: Span) -> IResult<Span, RawExpr> {
     )(input)
 }
 
-fn integer(input: Span) -> IResult<Span, RawExpr> {
+fn integer(input: Span) -> IResult<Span, RawExpr<String>> {
     map(recognize(digit1), |digits: Span| {
         RawExpr::Int(digits.parse().unwrap())
     })(input)
 }
 
-fn string_literal(input: Span) -> IResult<Span, RawExpr> {
+fn string_literal(input: Span) -> IResult<Span, RawExpr<String>> {
     map(
         delimited(char('"'), take_while(|c| c != '"'), char('"')),
         |s: Span| RawExpr::String(s.to_string()),
     )(input)
 }
 
-fn boolean(input: Span) -> IResult<Span, RawExpr> {
+fn boolean(input: Span) -> IResult<Span, RawExpr<String>> {
     alt((
         map(tag("true"), |_| RawExpr::Bool(true)),
         map(tag("false"), |_| RawExpr::Bool(false)),
     ))(input)
 }
 
-fn literal(input: Span) -> IResult<Span, RawExpr> {
+fn literal(input: Span) -> IResult<Span, RawExpr<String>> {
     alt((
         float,
         integer,
@@ -263,7 +263,7 @@ fn literal(input: Span) -> IResult<Span, RawExpr> {
 }
 
 // Expression parsers
-fn primary_expr(input: Span) -> IResult<Span, RawExpr> {
+fn primary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
     alt((
         ws(literal),
         map(ws(type_expr), RawExpr::Type),
@@ -272,7 +272,7 @@ fn primary_expr(input: Span) -> IResult<Span, RawExpr> {
     ))(input)
 }
 
-fn function_call(input: Span) -> IResult<Span, RawExpr> {
+fn function_call(input: Span) -> IResult<Span, RawExpr<String>> {
     let (input, func) = identifier(input)?;
 
     // Handle both cases: with parentheses (possibly with args) and without
@@ -284,7 +284,7 @@ fn function_call(input: Span) -> IResult<Span, RawExpr> {
     ))
 }
 
-fn function_invocation(input: Span) -> IResult<Span, Vec<RawExpr>> {
+fn function_invocation(input: Span) -> IResult<Span, Vec<RawExpr<String>>> {
     let (input, (args, trailing_lambda)) = alt((
         // Case 1: f(arg1, arg2) { ... }
         map(
@@ -311,7 +311,7 @@ fn function_invocation(input: Span) -> IResult<Span, Vec<RawExpr>> {
     Ok((input, final_args))
 }
 
-fn binary_expr(input: Span) -> IResult<Span, RawExpr> {
+fn binary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
     let (input, first) = non_binary_expression(input)?;
 
     let (input, rest) =
@@ -328,7 +328,7 @@ fn binary_expr(input: Span) -> IResult<Span, RawExpr> {
     Ok((input, result))
 }
 
-fn method_call(input: Span) -> IResult<Span, RawExpr> {
+fn method_call(input: Span) -> IResult<Span, RawExpr<String>> {
     let (input, initial) = primary_expr(input)?;
 
     // Parse zero or more method calls
@@ -356,16 +356,16 @@ fn method_call(input: Span) -> IResult<Span, RawExpr> {
     Ok((input, result))
 }
 
-fn expression(input: Span) -> IResult<Span, RawExpr> {
+fn expression(input: Span) -> IResult<Span, RawExpr<String>> {
     alt((binary_expr, non_binary_expression))(input)
 }
 
-fn non_binary_expression(input: Span) -> IResult<Span, RawExpr> {
+fn non_binary_expression(input: Span) -> IResult<Span, RawExpr<String>> {
     alt((lambda_expr, function_call, method_call, primary_expr))(input)
 }
 
 // Statement parsers
-fn let_statement(input: Span) -> IResult<Span, Statement> {
+fn let_statement(input: Span) -> IResult<Span, Statement<String>> {
     map(
         tuple((ws(tag("let")), ws(identifier), ws(char('=')), expression)),
         |(_, id, _, expr)| Statement {
@@ -376,12 +376,12 @@ fn let_statement(input: Span) -> IResult<Span, Statement> {
     )(input)
 }
 
-pub fn parse_program(input: Span) -> IResult<Span, Vec<Statement>> {
+pub fn parse_program(input: Span) -> IResult<Span, Vec<Statement<String>>> {
     // A full program is basically a top-level lambda we're executing.
     lambda_body(input)
 }
 
-pub fn parse(input: &str) -> Result<Vec<Statement>, String> {
+pub fn parse(input: &str) -> Result<Vec<Statement<String>>, String> {
     match parse_program(Span::new(input)) {
         Ok((remaining, program)) => {
             if remaining.trim().is_empty() {

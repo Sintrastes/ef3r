@@ -88,7 +88,14 @@ impl Debugger for StepDebugger {
                     break;
                 } else if input.starts_with(":show ") {
                     let var_name = input.trim_start_matches(":show ").trim();
-                    match ctx.expression_context.variables.get(var_name) {
+
+                    let id = ctx
+                        .expression_context
+                        .symbol_table
+                        .get_by_right(var_name)
+                        .unwrap();
+
+                    match ctx.expression_context.variables.get(id) {
                         Some(val) => println!("{} = {:?}", var_name, val),
                         None => {
                             println!(

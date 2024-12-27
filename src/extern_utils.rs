@@ -6,10 +6,10 @@ use crate::{
 /// Trait to map Rust types to ExprTypes
 pub trait ExprTypeable {
     fn expr_type() -> ExprType;
-    fn try_from_expr(expr: &Expr) -> Option<Self>
+    fn try_from_expr(expr: &Expr<u32>) -> Option<Self>
     where
         Self: Sized;
-    fn to_expr(self) -> Expr;
+    fn to_expr(self) -> Expr<u32>;
 }
 
 // Implementations for basic types
@@ -17,14 +17,14 @@ impl ExprTypeable for i32 {
     fn expr_type() -> ExprType {
         ExprType::Int
     }
-    fn try_from_expr(expr: &Expr) -> Option<Self> {
+    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
         if let Expr::Int(x) = expr {
             Some(*x)
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr {
+    fn to_expr(self) -> Expr<u32> {
         Expr::Int(self)
     }
 }
@@ -33,14 +33,14 @@ impl ExprTypeable for f32 {
     fn expr_type() -> ExprType {
         ExprType::Float
     }
-    fn try_from_expr(expr: &Expr) -> Option<Self> {
+    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
         if let Expr::Float(x) = expr {
             Some(*x)
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr {
+    fn to_expr(self) -> Expr<u32> {
         Expr::Float(self)
     }
 }
@@ -49,14 +49,14 @@ impl ExprTypeable for String {
     fn expr_type() -> ExprType {
         ExprType::String
     }
-    fn try_from_expr(expr: &Expr) -> Option<Self> {
+    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
         if let Expr::String(x) = expr {
             Some(x.clone())
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr {
+    fn to_expr(self) -> Expr<u32> {
         Expr::String(self)
     }
 }
@@ -65,14 +65,14 @@ impl ExprTypeable for bool {
     fn expr_type() -> ExprType {
         ExprType::Bool
     }
-    fn try_from_expr(expr: &Expr) -> Option<Self> {
+    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
         if let Expr::Bool(x) = expr {
             Some(*x)
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr {
+    fn to_expr(self) -> Expr<u32> {
         Expr::Bool(self)
     }
 }
@@ -81,42 +81,42 @@ impl ExprTypeable for () {
     fn expr_type() -> ExprType {
         ExprType::Unit
     }
-    fn try_from_expr(expr: &Expr) -> Option<Self> {
+    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
         if let Expr::Unit = expr {
             Some(())
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr {
+    fn to_expr(self) -> Expr<u32> {
         Expr::Unit
     }
 }
 
-impl ExprTypeable for Vec<TracedExpr> {
+impl ExprTypeable for Vec<TracedExpr<u32>> {
     fn expr_type() -> ExprType {
         ExprType::List(Box::new(ExprType::Any))
     }
-    fn try_from_expr(expr: &Expr) -> Option<Self> {
+    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
         if let Expr::List(x) = expr {
             Some(x.clone())
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr {
+    fn to_expr(self) -> Expr<u32> {
         Expr::List(self)
     }
 }
 
-impl ExprTypeable for Expr {
+impl ExprTypeable for Expr<u32> {
     fn expr_type() -> ExprType {
         ExprType::Any
     }
-    fn try_from_expr(expr: &Expr) -> Option<Self> {
+    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
         Some(expr.clone())
     }
-    fn to_expr(self) -> Expr {
+    fn to_expr(self) -> Expr<u32> {
         self
     }
 }
@@ -128,7 +128,7 @@ macro_rules! build_function {
             argument_types: vec![<$type>::expr_type()],
             result_type: $res_type,
             name: $name.to_string(),
-            definition: |$ctx, xs: &[TracedExpr]| {
+            definition: |$ctx, xs: &[TracedExpr<u32>]| {
                 let expr = xs.get(0).ok_or(
                     EvaluationError::WrongNumberOfArguments {
                         expected: 1,
@@ -159,7 +159,7 @@ macro_rules! build_function {
             name: $name.to_string(),
             argument_types: vec![<$type1>::expr_type(), <$type2>::expr_type()],
             result_type: $res_type,
-            definition: |$ctx, xs: &[TracedExpr]| {
+            definition: |$ctx, xs: &[TracedExpr<u32>]| {
                 let expr1 = xs.get(0).ok_or(
                     EvaluationError::WrongNumberOfArguments {
                         expected: 2,
@@ -209,7 +209,7 @@ macro_rules! build_function {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
-            definition: |$ctx, xs: &[TracedExpr]| {
+            definition: |$ctx, xs: &[TracedExpr<u32>]| {
                 let $param = xs
                     .get(0)
                     .ok_or(EvaluationError::WrongNumberOfArguments {
@@ -230,7 +230,7 @@ macro_rules! build_function {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
-            definition: |$ctx, xs: &[TracedExpr]| {
+            definition: |$ctx, xs: &[TracedExpr<u32>]| {
                 let $param1 = xs
                     .get(0)
                     .ok_or(EvaluationError::WrongNumberOfArguments {
@@ -260,7 +260,7 @@ macro_rules! build_function {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
-            definition: |$ctx, xs: &[TracedExpr]| {
+            definition: |$ctx, xs: &[TracedExpr<u32>]| {
                 let $param1 = xs
                     .get(0)
                     .ok_or(EvaluationError::WrongNumberOfArguments {
