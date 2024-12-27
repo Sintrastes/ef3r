@@ -273,6 +273,15 @@ fn function_call(input: Span) -> IResult<Span, RawExpr> {
     let (input, func) = identifier(input)?;
 
     // Handle both cases: with parentheses (possibly with args) and without
+    let (input, args) = function_invocation(input)?;
+
+    Ok((
+        input,
+        RawExpr::Apply(Box::new(RawExpr::Var(func)), args.into()),
+    ))
+}
+
+fn function_invocation(input: Span) -> IResult<Span, Vec<RawExpr>> {
     let (input, (args, trailing_lambda)) = alt((
         // Case 1: f(arg1, arg2) { ... }
         map(
@@ -294,12 +303,9 @@ fn function_call(input: Span) -> IResult<Span, RawExpr> {
     let mut final_args = args;
     if let Some(lambda) = trailing_lambda {
         final_args.push(lambda);
-    }
+    };
 
-    Ok((
-        input,
-        RawExpr::Apply(Box::new(RawExpr::Var(func)), final_args.into()),
-    ))
+    Ok((input, final_args))
 }
 
 fn binary_expr(input: Span) -> IResult<Span, RawExpr> {
@@ -325,11 +331,7 @@ fn method_call(input: Span) -> IResult<Span, RawExpr> {
     // Parse zero or more method calls
     let (input, method_chains) = many0(tuple((
         preceded(ws(char('.')), identifier),
-        delimited(
-            ws(char('(')),
-            separated_list0(ws(char(',')), expression),
-            ws(char(')')),
-        ),
+        function_invocation,
     )))(input)?;
 
     // Transform the chain of method calls into nested function calls

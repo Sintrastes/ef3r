@@ -123,8 +123,8 @@ fn execute_example_program() {
         let xs = list(1, 2, 3);
 
         let ys = xs
-            .map({ x -> x + 2 })
-            .filter({ x -> x % 2 == 0 });
+            .map { x -> x + 2 }
+            .filter { x -> x % 2 == 0 };
 
         // Test floating point arithmetic
 

@@ -6,7 +6,7 @@ let response = readln();
 
 let xs = list(1, 2, 3);
 
-let mapped_list = xs.map({ x -> x + 2 });
+let mapped_list = xs.map { x -> x + 2 };
 
 println(xs);
 println(mapped_list);
@@ -14,8 +14,8 @@ println(mapped_list);
 println(response.uppercase());
 
 let mapped = node
-    .map({ x -> x + 3 })
-    .map({ x -> x * 7 });
+    .map { x -> x + 3 }
+    .map { x -> x * 7 };
 
 let x = 2;
 let y = 3;

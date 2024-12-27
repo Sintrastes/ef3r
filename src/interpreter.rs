@@ -317,7 +317,6 @@ fn function_from_expression<T: Debugger + 'static>(
     >,
     EvaluationError,
 > {
-    dbg!(&resolved);
     return Ok(match &resolved {
         Expr::BuiltinFunction(action_id) => Box::new(
             ctx.lock()
