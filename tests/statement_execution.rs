@@ -130,6 +130,12 @@ fn execute_example_program() {
 
         let foo = 3.2 * 5.6 + 0.2 - 0.01;
 
+        // Test infix function syntax.
+
+        let op = { x, y -> 2 * x + y };
+
+        let applied = 2 `op` 3;
+
         /* Test launcing a thread. */
         launch {
             let x = "test";

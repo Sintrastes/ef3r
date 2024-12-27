@@ -195,21 +195,24 @@ fn non_arrow_type(input: Span) -> IResult<Span, ExprType> {
 
 // Symbol parser
 fn symbol(input: Span) -> IResult<Span, String> {
-    map(
-        recognize(many0(alt((
-            char('='),
-            char('+'),
-            char('-'),
-            char('*'),
-            char('/'),
-            char('.'),
-            char('&'),
-            char('|'),
-            char('!'),
-            char('%'),
-        )))),
-        |s: Span| s.fragment().to_string(),
-    )(input)
+    alt((
+        delimited(char('`'), identifier, char('`')),
+        map(
+            recognize(many0(alt((
+                char('='),
+                char('+'),
+                char('-'),
+                char('*'),
+                char('/'),
+                char('.'),
+                char('&'),
+                char('|'),
+                char('!'),
+                char('%'),
+            )))),
+            |s: Span| s.fragment().to_string(),
+        ),
+    ))(input)
 }
 
 // Literal parsers
