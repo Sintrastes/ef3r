@@ -392,6 +392,24 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     }
 }
 
+#[cfg(test)]
+mod tests_for_symbols {
+    use bimap::BiMap;
+
+    use crate::{ast::Expr, debugging::NoOpDebugger, stdlib::ef3r_stdlib};
+
+    quickcheck! {
+        fn strip_and_restore_yields_same_expression(expr: Expr<String>) -> bool {
+            let mut context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+
+            let stripped = context.expression_context.strip_symbols(expr.clone());
+            let restored = context.expression_context.restore_symbols(stripped);
+
+            restored == expr
+        }
+    }
+}
+
 pub fn unwind_trace(expr: TracedExpr<u32>) -> TracedExpr<u32> {
     match expr {
         TracedExpr {

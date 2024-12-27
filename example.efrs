@@ -8,7 +8,7 @@ let xs = list(1, 2, 3);
 
 let mapped_list = xs.map { x -> x + 2 };
 
-print(xs);
+xs.print();
 print(mapped_list);
 
 print(response.uppercase());
