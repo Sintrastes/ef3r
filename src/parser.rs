@@ -48,7 +48,7 @@ fn lambda_body(input: Span) -> IResult<Span, Vec<Statement<String>>> {
             alt((
                 let_statement,
                 map(expression, |expr| Statement {
-                    location: input.into(),
+                    location: Some(input.into()),
                     var: None,
                     expr: expr,
                 }),
@@ -369,7 +369,7 @@ fn let_statement(input: Span) -> IResult<Span, Statement<String>> {
     map(
         tuple((ws(tag("let")), ws(identifier), ws(char('=')), expression)),
         |(_, id, _, expr)| Statement {
-            location: input.into(),
+            location: Some(input.into()),
             var: Some(id),
             expr: expr,
         },

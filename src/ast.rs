@@ -481,7 +481,7 @@ mod tests {
 ///
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct Statement<V> {
-    pub location: CodeLocation,
+    pub location: Option<CodeLocation>,
     pub var: Option<V>,
     pub expr: RawExpr<V>,
 }
