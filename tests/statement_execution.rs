@@ -17,11 +17,7 @@ fn variable_assignment() {
 
     let expression = RawExpr::Int(3);
     let statement = Statement {
-        location: CodeLocation {
-            line: 0,
-            column: 0,
-            offset: 0,
-        },
+        location: None,
         var: Some(0),
         expr: expression.clone(),
     };
@@ -49,20 +45,12 @@ fn reassignment_of_statement() {
     let cloned_ctx = context.clone();
 
     let statement1 = Statement {
-        location: CodeLocation {
-            line: 0,
-            column: 0,
-            offset: 0,
-        },
+        location: None,
         var: Some(0),
         expr: RawExpr::Int(2),
     };
     let statement2 = Statement {
-        location: CodeLocation {
-            line: 0,
-            column: 0,
-            offset: 0,
-        },
+        location: None,
         var: Some(0),
         expr: RawExpr::Int(3),
     };
@@ -84,7 +72,7 @@ fn reassignment_of_statement() {
 
 #[test]
 fn execute_example_program() {
-    let program = r#"println("Hello, world!");
+    let program = r#"print("Hello, world!");
 
         let f = { x -> uppercase(x) };
 
@@ -96,7 +84,7 @@ fn execute_example_program() {
                 .concat()
         };
 
-        println(join_to_string(list("hello", "world"), ", "));
+        print(join_to_string(list("hello", "world"), ", "));
 
         let y = f("test");
 
@@ -104,13 +92,13 @@ fn execute_example_program() {
 
         let current_value = node.current_value();
 
-        println(current_value);
+        print(current_value);
 
         node.update_node(2);
 
-        println(node.current_value());
+        print(node.current_value());
 
-        println(pair(1,2));
+        print(pair(1,2));
 
         // Test executing new nodes.
         new_node(Bool, true);
@@ -141,15 +129,15 @@ fn execute_example_program() {
         launch {
             let x = "test";
 
-            println("Hello " + x.uppercase());
+            print("Hello " + x.uppercase());
 
-            println(x.f());
+            print(x.f());
 
-            println(2 + 2 * 3);
+            print(2 + 2 * 3);
 
-            println(2 / 2);
+            print(2 / 2);
 
-            println(y);
+            print(y);
         };
     "#
     .to_string();
