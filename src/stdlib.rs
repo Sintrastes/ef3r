@@ -91,8 +91,15 @@ pub const STRING_LENGTH_ID: u32 = 39;
 pub const LIST_LENGTH_ID: u32 = 40;
 pub const STRING_SPLIT_ID: u32 = 41;
 pub const INTERSPERSE_ID: u32 = 42;
+pub const INT_MODULO: u32 = 43;
+pub const EQUALS_ID: u32 = 44;
 
 pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
+    let equals_fn =
+        build_function!(T, "==", ExprType::Bool, |_cx, x: Expr, y: Expr| {
+            Ok(x == y)
+        });
+
     let int_mul =
         build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
             Ok(x * y)
@@ -111,6 +118,11 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
     let int_sub =
         build_function!(T, "-", ExprType::Int, |_cx, x: i32, y: i32| {
             Ok(x - y)
+        });
+
+    let int_modulo =
+        build_function!(T, "%", ExprType::Int, |_cx, x: i32, y: i32| {
+            Ok(x % y)
         });
 
     let float_mul =
@@ -1004,6 +1016,8 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 (STRING_LENGTH_ID, string_length_fn),
                 (STRING_SPLIT_ID, string_split_fn),
                 (INTERSPERSE_ID, intersperse_fn),
+                (INT_MODULO, int_modulo),
+                (EQUALS_ID, equals_fn),
             ]),
             variables: HashMap::new(),
         },

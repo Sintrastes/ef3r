@@ -122,7 +122,9 @@ fn execute_example_program() {
         // Test list processing
         let xs = list(1, 2, 3);
 
-        let ys = xs.map({ x -> x + 2 });
+        let ys = xs
+            .map({ x -> x + 2 })
+            .filter({ x -> x % 2 == 0 });
 
         // Test floating point arithmetic
 

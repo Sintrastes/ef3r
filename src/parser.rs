@@ -206,6 +206,7 @@ fn symbol(input: Span) -> IResult<Span, String> {
             char('&'),
             char('|'),
             char('!'),
+            char('%'),
         )))),
         |s: Span| s.fragment().to_string(),
     )(input)
