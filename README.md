@@ -33,6 +33,15 @@ However, despite many of these concepts having a basis in academic programming l
  - [Whyline](https://www.cs.cmu.edu/~NatProg/whyline.html)
  - [Eve](https://witheve.com/)
 
+We also take inspiration from:
+
+ - Kotlin (lambda / "block" syntax, "when" expressions)
+ - Haskell ("lambda case" syntax, binary operator backtick syntax, `where` expressions).
+ - Purescript / OCaml (Extensible records and variants / OCaml object system).
+ - Julia (multiple dispatch, strong dynamic typing system).
+ - Python (minimal syntax for variable declarations).
+ - Rust (Functions are private-by-default in modules, no need for a specail `private` syntax).
+
 # Acronym
 
 Experimental Functional Reactive Runtime in Rust
