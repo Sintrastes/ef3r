@@ -113,22 +113,22 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         });
 
     let float_mul =
-        build_function!(T, "*", ExprType::Float, |_cx, x: i32, y: i32| {
+        build_function!(T, "*", ExprType::Float, |_cx, x: f32, y: f32| {
             Ok(x * y)
         });
 
     let float_add =
-        build_function!(T, "+", ExprType::Float, |_cx, x: i32, y: i32| {
+        build_function!(T, "+", ExprType::Float, |_cx, x: f32, y: f32| {
             Ok(x + y)
         });
 
     let float_div =
-        build_function!(T, "/", ExprType::Float, |_cx, x: i32, y: i32| {
+        build_function!(T, "/", ExprType::Float, |_cx, x: f32, y: f32| {
             Ok(x / y)
         });
 
     let float_sub =
-        build_function!(T, "-", ExprType::Float, |_cx, x: i32, y: i32| {
+        build_function!(T, "-", ExprType::Float, |_cx, x: f32, y: f32| {
             Ok(x - y)
         });
 

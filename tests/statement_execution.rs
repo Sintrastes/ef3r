@@ -6,6 +6,7 @@ use ef3r::interpreter::interpret;
 use ef3r::parser::CodeLocation;
 use ef3r::stdlib::{
     ef3r_stdlib, get_stdlib_functions, get_stdlib_polymorphic_functions,
+    resolve_builtin_functions,
 };
 
 #[test]
@@ -111,6 +112,12 @@ fn execute_example_program() {
         // Test list processing
         let xs = list(1, 2, 3);
 
+        let ys = xs.map({ x -> x + 2 });
+
+        // Test floating point arithmetic
+
+        let foo = 3.2 * 5.6 + 0.2 - 0.01;
+
         /* Test launcing a thread. */
         launch {
             let x = "test";
@@ -181,6 +188,7 @@ fn arithmetic_operators_wrong_args() {
     "#;
 
     let parsed_program = ef3r::parser::parse(&program).unwrap();
+
     let result = interpret(context.clone(), parsed_program.as_slice());
     assert!(result.is_err());
 
