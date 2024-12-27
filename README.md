@@ -35,12 +35,13 @@ However, despite many of these concepts having a basis in academic programming l
 
 We also take inspiration from:
 
- - Kotlin (lambda / "block" syntax, "when" expressions)
- - Haskell ("lambda case" syntax, binary operator backtick syntax, `where` expressions).
- - Purescript / OCaml (Extensible records and variants / OCaml object system).
- - Julia (multiple dispatch, strong dynamic typing system).
- - Python (minimal syntax for variable declarations).
- - Rust (Functions are private-by-default in modules, no need for a specail `private` syntax).
+ - [Kotlin](https://kotlinlang.org/) (lambda / "block" syntax, "when" expressions)
+ - [Haskell](https://www.haskell.org/) ("lambda case" syntax, binary operator backtick syntax, `where` expressions).
+ - [Purescript](https://www.purescript.org/) / [OCaml](https://ocaml.org/) (Extensible records and variants / OCaml object system).
+ - [Julia](https://julialang.org/) (multiple dispatch, strong dynamic typing system).
+ - [Python](https://www.python.org/) (minimal syntax for variable declarations).
+ - [Rust](https://www.rust-lang.org/) (Functions are private-by-default in modules, no need for a specail `private` syntax, `?` for unwrapping effectful values).
+ - [Idris](https://www.idris-lang.org/) (Types are just values, no need for a specail syntax for type application v.s. term application.
 
 # Acronym
 
