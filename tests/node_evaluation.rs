@@ -258,10 +258,12 @@ fn test_fold_node() {
         Expr::None.traced(),
     );
 
+    drop(context_lock);
+
     let folded_node_index = fold_node(
+        context.clone(),
         on_update,
         is_traced,
-        &mut context_lock.graph,
         event_node_index,
         Expr::Int(2).traced(),
         Box::new(|acc: TracedExpr, event: TracedExpr| {
@@ -271,6 +273,8 @@ fn test_fold_node() {
             }
         }),
     );
+
+    let mut context_lock = context.lock().unwrap();
 
     // Verify initial state
     let folded_node =

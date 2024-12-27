@@ -325,9 +325,9 @@ pub fn combined_node<T: Debugger + 'static>(
 }
 
 pub fn fold_node<'a, T: Debugger + 'static>(
+    ctx: Arc<Mutex<Context<T>>>,
     on_update: fn(TracedExpr),
     traced: Arc<AtomicBool>,
-    graph: &mut Dag<Node<T>, (), u32>,
     event_index: NodeIndex,
     initial: TracedExpr,
     fold: Box<dyn Fn(TracedExpr, TracedExpr) -> TracedExpr>,
@@ -352,13 +352,18 @@ pub fn fold_node<'a, T: Debugger + 'static>(
     });
 
     let new_node = Node {
-        expr_type: type_of(&initial_clone.evaluated).unwrap(),
+        expr_type: with_lock(ctx.as_ref(), |lock| {
+            type_of(&lock.expression_context, &initial_clone.evaluated)
+        })
+        .unwrap(),
         value: value.clone(),
         dirty,
         traced,
         on_update,
         on_dependency_update,
     };
+
+    let graph = &mut ctx.lock().unwrap().graph;
 
     let new_node_index = graph.add_node(new_node);
 

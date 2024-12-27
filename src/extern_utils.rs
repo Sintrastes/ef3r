@@ -140,8 +140,10 @@ macro_rules! build_function {
                 let $param = <$type>::try_from_expr(&expr.evaluated).ok_or(
                     EvaluationError::TypeError {
                         expected: <$type>::expr_type(),
-                        actual: type_of(&expr.evaluated)
-                            .unwrap_or(ExprType::Any),
+                        actual: with_lock($ctx.as_ref(), |lock| {
+                            type_of(&lock.expression_context, &expr.evaluated)
+                        })
+                        .unwrap_or(ExprType::Any),
                         at_loc: $name.to_string(),
                     },
                 )?;
@@ -177,8 +179,10 @@ macro_rules! build_function {
                 let $param1 = <$type1>::try_from_expr(&expr1.evaluated).ok_or(
                     EvaluationError::TypeError {
                         expected: <$type1>::expr_type(),
-                        actual: type_of(&expr1.evaluated)
-                            .unwrap_or(ExprType::Any),
+                        actual: with_lock($ctx.as_ref(), |lock| {
+                            type_of(&lock.expression_context, &expr1.evaluated)
+                        })
+                        .unwrap_or(ExprType::Any),
                         at_loc: $name.to_string(),
                     },
                 )?;
@@ -186,8 +190,10 @@ macro_rules! build_function {
                 let $param2 = <$type2>::try_from_expr(&expr2.evaluated).ok_or(
                     EvaluationError::TypeError {
                         expected: <$type2>::expr_type(),
-                        actual: type_of(&expr2.evaluated)
-                            .unwrap_or(ExprType::Any),
+                        actual: with_lock($ctx.as_ref(), |lock| {
+                            type_of(&lock.expression_context, &expr2.evaluated)
+                        })
+                        .unwrap_or(ExprType::Any),
                         at_loc: $name.to_string(),
                     },
                 )?;

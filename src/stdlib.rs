@@ -385,11 +385,16 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         "type_of",
         ExprType::Type,
         vec![ExprType::Any],
-        |_cx, first| {
-            Ok(match type_of(&first.evaluated) {
-                Some(x) => Expr::Type(x),
-                None => Expr::None,
-            })
+        |ctx, first| {
+            Ok(
+                match type_of(
+                    &ctx.lock().unwrap().expression_context,
+                    &first.evaluated,
+                ) {
+                    Some(x) => Expr::Type(x),
+                    None => Expr::None,
+                },
+            )
         }
     );
 
@@ -401,7 +406,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
             Box::new(ExprType::Any),
             Box::new(ExprType::Any)
         )],
-        |_cx, pair| {
+        |ctx, pair| {
             match pair.evaluated {
                 Expr::Pair(x, _) => Ok(x.evaluated),
                 actual => Err(EvaluationError::TypeError {
@@ -409,7 +414,11 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                         Box::new(ExprType::Any),
                         Box::new(ExprType::Any),
                     ),
-                    actual: type_of(&actual).unwrap(),
+                    actual: type_of(
+                        &ctx.lock().unwrap().expression_context,
+                        &actual,
+                    )
+                    .unwrap(),
                     at_loc: "first".to_string(),
                 }),
             }
@@ -424,7 +433,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
             Box::new(ExprType::Any),
             Box::new(ExprType::Any)
         )],
-        |_cx, pair| {
+        |ctx, pair| {
             match pair.evaluated {
                 Expr::Pair(_, y) => Ok(y.evaluated),
                 actual => Err(EvaluationError::TypeError {
@@ -432,7 +441,11 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                         Box::new(ExprType::Any),
                         Box::new(ExprType::Any),
                     ),
-                    actual: type_of(&actual).unwrap(),
+                    actual: type_of(
+                        &ctx.lock().unwrap().expression_context,
+                        &actual,
+                    )
+                    .unwrap(),
                     at_loc: "second".to_string(),
                 }),
             }
@@ -491,7 +504,11 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: type_of(&actual).unwrap(),
+                    actual: type_of(
+                        &ctx.lock().unwrap().expression_context,
+                        &actual,
+                    )
+                    .unwrap(),
                     at_loc: "update_node".to_string(),
                 }),
             }
@@ -518,7 +535,11 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: type_of(&actual).unwrap(),
+                    actual: type_of(
+                        &ctx.lock().unwrap().expression_context,
+                        &actual,
+                    )
+                    .unwrap(),
                     at_loc: "current_value".to_string(),
                 }),
             }
@@ -533,7 +554,11 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         |ctx, first, second| {
             match first.evaluated {
                 Expr::Type(x) => {
-                    if type_of(&second.evaluated) == Some(x.clone()) {
+                    if type_of(
+                        &ctx.lock().unwrap().expression_context,
+                        &second.evaluated,
+                    ) == Some(x.clone())
+                    {
                         let fresh_id = Node::new(
                             |_| {},
                             Arc::new(AtomicBool::new(false)),
@@ -553,14 +578,22 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                     } else {
                         Err(EvaluationError::TypeError {
                             expected: x,
-                            actual: type_of(&second.evaluated).unwrap(),
+                            actual: type_of(
+                                &ctx.lock().unwrap().expression_context,
+                                &second.evaluated,
+                            )
+                            .unwrap(),
                             at_loc: "new_node".to_string(),
                         })
                     }
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Type,
-                    actual: type_of(&actual).unwrap(),
+                    actual: type_of(
+                        &ctx.lock().unwrap().expression_context,
+                        &actual,
+                    )
+                    .unwrap(),
                     at_loc: "new_node".to_string(),
                 }),
             }
@@ -630,7 +663,11 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: type_of(&actual).unwrap(),
+                    actual: type_of(
+                        &ctx.lock().unwrap().expression_context,
+                        &actual,
+                    )
+                    .unwrap(),
                     at_loc: "map_node".to_string(),
                 }),
             }
@@ -685,7 +722,9 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: type_of(&actual).unwrap(),
+                    actual: with_lock(ctx.as_ref(), |lock| {
+                        type_of(&lock.expression_context, &actual).unwrap()
+                    }),
                     at_loc: "filter_node".to_string(),
                 }),
             }
@@ -721,9 +760,9 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                         });
 
                     let fresh_id = fold_node(
+                        ctx.clone(),
                         |_| {},
                         Arc::new(AtomicBool::new(false)),
-                        &mut ctx.lock().unwrap().graph,
                         NodeIndex::new(node_id),
                         Expr::None.traced(),
                         transform,
@@ -739,7 +778,9 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: type_of(&actual).unwrap(),
+                    actual: with_lock(ctx.as_ref(), |lock| {
+                        type_of(&lock.expression_context, &actual).unwrap()
+                    }),
                     at_loc: "fold_node".to_string(),
                 }),
             }

@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fmt::Error,
     sync::{Arc, Mutex},
 };
 
@@ -332,7 +331,11 @@ fn function_from_expression<T: Debugger + 'static>(
         Expr::PolymorphicFunction(polymorphic_id) => {
             let arg_types: Vec<_> = evaluated_args
                 .iter()
-                .map(|arg| type_of(&arg.evaluated))
+                .map(|arg| {
+                    with_lock(ctx.as_ref(), |lock| {
+                        type_of(&lock.expression_context, &arg.evaluated)
+                    })
+                })
                 .collect();
 
             let polymorphic_index = PolymorphicIndex {
