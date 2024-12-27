@@ -1,9 +1,17 @@
 syntax = "proto3";
 
+import "google/protobuf/empty.proto";
+
 package debugger;
 
 // Service exposed by the node visualization tool
 service NodeVisualizer {
+  // Initialize active connection to the debugger.
+  rpc BeginSession(BeginSessionRequest) returns (google.protobuf.Empty) {};
+
+  // Drop active connecton to the debugger
+  rpc EndSession(EndSessionRequest) returns (google.protobuf.Empty) {};
+
   // Handle notification of new nodes being added to the frp graph
   rpc AddNodes(AddNodesRequest) returns (AddNodesResponse);
 
@@ -48,3 +56,7 @@ message UpdateNodeValuesRequest {
 }
 
 message UpdateNodeValuesResponse {}
+
+message BeginSessionRequest {}
+
+message EndSessionRequest {}

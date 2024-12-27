@@ -5,6 +5,7 @@ use std::{
     thread,
 };
 
+use bimap::BiMap;
 use daggy::{Dag, NodeIndex};
 
 use crate::{
@@ -94,11 +95,16 @@ pub const INTERSPERSE_ID: u32 = 42;
 pub const INT_MODULO: u32 = 43;
 pub const EQUALS_ID: u32 = 44;
 
-pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
-    let equals_fn =
-        build_function!(T, "==", ExprType::Bool, |_cx, x: Expr, y: Expr| {
-            Ok(x == y)
-        });
+pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
+    debugger: T,
+    symbol_table: BiMap<u32, String>,
+) -> Context<'a, T> {
+    let equals_fn = build_function!(
+        T,
+        "==",
+        ExprType::Bool,
+        |_cx, x: Expr<u32>, y: Expr<u32>| { Ok(x == y) }
+    );
 
     let int_mul =
         build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
@@ -185,7 +191,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         T,
         "drop",
         ExprType::List(Box::new(ExprType::Any)),
-        |_cx, list: Vec<TracedExpr>, n: i32| {
+        |_cx, list: Vec<TracedExpr<u32>>, n: i32| {
             Ok(if n <= 0 {
                 list
             } else {
@@ -198,7 +204,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         T,
         "drop_last",
         ExprType::List(Box::new(ExprType::Any)),
-        |_cx, list: Vec<TracedExpr>, n: i32| {
+        |_cx, list: Vec<TracedExpr<u32>>, n: i32| {
             Ok(if n <= 0 {
                 list
             } else {
@@ -214,7 +220,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         T,
         "intersperse",
         ExprType::List(Box::new(ExprType::Any)),
-        |_cx, list: Vec<TracedExpr>, separator: Expr| {
+        |_cx, list: Vec<TracedExpr<u32>>, separator: Expr<u32>| {
             if list.is_empty() {
                 return Ok(Expr::List(list));
             }
@@ -236,21 +242,22 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         name: "list".to_string(),
         argument_types: vec![], // Vararg function
         result_type: ExprType::List(Box::new(ExprType::Any)),
-        definition: |_, xs: &[TracedExpr]| Ok(Expr::List(xs.to_vec())),
+        definition: |_, xs: &[TracedExpr<u32>]| Ok(Expr::List(xs.to_vec())),
     };
 
-    let length_list_fn = build_function!(
-        T,
-        "length",
-        ExprType::Int,
-        |_cx, list: Vec<TracedExpr>| { Ok(list.len() as i32) }
-    );
+    let length_list_fn =
+        build_function!(T, "length", ExprType::Int, |_cx,
+                                                     list: Vec<
+            TracedExpr<u32>,
+        >| {
+            Ok(list.len() as i32)
+        });
 
     let append_lists_fn = build_function!(
         T,
         "+",
         ExprType::List(Box::new(ExprType::Any)),
-        |_cx, list1: Vec<TracedExpr>, list2: Vec<TracedExpr>| {
+        |_cx, list1: Vec<TracedExpr<u32>>, list2: Vec<TracedExpr<u32>>| {
             let mut result = list1;
             result.extend(list2);
             Ok(result)
@@ -356,29 +363,27 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         }
     );
 
-    let first_list_fn = build_function!(
-        T,
-        "first",
-        ExprType::Any,
-        |_cx, list: Vec<TracedExpr>| {
+    let first_list_fn =
+        build_function!(T, "first", ExprType::Any, |_cx,
+                                                    list: Vec<
+            TracedExpr<u32>,
+        >| {
             Ok(list
                 .first()
                 .map(|x| x.evaluated.clone())
                 .unwrap_or(Expr::None))
-        }
-    );
+        });
 
-    let last_list_fn = build_function!(
-        T,
-        "last",
-        ExprType::Any,
-        |_cx, list: Vec<TracedExpr>| {
+    let last_list_fn =
+        build_function!(T, "last", ExprType::Any, |_cx,
+                                                   list: Vec<
+            TracedExpr<u32>,
+        >| {
             Ok(list
                 .last()
                 .map(|x| x.evaluated.clone())
                 .unwrap_or(Expr::None))
-        }
-    );
+        });
 
     let type_of_fn = build_function!(
         T,
@@ -464,11 +469,23 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
 
     let print_fn = build_function!(
         T,
-        "println",
+        "print",
         ExprType::Unit,
         vec![ExprType::Any],
-        |_cx, first| {
-            println!("{}", first);
+        |ctx, first| {
+            match first.evaluated {
+                Expr::String(string) => {
+                    println!("{}", string);
+                }
+                _ => {
+                    println!(
+                        "{}",
+                        with_lock(ctx.as_ref(), |ctx| ctx
+                            .expression_context
+                            .restore_symbols(first.evaluated))
+                    );
+                }
+            }
             Ok(Expr::None)
         }
     );
@@ -477,7 +494,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         name: "readln".to_string(),
         argument_types: vec![],
         result_type: ExprType::String,
-        definition: |_, _: &[TracedExpr]| {
+        definition: |_, _: &[TracedExpr<u32>]| {
             let stdin = io::stdin();
             let result = stdin.lock().lines().next().unwrap().unwrap();
 
@@ -632,7 +649,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                     let ctx_clone = ctx.clone();
                     let second_clone = second.clone();
                     let transform =
-                        Arc::new(Mutex::new(move |expr: TracedExpr| {
+                        Arc::new(Mutex::new(move |expr: TracedExpr<u32>| {
                             evaluate_function_application(
                                 ctx_clone.clone(),
                                 &Expr::Apply(
@@ -687,7 +704,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 Expr::Node(node_id) => {
                     let ctx_clone = ctx.clone();
                     let second_clone = second.clone();
-                    let transform = move |expr: TracedExpr| {
+                    let transform = move |expr: TracedExpr<u32>| {
                         let result = evaluate_function_application(
                             ctx_clone.clone(),
                             &Expr::Apply(
@@ -747,8 +764,8 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 Expr::Node(node_id) => {
                     let ctx_clone = ctx.clone();
                     let second_clone = second.clone();
-                    let transform =
-                        Box::new(move |expr: TracedExpr, acc: TracedExpr| {
+                    let transform = Box::new(
+                        move |expr: TracedExpr<u32>, acc: TracedExpr<u32>| {
                             evaluate_function_application(
                                 ctx_clone.clone(),
                                 &Expr::Apply(
@@ -757,7 +774,8 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                                 ),
                             )
                             .unwrap()
-                        });
+                        },
+                    );
 
                     let fresh_id = fold_node(
                         ctx.clone(),
@@ -839,16 +857,21 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         "dbg_trace_full",
         ExprType::Unit,
         vec![ExprType::Any],
-        |_ctx, first| {
-            println!("{} = {}", first, first.get_trace());
+        |ctx, first| {
+            let resolved = with_lock(ctx.as_ref(), |lock| {
+                lock.expression_context
+                    .restore_symbols_traced(first.clone())
+            });
+            println!("{} = {}", resolved, resolved.get_trace());
             Ok(Expr::Unit)
         }
     );
 
     // Lookup table for the interpreter
     Context {
-        debugger: debugger,
+        debugger,
         expression_context: ExpressionContext {
+            symbol_table,
             polymorphic_functions: HashMap::from([
                 (
                     PolymorphicIndex {
@@ -1068,42 +1091,53 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
 
 pub fn get_stdlib_functions<'a, T: Debugger + 'static>(
     stdlib: &'a Context<T>,
-) -> HashMap<&'a str, u32> {
+) -> HashMap<u32, u32> {
     stdlib
         .expression_context
         .functions
         .iter()
-        .map(|(id, invokable)| (invokable.name.as_str(), *id))
+        .flat_map(|(id, invokable)| {
+            let symbol_id = stdlib
+                .expression_context
+                .symbol_table
+                .get_by_right(invokable.name.as_str())?;
+
+            Some((*symbol_id, *id))
+        })
         .collect()
 }
 
 pub fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
     stdlib: &'a Context<T>,
-) -> HashMap<&'a str, u32> {
+) -> HashMap<u32, u32> {
     stdlib
         .expression_context
         .polymorphic_functions
         .iter()
-        .map(|(id, func_id)| {
-            (
-                stdlib
-                    .expression_context
-                    .functions
-                    .get(func_id)
-                    .unwrap()
-                    .name
-                    .as_str(),
-                id.id,
-            )
+        .flat_map(|(id, func_id)| {
+            let polymorhpic_fn_name = stdlib
+                .expression_context
+                .functions
+                .get(func_id)
+                .unwrap()
+                .name
+                .as_str();
+
+            let symbol_id = stdlib
+                .expression_context
+                .symbol_table
+                .get_by_right(polymorhpic_fn_name)?;
+
+            Some((*symbol_id, id.id))
         })
         .collect()
 }
 
 pub fn resolve_builtin_functions(
-    statements: Vec<Statement>,
-    polymorphic_functions: &HashMap<&str, u32>,
-    stdlib_functions: &HashMap<&str, u32>,
-) -> Vec<Statement> {
+    statements: Vec<Statement<u32>>,
+    polymorphic_functions: &HashMap<u32, u32>,
+    stdlib_functions: &HashMap<u32, u32>,
+) -> Vec<Statement<u32>> {
     statements
         .into_iter()
         .map(|stmt| {
@@ -1117,10 +1151,10 @@ pub fn resolve_builtin_functions(
 }
 
 fn replace_variables_in_statement(
-    stmt: Statement,
-    polymorphic_functions: &HashMap<&str, u32>,
-    stdlib_functions: &HashMap<&str, u32>,
-) -> Statement {
+    stmt: Statement<u32>,
+    polymorphic_functions: &HashMap<u32, u32>,
+    stdlib_functions: &HashMap<u32, u32>,
+) -> Statement<u32> {
     Statement {
         location: stmt.location,
         var: stmt.var,
@@ -1133,19 +1167,15 @@ fn replace_variables_in_statement(
 }
 
 fn replace_variables_in_expr_raw(
-    expr: RawExpr,
-    polymorphic_functions: &HashMap<&str, u32>,
-    stdlib_functions: &HashMap<&str, u32>,
-) -> RawExpr {
+    expr: RawExpr<u32>,
+    polymorphic_functions: &HashMap<u32, u32>,
+    stdlib_functions: &HashMap<u32, u32>,
+) -> RawExpr<u32> {
     match expr {
         RawExpr::Var(var_name) => {
-            if let Some(poly_func_id) =
-                polymorphic_functions.get(var_name.as_str())
-            {
+            if let Some(poly_func_id) = polymorphic_functions.get(&var_name) {
                 RawExpr::PolymorphicFunction(*poly_func_id)
-            } else if let Some(func_id) =
-                stdlib_functions.get(var_name.as_str())
-            {
+            } else if let Some(func_id) = stdlib_functions.get(&var_name) {
                 RawExpr::BuiltinFunction(*func_id)
             } else {
                 RawExpr::Var(var_name)

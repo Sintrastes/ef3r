@@ -1,5 +1,6 @@
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
+use bimap::BiMap;
 use ef3r::{
     ast::{Expr, TracedExpr},
     debugging::NoOpDebugger,
@@ -20,7 +21,8 @@ fn test_map_node() {
 
     // Setup our FRP graph with two nodes: An input node and a mapped node.
 
-    let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
+    let context =
+        Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
 
     let mut context_lock = context.lock().unwrap();
 
@@ -96,7 +98,8 @@ fn test_filter_node() {
 
     // Setup our FRP graph with two nodes: An input node and a mapped node.
 
-    let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
+    let context =
+        Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
 
     let (node_index, filtered_node_index) =
         with_lock(context.as_ref(), |lock| {
@@ -170,7 +173,8 @@ fn test_combined_node() {
 
     // Setup our FRP graph with three nodes: Two input nodes, and a combined output node.
 
-    let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
+    let context =
+        Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
 
     let mut context_lock = context.lock().unwrap();
 
@@ -246,7 +250,8 @@ fn test_fold_node() {
 
     // Setup our FRP graph with an input node and a folded node
 
-    let context = Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new())));
+    let context =
+        Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
 
     let mut context_lock = context.lock().unwrap();
 
@@ -266,7 +271,7 @@ fn test_fold_node() {
         is_traced,
         event_node_index,
         Expr::Int(2).traced(),
-        Box::new(|acc: TracedExpr, event: TracedExpr| {
+        Box::new(|acc: TracedExpr<u32>, event: TracedExpr<u32>| {
             match (acc.evaluated, event.evaluated) {
                 (Expr::Int(a), Expr::Int(b)) => Expr::Int(a + b).traced(),
                 _ => panic!("Expected integers"),
@@ -274,7 +279,7 @@ fn test_fold_node() {
         }),
     );
 
-    let mut context_lock = context.lock().unwrap();
+    let context_lock = context.lock().unwrap();
 
     // Verify initial state
     let folded_node =

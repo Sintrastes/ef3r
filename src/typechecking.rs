@@ -6,7 +6,7 @@ use crate::{
 /// Attempts to infer the type of expressions.
 pub fn type_of<T: Debugger + 'static>(
     ctx: &ExpressionContext<T>,
-    term: &Expr,
+    term: &Expr<u32>,
 ) -> Option<ExprType> {
     match term {
         Expr::None => Some(ExprType::Any),

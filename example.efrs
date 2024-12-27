@@ -1,4 +1,4 @@
-println("Hello, world!");
+print("Hello, world!");
 
 let node = new_node(Int, 2);
 
@@ -8,38 +8,10 @@ let xs = list(1, 2, 3);
 
 let mapped_list = xs.map { x -> x + 2 };
 
-// Possible type annotation syntax?
-/*
-  let mapped_list : List(Int)
-  where
-    mapped_list = xs.map { x -> x + 2 };
-*/
-// We could possibly also allow for a haskell-style
-// where blocks with local visibility.
-// We could maybe even omit the "let", and just do
-/*
-mapped_list : List(Int)
-  = xs.map { x -> x + 2 };
-*/
-// also keeping the "where" syntax optional.
+xs.print();
+print(mapped_list);
 
-// Case syntax, including a variation on
-// "lambda case"
-/*
-factorial : Int -> Int
-where
-  factorial = { when n ->
-      is 0      => 0
-      otherwise => factorial(n - 1)
-  }
-*/
-// Idea: "let" can be used for exporting. If omitted, a variable is only local
-//  / private.
-
-println(xs);
-println(mapped_list);
-
-println(response.uppercase());
+print(response.uppercase());
 
 let mapped = node
     .map { x -> x + 3 }

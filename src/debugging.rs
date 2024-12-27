@@ -17,7 +17,7 @@ use crate::{
 pub trait Debugger: Sized {
     /// Suspend execution of the interpreter and
     ///  inject the debugging environment.
-    fn suspend(location: CodeLocation, ctx: &mut Context<Self>);
+    fn suspend(location: Option<CodeLocation>, ctx: &mut Context<Self>);
 
     /// Handle for the debugger to perform an action when
     /// a node has been added.
@@ -39,7 +39,7 @@ impl NoOpDebugger {
 }
 
 impl Debugger for NoOpDebugger {
-    fn suspend(_location: CodeLocation, _ctx: &mut Context<Self>) {}
+    fn suspend(_location: Option<CodeLocation>, _ctx: &mut Context<Self>) {}
 
     fn on_node_added(&self, _node: &Node<Self>, _node_id: usize) {}
 
@@ -69,16 +69,32 @@ impl Debugger for StepDebugger {
 
     fn on_node_removed(&self, _node_id: usize) {}
 
-    fn suspend(location: CodeLocation, ctx: &mut Context<Self>) {
-        if ctx.debugger.initial_suspend
-            || ctx
-                .debugger
-                .breakpoints
-                .contains(&(location.column, location.line))
-        {
+    fn suspend(location: Option<CodeLocation>, ctx: &mut Context<Self>) {
+        fn is_breakpoint(
+            ctx: &mut Context<StepDebugger>,
+            location: Option<CodeLocation>,
+        ) -> bool {
+            if let Some(location) = location {
+                ctx.debugger
+                    .breakpoints
+                    .contains(&(location.column, location.line))
+            } else {
+                false
+            }
+        }
+
+        if ctx.debugger.initial_suspend || is_breakpoint(ctx, location) {
             ctx.debugger.initial_suspend = false;
 
-            println!("PAUSED AT (line {}, column {}): Type enter to continue, :break [line] [col] to set breakpoints, and :show [var] to examine the value of variables.", location.line, location.column);
+            let line = location
+                .map(|loc| loc.line.to_string())
+                .unwrap_or("??".to_string());
+
+            let column = location
+                .map(|loc| loc.column.to_string())
+                .unwrap_or("??".to_string());
+
+            println!("PAUSED AT (line {}, column {}): Type enter to continue, :break [line] [col] to set breakpoints, and :show [var] to examine the value of variables.", line,column);
             loop {
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input).unwrap();
@@ -88,7 +104,14 @@ impl Debugger for StepDebugger {
                     break;
                 } else if input.starts_with(":show ") {
                     let var_name = input.trim_start_matches(":show ").trim();
-                    match ctx.expression_context.variables.get(var_name) {
+
+                    let id = ctx
+                        .expression_context
+                        .symbol_table
+                        .get_by_right(var_name)
+                        .unwrap();
+
+                    match ctx.expression_context.variables.get(id) {
                         Some(val) => println!("{} = {:?}", var_name, val),
                         None => {
                             println!(
@@ -173,5 +196,5 @@ impl Debugger for GrpcDebugger {
 
     fn on_node_removed(&self, _node_id: usize) {}
 
-    fn suspend(_location: CodeLocation, _ctx: &mut Context<Self>) {}
+    fn suspend(_location: Option<CodeLocation>, _ctx: &mut Context<Self>) {}
 }
