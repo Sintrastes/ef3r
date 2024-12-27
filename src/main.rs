@@ -1,3 +1,4 @@
+use bimap::BiMap;
 use ef3r::debugging::{GrpcDebugger, NoOpDebugger, StepDebugger};
 use ef3r::executable::{load_efrs_file, load_efrs_or_ef3r, Executable};
 use ef3r::interpreter::{self};
@@ -66,18 +67,26 @@ async fn main() -> Result<(), String> {
         }
         "pack" => {
             // Parses ef3r source code and converts it into a ef3r bytecode file.
+
+            let mode =
+                args.get(2).unwrap_or(&"--debug".to_string()).to_string();
+
             let file_path =
-                args.get(2).ok_or("Source file not specified")?.to_string();
+                args.get(3).ok_or("Source file not specified")?.to_string();
 
             let default_out_path = &file_path.replace(".efrs", ".ef3r");
 
-            let out_path = args.get(3).unwrap_or(default_out_path).as_str();
+            let out_path = args.get(4).unwrap_or(default_out_path).as_str();
 
             let (context, parsed_program) =
                 load_efrs_file(NoOpDebugger::new(), file_path)?;
 
             let executable = Executable {
-                symbol_table: context.expression_context.symbol_table,
+                symbol_table: if mode == "--debug" {
+                    context.expression_context.symbol_table
+                } else {
+                    BiMap::new()
+                },
                 instructions: parsed_program,
             };
 

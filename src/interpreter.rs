@@ -7,10 +7,7 @@ use bimap::BiMap;
 use daggy::Dag;
 
 use crate::{
-    ast::{
-        substitute, Expr, FunctionID, RawExpr, Statement, TracedExpr,
-        VariableID,
-    },
+    ast::{substitute, Expr, FunctionID, RawExpr, Statement, TracedExpr},
     debugging::Debugger,
     frp::{with_lock, Node},
     typechecking::type_of,
@@ -482,8 +479,8 @@ mod tests {
     use bimap::BiMap;
 
     use crate::{
-        ast::Expr, debugging::NoOpDebugger, frp::with_lock,
-        interpreter::evaluate, stdlib::ef3r_stdlib,
+        ast::Expr, debugging::NoOpDebugger, interpreter::evaluate,
+        stdlib::ef3r_stdlib,
     };
 
     quickcheck! {
