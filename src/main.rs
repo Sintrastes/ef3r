@@ -87,7 +87,14 @@ async fn main() -> Result<(), String> {
                 } else {
                     BiMap::new()
                 },
-                instructions: parsed_program,
+                instructions: if mode == "--debug" {
+                    parsed_program
+                } else {
+                    parsed_program
+                        .into_iter()
+                        .map(|stmt| strip_line_numbers(stmt))
+                        .collect()
+                },
             };
 
             let mut out_file = File::create(out_path).unwrap();
@@ -122,4 +129,47 @@ async fn start_visualizer_server() -> NodeVisualizerState {
 
 fn start_visualizer(state: NodeVisualizerState) {
     macroquad::Window::new("ef3r", node_visualization(state));
+}
+
+fn strip_line_numbers(
+    statement: ef3r::ast::Statement<u32>,
+) -> ef3r::ast::Statement<u32> {
+    ef3r::ast::Statement {
+        location: None,
+        var: statement.var,
+        expr: strip_line_numbers_raw_expr(statement.expr),
+    }
+}
+
+fn strip_line_numbers_raw_expr(
+    expr: ef3r::ast::RawExpr<u32>,
+) -> ef3r::ast::RawExpr<u32> {
+    match expr {
+        ef3r::ast::RawExpr::Lambda(vars, statements, body) => {
+            ef3r::ast::RawExpr::Lambda(
+                vars,
+                statements.into_iter().map(strip_line_numbers).collect(),
+                Box::new(strip_line_numbers_raw_expr(*body)),
+            )
+        }
+        ef3r::ast::RawExpr::Apply(func, args) => ef3r::ast::RawExpr::Apply(
+            Box::new(strip_line_numbers_raw_expr(*func)),
+            args.into_vec()
+                .into_iter()
+                .map(strip_line_numbers_raw_expr)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        ),
+        ef3r::ast::RawExpr::Pair(first, second) => ef3r::ast::RawExpr::Pair(
+            Box::new(strip_line_numbers_raw_expr(*first)),
+            Box::new(strip_line_numbers_raw_expr(*second)),
+        ),
+        ef3r::ast::RawExpr::List(elements) => ef3r::ast::RawExpr::List(
+            elements
+                .into_iter()
+                .map(strip_line_numbers_raw_expr)
+                .collect(),
+        ),
+        _ => expr,
+    }
 }
