@@ -221,7 +221,9 @@ impl Expr<String> {
             }
             5 => Expr::Lambda(
                 Vec::arbitrary(g),
-                vec![],
+                (0..usize::arbitrary(g) % 3)
+                    .map(|_| Statement::arbitrary_with_depth(g, depth + 1))
+                    .collect(),
                 Box::new(
                     Expr::arbitrary_with_depth(context, g, depth + 1).traced(),
                 ),
@@ -245,6 +247,18 @@ impl Expr<String> {
             }
             7 => Expr::Var(String::arbitrary(g)),
             _ => unreachable!(),
+        }
+    }
+}
+
+impl Statement<String> {
+    fn arbitrary_with_depth(g: &mut Gen, depth: usize) -> Self {
+        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+
+        Statement {
+            location: None,
+            var: Option::arbitrary(g),
+            expr: Expr::to_raw(&Expr::arbitrary_with_depth(&context, g, depth)),
         }
     }
 }
