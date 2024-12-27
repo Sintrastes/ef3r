@@ -500,30 +500,51 @@ pub struct DebugInfo {
 
 // Question: How would this work with traced expressions?
 pub fn substitute(
-    variable: String,
-    with: RawExpr,
+    variable: &String,
+    with: &RawExpr,
     in_expr: RawExpr,
 ) -> RawExpr {
     match in_expr {
         RawExpr::Pair(x, y) => RawExpr::Pair(
-            Box::new(substitute(variable.clone(), with.clone(), *x)),
+            Box::new(substitute(variable, with, *x)),
             Box::new(substitute(variable, with, *y)),
         ),
         RawExpr::Apply(f, xs) => RawExpr::Apply(
-            Box::new(substitute(variable.clone(), with.clone(), *f)),
+            Box::new(substitute(variable, with, *f)),
             xs.into_vec()
                 .into_iter()
-                .map(|x| substitute(variable.clone(), with.clone(), x))
+                .map(|x| substitute(variable, with, x))
                 .collect(),
         ),
         RawExpr::Var(x) => {
-            if variable == x {
-                with
+            if *variable == x {
+                with.clone()
             } else {
                 RawExpr::Var(x)
             }
         }
-        RawExpr::Lambda(_, _, _) => todo!(),
+        RawExpr::Lambda(vars, statements, expr) => RawExpr::Lambda(
+            vars,
+            statements
+                .into_iter()
+                .map(|statement| {
+                    substitute_statement(variable, with, statement)
+                })
+                .collect(),
+            Box::new(substitute(variable, with, *expr)),
+        ),
         _ => in_expr,
+    }
+}
+
+pub fn substitute_statement(
+    variable: &String,
+    with: &RawExpr,
+    statement: Statement,
+) -> Statement {
+    Statement {
+        location: statement.location,
+        var: statement.var,
+        expr: substitute(variable, with, statement.expr),
     }
 }

@@ -87,6 +87,16 @@ fn execute_example_program() {
 
         let f = { x -> uppercase(x) };
 
+        let concat = { xs -> fold(xs, "", { x, y -> x + y }) };
+
+        let join_to_string = { strs, sep ->
+            strs
+                .intersperse(sep)
+                .concat()
+        };
+
+        println(join_to_string(list("hello", "world"), ", "));
+
         let y = f("test");
 
         let node = new_node(Int, 0);
@@ -122,7 +132,7 @@ fn execute_example_program() {
         launch {
             let x = "test";
 
-            println("Hello " ++ x.uppercase());
+            println("Hello " + x.uppercase());
 
             println(x.f());
 

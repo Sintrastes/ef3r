@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::Error,
     sync::{Arc, Mutex},
 };
 
@@ -43,6 +44,10 @@ pub enum EvaluationError {
         expected: usize,
         actual: usize,
         for_function: String,
+    },
+    CouldNotResolvePolymorphicFunction {
+        id: u32,
+        arg_types: Vec<ExprType>,
     },
 }
 
@@ -313,6 +318,7 @@ fn function_from_expression<T: Debugger + 'static>(
     >,
     EvaluationError,
 > {
+    dbg!(&resolved);
     return Ok(match &resolved {
         Expr::BuiltinFunction(action_id) => Box::new(
             ctx.lock()
@@ -331,21 +337,52 @@ fn function_from_expression<T: Debugger + 'static>(
 
             let polymorphic_index = PolymorphicIndex {
                 id: *polymorphic_id,
-                arg_types: arg_types.into_iter().flatten().collect(),
+                arg_types: arg_types.clone().into_iter().flatten().collect(),
             };
 
             let ctx = ctx.lock().unwrap();
 
-            let resolved_function_id = ctx
+            // First, check to see if there are any polymorphic functions we
+            // can resolve via multiple dispatch.
+            let mut resolved_function_id = ctx
                 .expression_context
                 .polymorphic_functions
                 .get(&polymorphic_index)
-                .ok_or(EvaluationError::NotAFunction(resolved.clone()))?;
+                .ok_or(EvaluationError::CouldNotResolvePolymorphicFunction {
+                    id: *polymorphic_id,
+                    arg_types: polymorphic_index.arg_types,
+                });
+
+            if let Err(_) = resolved_function_id {
+                // Otherwise, try to resolve via single dispatch instead
+                let first_arg = arg_types
+                    .clone()
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<ExprType>>()
+                    .first()
+                    .unwrap()
+                    .clone();
+
+                resolved_function_id = ctx
+                    .expression_context
+                    .polymorphic_functions
+                    .get(&PolymorphicIndex {
+                        id: *polymorphic_id,
+                        arg_types: vec![first_arg.clone()],
+                    })
+                    .ok_or(
+                        EvaluationError::CouldNotResolvePolymorphicFunction {
+                            id: *polymorphic_id,
+                            arg_types: vec![first_arg],
+                        },
+                    );
+            }
 
             Box::new(
                 ctx.expression_context
                     .functions
-                    .get(resolved_function_id)
+                    .get(resolved_function_id?)
                     .ok_or(EvaluationError::NotAFunction(resolved.clone()))?
                     .definition,
             )
@@ -374,8 +411,8 @@ fn function_from_expression<T: Debugger + 'static>(
                                     statement.expr.clone(),
                                     |acc, (var, var_value)| {
                                         substitute(
-                                            var.clone(),
-                                            var_value
+                                            var,
+                                            &var_value
                                                 .evaluated
                                                 .clone()
                                                 .to_raw(),
@@ -400,8 +437,8 @@ fn function_from_expression<T: Debugger + 'static>(
                             result.evaluated.clone(),
                             |acc, (var, var_value)| {
                                 substitute(
-                                    var.clone(),
-                                    var_value.evaluated.clone().to_raw(),
+                                    var,
+                                    &var_value.evaluated.to_raw(),
                                     acc.to_raw(),
                                 )
                                 .from_raw()

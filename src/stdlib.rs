@@ -90,6 +90,7 @@ pub const FLOAT_SUB_ID: u32 = 38;
 pub const STRING_LENGTH_ID: u32 = 39;
 pub const LIST_LENGTH_ID: u32 = 40;
 pub const STRING_SPLIT_ID: u32 = 41;
+pub const INTERSPERSE_ID: u32 = 42;
 
 pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
     let int_mul =
@@ -153,7 +154,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
 
     let append = build_function!(
         T,
-        "++",
+        "+",
         ExprType::String,
         |_cx, x: String, y: String| { Ok(x.to_owned() + y.as_ref()) }
     );
@@ -197,6 +198,28 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
         }
     );
 
+    let intersperse_fn = build_function!(
+        T,
+        "intersperse",
+        ExprType::List(Box::new(ExprType::Any)),
+        |_cx, list: Vec<TracedExpr>, separator: Expr| {
+            if list.is_empty() {
+                return Ok(Expr::List(list));
+            }
+
+            let mut result = Vec::with_capacity(list.len() * 2 - 1);
+
+            for (i, item) in list.into_iter().enumerate() {
+                if i > 0 {
+                    result.push(separator.clone().traced());
+                }
+                result.push(item);
+            }
+
+            Ok(Expr::List(result))
+        }
+    );
+
     let list_fn = FunctionDefinition {
         name: "list".to_string(),
         argument_types: vec![], // Vararg function
@@ -213,7 +236,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
 
     let append_lists_fn = build_function!(
         T,
-        "++",
+        "+",
         ExprType::List(Box::new(ExprType::Any)),
         |_cx, list1: Vec<TracedExpr>, list2: Vec<TracedExpr>| {
             let mut result = list1;
@@ -794,6 +817,42 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 ),
                 (
                     PolymorphicIndex {
+                        id: POLYMORPHIC_FOLD_ID,
+                        arg_types: vec![ExprType::List(Box::new(
+                            ExprType::Any,
+                        ))],
+                    },
+                    FOLD_LIST_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_FOLD_ID,
+                        arg_types: vec![ExprType::Node(Box::new(
+                            ExprType::Any,
+                        ))],
+                    },
+                    FOLD_NODE_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_FILTER_ID,
+                        arg_types: vec![ExprType::List(Box::new(
+                            ExprType::Any,
+                        ))],
+                    },
+                    FILTER_LIST_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_FILTER_ID,
+                        arg_types: vec![ExprType::Node(Box::new(
+                            ExprType::Any,
+                        ))],
+                    },
+                    FILTER_NODE_ID,
+                ),
+                (
+                    PolymorphicIndex {
                         id: POLYMORPHIC_FIRST_ID,
                         arg_types: vec![ExprType::List(Box::new(
                             ExprType::Any,
@@ -810,6 +869,23 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                         )],
                     },
                     PAIR_FIRST_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_ADD,
+                        arg_types: vec![ExprType::String, ExprType::String],
+                    },
+                    APPEND_ID,
+                ),
+                (
+                    PolymorphicIndex {
+                        id: POLYMORPHIC_ADD,
+                        arg_types: vec![
+                            ExprType::List(Box::new(ExprType::Any)),
+                            ExprType::List(Box::new(ExprType::Any)),
+                        ],
+                    },
+                    APPEND_LISTS_ID,
                 ),
                 (
                     PolymorphicIndex {
@@ -927,6 +1003,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(debugger: T) -> Context<'a, T> {
                 (LIST_LENGTH_ID, list_length_fn),
                 (STRING_LENGTH_ID, string_length_fn),
                 (STRING_SPLIT_ID, string_split_fn),
+                (INTERSPERSE_ID, intersperse_fn),
             ]),
             variables: HashMap::new(),
         },

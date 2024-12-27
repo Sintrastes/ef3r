@@ -1,3 +1,4 @@
+use nom::bytes::streaming::take_while;
 use nom::character::complete::satisfy;
 use nom::{
     branch::alt,
@@ -234,7 +235,7 @@ fn integer(input: Span) -> IResult<Span, RawExpr> {
 
 fn string_literal(input: Span) -> IResult<Span, RawExpr> {
     map(
-        delimited(char('"'), take_while1(|c| c != '"'), char('"')),
+        delimited(char('"'), take_while(|c| c != '"'), char('"')),
         |s: Span| RawExpr::String(s.to_string()),
     )(input)
 }
