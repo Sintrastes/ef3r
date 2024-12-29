@@ -1,22 +1,22 @@
 use crate::{
-    ast::Expr, debugging::Debugger, interpreter::ExpressionContext,
+    ast::TracedExprRec, debugging::Debugger, interpreter::ExpressionContext,
     types::ExprType,
 };
 
 /// Attempts to infer the type of expressions.
 pub fn type_of<T: Debugger + 'static>(
     ctx: &ExpressionContext<T>,
-    term: &Expr<u32>,
+    term: &TracedExprRec<u32>,
 ) -> Option<ExprType> {
     match term {
-        Expr::None => Some(ExprType::Any),
-        Expr::Unit => Some(ExprType::Unit),
-        Expr::Int(_) => Some(ExprType::Int),
-        Expr::String(_) => Some(ExprType::String),
-        Expr::Float(_) => Some(ExprType::Float),
-        Expr::Bool(_) => Some(ExprType::Bool),
-        Expr::Type(_) => Some(ExprType::Type),
-        Expr::List(xs) => {
+        TracedExprRec::None => Some(ExprType::Any),
+        TracedExprRec::Unit => Some(ExprType::Unit),
+        TracedExprRec::Int(_) => Some(ExprType::Int),
+        TracedExprRec::String(_) => Some(ExprType::String),
+        TracedExprRec::Float(_) => Some(ExprType::Float),
+        TracedExprRec::Bool(_) => Some(ExprType::Bool),
+        TracedExprRec::Type(_) => Some(ExprType::Type),
+        TracedExprRec::List(xs) => {
             let element_types = xs
                 .iter()
                 .map(|x| type_of(ctx, &x.evaluated).unwrap_or(ExprType::Any))
@@ -26,11 +26,11 @@ pub fn type_of<T: Debugger + 'static>(
                 .fold(ExprType::Any, |acc, t| union_type(&acc, &t));
             Some(ExprType::List(Box::new(unified_type)))
         }
-        Expr::Pair(traced_expr, traced_expr1) => Some(ExprType::Pair(
+        TracedExprRec::Pair(traced_expr, traced_expr1) => Some(ExprType::Pair(
             Box::new(type_of(ctx, &traced_expr.evaluated)?),
             Box::new(type_of(ctx, &traced_expr1.evaluated)?),
         )),
-        Expr::BuiltinFunction(fn_id) => Some(ExprType::Func(
+        TracedExprRec::BuiltinFunction(fn_id) => Some(ExprType::Func(
             ctx.functions
                 .get(fn_id)
                 .map(|f| f.argument_types.to_vec())
@@ -42,8 +42,8 @@ pub fn type_of<T: Debugger + 'static>(
                     .unwrap_or(ExprType::Any),
             ),
         )),
-        Expr::Node(_) => Some(ExprType::Node(Box::new(ExprType::Any))),
-        Expr::Lambda(args, _, traced_expr) => {
+        TracedExprRec::Node(_) => Some(ExprType::Node(Box::new(ExprType::Any))),
+        TracedExprRec::Lambda(args, _, traced_expr) => {
             let arg_types: Vec<ExprType> = args
                 .iter()
                 .map(|_| ExprType::Any) // All args are assumed to be any type
@@ -53,7 +53,7 @@ pub fn type_of<T: Debugger + 'static>(
             Some(ExprType::Func(arg_types, Box::new(return_type)))
         }
         // Note: This may need to be refined if we ever add implicit partial application.
-        Expr::Apply(f, _) => {
+        TracedExprRec::Apply(f, _) => {
             type_of(ctx, &f.evaluated).and_then(|f_type| match f_type {
                 ExprType::Func(_, return_type) => Some(*return_type),
                 _ => None,
@@ -61,14 +61,14 @@ pub fn type_of<T: Debugger + 'static>(
         }
         // Note: In the future we might want to memoize results and store them in a
         //  "typing_context" for efficency reasons.
-        Expr::Var(var) => ctx
+        TracedExprRec::Var(var) => ctx
             .variables
             .get(var)
             .and_then(|expr| type_of(ctx, &expr.evaluated)),
         // We do not currently assign a type to polymorphic functions.
         // But maybe we could assign something like Any -> Any based on
         // the arity of the function?
-        Expr::PolymorphicFunction(_) => None,
+        TracedExprRec::PolymorphicFunction(_) => None,
     }
 }
 

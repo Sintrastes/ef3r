@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use bimap::BiMap;
-use ef3r::ast::{Expr, RawExpr, Statement};
+use ef3r::ast::{RawExpr, Statement, TracedExprRec};
 use ef3r::debugging::NoOpDebugger;
 use ef3r::executable::load_efrs_source;
 use ef3r::interpreter::interpret;
@@ -66,7 +66,7 @@ fn reassignment_of_statement() {
             .get(&0)
             .unwrap()
             .evaluated,
-        Expr::Int(3)
+        TracedExprRec::Int(3)
     );
 }
 

@@ -9,7 +9,7 @@ use bimap::BiMap;
 use daggy::{Dag, NodeIndex};
 
 use crate::{
-    ast::{Expr, RawExpr, Statement, TracedExpr},
+    ast::{RawExpr, Statement, TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::{build_function, ExprTypeable},
     frp::{filter_node, fold_node, map_node, with_lock, Node},
@@ -103,7 +103,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         T,
         "==",
         ExprType::Bool,
-        |_cx, x: Expr<u32>, y: Expr<u32>| { Ok(x == y) }
+        |_cx, x: TracedExprRec<u32>, y: TracedExprRec<u32>| { Ok(x == y) }
     );
 
     let int_mul =
@@ -220,9 +220,9 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         T,
         "intersperse",
         ExprType::List(Box::new(ExprType::Any)),
-        |_cx, list: Vec<TracedExpr<u32>>, separator: Expr<u32>| {
+        |_cx, list: Vec<TracedExpr<u32>>, separator: TracedExprRec<u32>| {
             if list.is_empty() {
-                return Ok(Expr::List(list));
+                return Ok(TracedExprRec::List(list));
             }
 
             let mut result = Vec::with_capacity(list.len() * 2 - 1);
@@ -234,7 +234,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                 result.push(item);
             }
 
-            Ok(Expr::List(result))
+            Ok(TracedExprRec::List(result))
         }
     );
 
@@ -242,7 +242,9 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         name: "list".to_string(),
         argument_types: vec![], // Vararg function
         result_type: ExprType::List(Box::new(ExprType::Any)),
-        definition: |_, xs: &[TracedExpr<u32>]| Ok(Expr::List(xs.to_vec())),
+        definition: |_, xs: &[TracedExpr<u32>]| {
+            Ok(TracedExprRec::List(xs.to_vec()))
+        },
     };
 
     let length_list_fn =
@@ -274,13 +276,13 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         ],
         |ctx, list, f| {
             match list.evaluated {
-                Expr::List(elements) => {
+                TracedExprRec::List(elements) => {
                     let mapped = elements
                         .into_iter()
                         .map(|e| {
                             evaluate_function_application(
                                 ctx.clone(),
-                                &Expr::Apply(
+                                &TracedExprRec::Apply(
                                     Box::new(f.clone()),
                                     Box::new([e]),
                                 ),
@@ -288,7 +290,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                             .unwrap()
                         })
                         .collect();
-                    Ok(Expr::List(mapped))
+                    Ok(TracedExprRec::List(mapped))
                 }
                 _ => unreachable!(),
             }
@@ -305,13 +307,13 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         ],
         |ctx, list, pred| {
             match list.evaluated {
-                Expr::List(elements) => {
+                TracedExprRec::List(elements) => {
                     let filtered = elements
                         .into_iter()
                         .filter(|e| {
                             match evaluate_function_application(
                                 ctx.clone(),
-                                &Expr::Apply(
+                                &TracedExprRec::Apply(
                                     Box::new(pred.clone()),
                                     Box::new([e.clone()]),
                                 ),
@@ -319,12 +321,12 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                             .unwrap()
                             .evaluated
                             {
-                                Expr::Bool(b) => b,
+                                TracedExprRec::Bool(b) => b,
                                 _ => unreachable!(),
                             }
                         })
                         .collect();
-                    Ok(Expr::List(filtered))
+                    Ok(TracedExprRec::List(filtered))
                 }
                 _ => unreachable!(),
             }
@@ -345,11 +347,11 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         ],
         |ctx, list, init, f| {
             match list.evaluated {
-                Expr::List(elements) => {
+                TracedExprRec::List(elements) => {
                     let result = elements.into_iter().fold(init, |acc, e| {
                         evaluate_function_application(
                             ctx.clone(),
-                            &Expr::Apply(
+                            &TracedExprRec::Apply(
                                 Box::new(f.clone()),
                                 Box::new([e, acc]),
                             ),
@@ -371,7 +373,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
             Ok(list
                 .first()
                 .map(|x| x.evaluated.clone())
-                .unwrap_or(Expr::None))
+                .unwrap_or(TracedExprRec::None))
         });
 
     let last_list_fn =
@@ -382,7 +384,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
             Ok(list
                 .last()
                 .map(|x| x.evaluated.clone())
-                .unwrap_or(Expr::None))
+                .unwrap_or(TracedExprRec::None))
         });
 
     let type_of_fn = build_function!(
@@ -396,8 +398,8 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                     &ctx.lock().unwrap().expression_context,
                     &first.evaluated,
                 ) {
-                    Some(x) => Expr::Type(x),
-                    None => Expr::None,
+                    Some(x) => TracedExprRec::Type(x),
+                    None => TracedExprRec::None,
                 },
             )
         }
@@ -413,7 +415,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         )],
         |ctx, pair| {
             match pair.evaluated {
-                Expr::Pair(x, _) => Ok(x.evaluated),
+                TracedExprRec::Pair(x, _) => Ok(x.evaluated),
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Pair(
                         Box::new(ExprType::Any),
@@ -440,7 +442,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         )],
         |ctx, pair| {
             match pair.evaluated {
-                Expr::Pair(_, y) => Ok(y.evaluated),
+                TracedExprRec::Pair(_, y) => Ok(y.evaluated),
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Pair(
                         Box::new(ExprType::Any),
@@ -463,7 +465,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         ExprType::Pair(Box::new(ExprType::Any), Box::new(ExprType::Any)),
         vec![ExprType::Any, ExprType::Any],
         |_cx, first, second| {
-            Ok(Expr::Pair(Box::new(first), Box::new(second)))
+            Ok(TracedExprRec::Pair(Box::new(first), Box::new(second)))
         }
     );
 
@@ -474,7 +476,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         vec![ExprType::Any],
         |ctx, first| {
             match first.evaluated {
-                Expr::String(string) => {
+                TracedExprRec::String(string) => {
                     println!("{}", string);
                 }
                 _ => {
@@ -486,7 +488,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                     );
                 }
             }
-            Ok(Expr::None)
+            Ok(TracedExprRec::None)
         }
     );
 
@@ -498,7 +500,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
             let stdin = io::stdin();
             let result = stdin.lock().lines().next().unwrap().unwrap();
 
-            Result::Ok(Expr::String(result))
+            Result::Ok(TracedExprRec::String(result))
         },
     };
 
@@ -509,7 +511,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         vec![ExprType::Node(Box::new(ExprType::Any)), ExprType::Any],
         |ctx, first, second| {
             match first.evaluated {
-                Expr::Node(node_id) => {
+                TracedExprRec::Node(node_id) => {
                     ctx.lock()
                         .unwrap()
                         .graph
@@ -517,7 +519,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                         .unwrap()
                         .update(second);
 
-                    Ok(Expr::Unit)
+                    Ok(TracedExprRec::Unit)
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
@@ -539,7 +541,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         vec![ExprType::Node(Box::new(ExprType::Any))],
         |ctx, first| {
             match first.evaluated {
-                Expr::Node(node_id) => {
+                TracedExprRec::Node(node_id) => {
                     let value = ctx
                         .lock()
                         .unwrap()
@@ -570,7 +572,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         vec![ExprType::Type, ExprType::Any],
         |ctx, first, second| {
             match first.evaluated {
-                Expr::Type(x) => {
+                TracedExprRec::Type(x) => {
                     if type_of(
                         &ctx.lock().unwrap().expression_context,
                         &second.evaluated,
@@ -591,7 +593,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                             lock.debugger.on_node_added(node, fresh_id.index());
                         });
 
-                        Ok(Expr::Node(fresh_id.index()))
+                        Ok(TracedExprRec::Node(fresh_id.index()))
                     } else {
                         Err(EvaluationError::TypeError {
                             expected: x,
@@ -628,10 +630,10 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
             thread::spawn(move || {
                 evaluate_function_application(
                     thread_ctx,
-                    &Expr::Apply(Box::new(first), Box::new([])),
+                    &TracedExprRec::Apply(Box::new(first), Box::new([])),
                 )
             });
-            Ok(Expr::Unit)
+            Ok(TracedExprRec::Unit)
         }
     );
 
@@ -645,14 +647,14 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         ],
         |ctx, first, second| {
             match first.evaluated {
-                Expr::Node(node_id) => {
+                TracedExprRec::Node(node_id) => {
                     let ctx_clone = ctx.clone();
                     let second_clone = second.clone();
                     let transform =
                         Arc::new(Mutex::new(move |expr: TracedExpr<u32>| {
                             evaluate_function_application(
                                 ctx_clone.clone(),
-                                &Expr::Apply(
+                                &TracedExprRec::Apply(
                                     Box::new(second_clone.clone()),
                                     Box::new([expr]),
                                 ),
@@ -676,7 +678,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                         lock.debugger.on_node_added(node, fresh_id.index());
                     });
 
-                    Ok(Expr::Node(fresh_id.index()))
+                    Ok(TracedExprRec::Node(fresh_id.index()))
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
@@ -701,13 +703,13 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         ],
         |ctx, first, second| {
             match first.evaluated {
-                Expr::Node(node_id) => {
+                TracedExprRec::Node(node_id) => {
                     let ctx_clone = ctx.clone();
                     let second_clone = second.clone();
                     let transform = move |expr: TracedExpr<u32>| {
                         let result = evaluate_function_application(
                             ctx_clone.clone(),
-                            &Expr::Apply(
+                            &TracedExprRec::Apply(
                                 Box::new(second_clone.clone()),
                                 Box::new([expr]),
                             ),
@@ -716,7 +718,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                         .evaluated;
 
                         match result {
-                            Expr::Bool(x) => x,
+                            TracedExprRec::Bool(x) => x,
                             _ => todo!(),
                         }
                     };
@@ -735,7 +737,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                         lock.debugger.on_node_added(node, fresh_id.index());
                     });
 
-                    Ok(Expr::Node(fresh_id.index()))
+                    Ok(TracedExprRec::Node(fresh_id.index()))
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
@@ -761,14 +763,14 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         ],
         |ctx, first, second| {
             match first.evaluated {
-                Expr::Node(node_id) => {
+                TracedExprRec::Node(node_id) => {
                     let ctx_clone = ctx.clone();
                     let second_clone = second.clone();
                     let transform = Box::new(
                         move |expr: TracedExpr<u32>, acc: TracedExpr<u32>| {
                             evaluate_function_application(
                                 ctx_clone.clone(),
-                                &Expr::Apply(
+                                &TracedExprRec::Apply(
                                     Box::new(second_clone.clone()),
                                     Box::new([expr, acc]),
                                 ),
@@ -782,7 +784,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                         |_| {},
                         Arc::new(AtomicBool::new(false)),
                         NodeIndex::new(node_id),
-                        Expr::None.traced(),
+                        TracedExprRec::None.traced(),
                         transform,
                     );
 
@@ -792,7 +794,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                         lock.debugger.on_node_added(node, fresh_id.index());
                     });
 
-                    Ok(Expr::Node(fresh_id.index()))
+                    Ok(TracedExprRec::Node(fresh_id.index()))
                 }
                 actual => Err(EvaluationError::TypeError {
                     expected: ExprType::Node(Box::new(ExprType::Any)),
@@ -812,7 +814,9 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         vec![ExprType::List(Box::new(ExprType::Any))],
         |_ctx, first| {
             match first.evaluated {
-                Expr::List(xs) => Ok(Expr::Int(xs.len() as i32)),
+                TracedExprRec::List(xs) => {
+                    Ok(TracedExprRec::Int(xs.len() as i32))
+                }
                 _ => unreachable!(),
             }
         }
@@ -825,7 +829,9 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         vec![ExprType::String],
         |_ctx, first| {
             match first.evaluated {
-                Expr::String(s) => Ok(Expr::Int(s.len() as i32)),
+                TracedExprRec::String(s) => {
+                    Ok(TracedExprRec::Int(s.len() as i32))
+                }
                 _ => unreachable!(),
             }
         }
@@ -838,12 +844,12 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         vec![ExprType::String, ExprType::String],
         |_ctx, first, second| {
             match (first.evaluated, second.evaluated) {
-                (Expr::String(s), Expr::String(delim)) => {
+                (TracedExprRec::String(s), TracedExprRec::String(delim)) => {
                     let split = s
                         .split(&delim)
-                        .map(|s| Expr::String(s.to_string()).traced())
+                        .map(|s| TracedExprRec::String(s.to_string()).traced())
                         .collect();
-                    Ok(Expr::List(split))
+                    Ok(TracedExprRec::List(split))
                 }
                 _ => unreachable!(),
             }
@@ -863,7 +869,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                     .restore_symbols_traced(first.clone())
             });
             println!("{} = {}", resolved, resolved.get_trace());
-            Ok(Expr::Unit)
+            Ok(TracedExprRec::Unit)
         }
     );
 

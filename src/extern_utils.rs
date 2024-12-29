@@ -1,15 +1,15 @@
 use crate::{
-    ast::{Expr, TracedExpr},
+    ast::{TracedExpr, TracedExprRec},
     types::ExprType,
 };
 
 /// Trait to map Rust types to ExprTypes
 pub trait ExprTypeable {
     fn expr_type() -> ExprType;
-    fn try_from_expr(expr: &Expr<u32>) -> Option<Self>
+    fn try_from_expr(expr: &TracedExprRec<u32>) -> Option<Self>
     where
         Self: Sized;
-    fn to_expr(self) -> Expr<u32>;
+    fn to_expr(self) -> TracedExprRec<u32>;
 }
 
 // Implementations for basic types
@@ -17,15 +17,15 @@ impl ExprTypeable for i32 {
     fn expr_type() -> ExprType {
         ExprType::Int
     }
-    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
-        if let Expr::Int(x) = expr {
+    fn try_from_expr(expr: &TracedExprRec<u32>) -> Option<Self> {
+        if let TracedExprRec::Int(x) = expr {
             Some(*x)
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr<u32> {
-        Expr::Int(self)
+    fn to_expr(self) -> TracedExprRec<u32> {
+        TracedExprRec::Int(self)
     }
 }
 
@@ -33,15 +33,15 @@ impl ExprTypeable for f32 {
     fn expr_type() -> ExprType {
         ExprType::Float
     }
-    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
-        if let Expr::Float(x) = expr {
+    fn try_from_expr(expr: &TracedExprRec<u32>) -> Option<Self> {
+        if let TracedExprRec::Float(x) = expr {
             Some(*x)
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr<u32> {
-        Expr::Float(self)
+    fn to_expr(self) -> TracedExprRec<u32> {
+        TracedExprRec::Float(self)
     }
 }
 
@@ -49,15 +49,15 @@ impl ExprTypeable for String {
     fn expr_type() -> ExprType {
         ExprType::String
     }
-    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
-        if let Expr::String(x) = expr {
+    fn try_from_expr(expr: &TracedExprRec<u32>) -> Option<Self> {
+        if let TracedExprRec::String(x) = expr {
             Some(x.clone())
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr<u32> {
-        Expr::String(self)
+    fn to_expr(self) -> TracedExprRec<u32> {
+        TracedExprRec::String(self)
     }
 }
 
@@ -65,15 +65,15 @@ impl ExprTypeable for bool {
     fn expr_type() -> ExprType {
         ExprType::Bool
     }
-    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
-        if let Expr::Bool(x) = expr {
+    fn try_from_expr(expr: &TracedExprRec<u32>) -> Option<Self> {
+        if let TracedExprRec::Bool(x) = expr {
             Some(*x)
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr<u32> {
-        Expr::Bool(self)
+    fn to_expr(self) -> TracedExprRec<u32> {
+        TracedExprRec::Bool(self)
     }
 }
 
@@ -81,15 +81,15 @@ impl ExprTypeable for () {
     fn expr_type() -> ExprType {
         ExprType::Unit
     }
-    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
-        if let Expr::Unit = expr {
+    fn try_from_expr(expr: &TracedExprRec<u32>) -> Option<Self> {
+        if let TracedExprRec::Unit = expr {
             Some(())
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr<u32> {
-        Expr::Unit
+    fn to_expr(self) -> TracedExprRec<u32> {
+        TracedExprRec::Unit
     }
 }
 
@@ -97,26 +97,26 @@ impl ExprTypeable for Vec<TracedExpr<u32>> {
     fn expr_type() -> ExprType {
         ExprType::List(Box::new(ExprType::Any))
     }
-    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
-        if let Expr::List(x) = expr {
+    fn try_from_expr(expr: &TracedExprRec<u32>) -> Option<Self> {
+        if let TracedExprRec::List(x) = expr {
             Some(x.clone())
         } else {
             None
         }
     }
-    fn to_expr(self) -> Expr<u32> {
-        Expr::List(self)
+    fn to_expr(self) -> TracedExprRec<u32> {
+        TracedExprRec::List(self)
     }
 }
 
-impl ExprTypeable for Expr<u32> {
+impl ExprTypeable for TracedExprRec<u32> {
     fn expr_type() -> ExprType {
         ExprType::Any
     }
-    fn try_from_expr(expr: &Expr<u32>) -> Option<Self> {
+    fn try_from_expr(expr: &TracedExprRec<u32>) -> Option<Self> {
         Some(expr.clone())
     }
-    fn to_expr(self) -> Expr<u32> {
+    fn to_expr(self) -> TracedExprRec<u32> {
         self
     }
 }

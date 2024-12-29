@@ -2,7 +2,7 @@ use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use bimap::BiMap;
 use ef3r::{
-    ast::{Expr, TracedExpr},
+    ast::{TracedExpr, TracedExprRec},
     debugging::NoOpDebugger,
     frp::{
         combined_node, filter_node, fold_node, map_node, process_event_frame,
@@ -35,7 +35,7 @@ fn test_map_node() {
         is_traced.clone(),
         graph,
         ExprType::Int,
-        Expr::Int(20).traced(),
+        TracedExprRec::Int(20).traced(),
     );
 
     drop(context_lock);
@@ -49,8 +49,8 @@ fn test_map_node() {
         Arc::new(Mutex::new(move |x| {
             apply_traced(
                 context_cloned.clone(),
-                Expr::BuiltinFunction(INT_MUL_ID).traced(),
-                &[Expr::Int(2).traced(), x],
+                TracedExprRec::BuiltinFunction(INT_MUL_ID).traced(),
+                &[TracedExprRec::Int(2).traced(), x],
             )
             .unwrap()
         })),
@@ -61,14 +61,14 @@ fn test_map_node() {
 
     let node = graph.node_weight(node_index).unwrap();
 
-    node.update(Expr::Int(21).traced());
+    node.update(TracedExprRec::Int(21).traced());
 
     // Check the initial state of the mapped node is what we expect
 
     let mapped_node = graph.node_weight(mapped_node_index);
 
     assert_eq!(
-        Expr::Int(40),
+        TracedExprRec::Int(40),
         mapped_node.unwrap().current().evaluated.clone()
     );
 
@@ -85,7 +85,7 @@ fn test_map_node() {
     let mapped_node = graph.node_weight(mapped_node_index);
 
     assert_eq!(
-        Expr::Int(42),
+        TracedExprRec::Int(42),
         mapped_node.unwrap().current().evaluated.clone()
     );
 }
@@ -108,7 +108,7 @@ fn test_filter_node() {
                 is_traced.clone(),
                 &mut lock.graph,
                 ExprType::Int,
-                Expr::Int(1).traced(),
+                TracedExprRec::Int(1).traced(),
             );
 
             let filtered_node_index = filter_node(
@@ -117,14 +117,14 @@ fn test_filter_node() {
                 &mut lock.graph,
                 node_index,
                 Box::new(move |x| match x.evaluated {
-                    Expr::Int(i) => i % 2 != 0,
+                    TracedExprRec::Int(i) => i % 2 != 0,
                     _ => true,
                 }),
             );
 
             let node = lock.graph.node_weight(node_index).unwrap();
 
-            node.update(Expr::Int(2).traced());
+            node.update(TracedExprRec::Int(2).traced());
 
             // Check the initial state of the mapped node is what we expect
             (node_index, filtered_node_index)
@@ -134,7 +134,10 @@ fn test_filter_node() {
         let filtered_node =
             lock.graph.node_weight(filtered_node_index).unwrap();
 
-        assert_eq!(Expr::Int(1), filtered_node.current().evaluated.clone());
+        assert_eq!(
+            TracedExprRec::Int(1),
+            filtered_node.current().evaluated.clone()
+        );
     });
 
     // Update the input value and step through a single frame of the event loop.
@@ -146,11 +149,14 @@ fn test_filter_node() {
         let filtered_node =
             lock.graph.node_weight(filtered_node_index).unwrap();
 
-        assert_eq!(Expr::Int(1), filtered_node.current().evaluated.clone());
+        assert_eq!(
+            TracedExprRec::Int(1),
+            filtered_node.current().evaluated.clone()
+        );
 
         let node = lock.graph.node_weight(node_index).unwrap();
 
-        node.update(Expr::Int(3).traced());
+        node.update(TracedExprRec::Int(3).traced());
     });
 
     process_event_frame(context.clone());
@@ -161,7 +167,10 @@ fn test_filter_node() {
         let filtered_node =
             lock.graph.node_weight(filtered_node_index).unwrap();
 
-        assert_eq!(Expr::Int(3), filtered_node.current().evaluated.clone());
+        assert_eq!(
+            TracedExprRec::Int(3),
+            filtered_node.current().evaluated.clone()
+        );
     });
 }
 
@@ -183,7 +192,7 @@ fn test_combined_node() {
         is_traced.clone(),
         &mut context_lock.graph,
         ExprType::Int,
-        Expr::Int(2).traced(),
+        TracedExprRec::Int(2).traced(),
     );
 
     let second_node_index = Node::new(
@@ -191,7 +200,7 @@ fn test_combined_node() {
         is_traced.clone(),
         &mut context_lock.graph,
         ExprType::Int,
-        Expr::Int(3).traced(),
+        TracedExprRec::Int(3).traced(),
     );
 
     drop(context_lock);
@@ -208,7 +217,7 @@ fn test_combined_node() {
         Box::new(move |x, y| {
             apply_traced(
                 cloned_ctx.clone(),
-                Expr::BuiltinFunction(INT_MUL_ID).traced(),
+                TracedExprRec::BuiltinFunction(INT_MUL_ID).traced(),
                 &[x, y],
             )
             .unwrap()
@@ -222,13 +231,13 @@ fn test_combined_node() {
 
     // Check initial state
 
-    assert_eq!(Expr::Int(6), combined_node.current().evaluated);
+    assert_eq!(TracedExprRec::Int(6), combined_node.current().evaluated);
 
     // Check state after updating one of the fields
 
     let first_node =
         &mut context_lock.graph.node_weight(first_node_index).unwrap();
-    first_node.update(Expr::Int(3).traced());
+    first_node.update(TracedExprRec::Int(3).traced());
 
     drop(context_lock);
 
@@ -239,7 +248,7 @@ fn test_combined_node() {
     let combined_node =
         &mut context_lock.graph.node_weight(combined_node_index).unwrap();
 
-    assert_eq!(Expr::Int(9), combined_node.current().evaluated);
+    assert_eq!(TracedExprRec::Int(9), combined_node.current().evaluated);
 }
 
 #[test]
@@ -260,7 +269,7 @@ fn test_fold_node() {
         is_traced.clone(),
         &mut context_lock.graph,
         ExprType::Any,
-        Expr::None.traced(),
+        TracedExprRec::None.traced(),
     );
 
     drop(context_lock);
@@ -270,10 +279,12 @@ fn test_fold_node() {
         on_update,
         is_traced,
         event_node_index,
-        Expr::Int(2).traced(),
+        TracedExprRec::Int(2).traced(),
         Box::new(|acc: TracedExpr<u32>, event: TracedExpr<u32>| {
             match (acc.evaluated, event.evaluated) {
-                (Expr::Int(a), Expr::Int(b)) => Expr::Int(a + b).traced(),
+                (TracedExprRec::Int(a), TracedExprRec::Int(b)) => {
+                    TracedExprRec::Int(a + b).traced()
+                }
                 _ => panic!("Expected integers"),
             }
         }),
@@ -284,11 +295,11 @@ fn test_fold_node() {
     // Verify initial state
     let folded_node =
         context_lock.graph.node_weight(folded_node_index).unwrap();
-    assert_eq!(Expr::Int(2), folded_node.current().evaluated);
+    assert_eq!(TracedExprRec::Int(2), folded_node.current().evaluated);
 
     // Update input value
     let event_node = context_lock.graph.node_weight(event_node_index).unwrap();
-    event_node.update(Expr::Int(3).traced());
+    event_node.update(TracedExprRec::Int(3).traced());
 
     drop(context_lock);
 
@@ -298,5 +309,5 @@ fn test_fold_node() {
     let context_lock = context.lock().unwrap();
     let folded_node =
         context_lock.graph.node_weight(folded_node_index).unwrap();
-    assert_eq!(Expr::Int(5), folded_node.current().evaluated);
+    assert_eq!(TracedExprRec::Int(5), folded_node.current().evaluated);
 }

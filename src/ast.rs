@@ -21,7 +21,7 @@ pub type VariableID = String;
 ///  ef3f.
 ///
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Expr<V> {
+pub enum TracedExprRec<V> {
     /// Null symbol.
     None,
     /// Unit symbol
@@ -88,43 +88,45 @@ pub enum RawExpr<V> {
 impl<V: Clone> RawExpr<V> {
     /// Convert a "raw" format expression into one traced with
     ///  expression data.
-    pub fn from_raw(&self) -> Expr<V> {
+    pub fn from_raw(&self) -> TracedExprRec<V> {
         match self {
-            RawExpr::None => Expr::None,
-            RawExpr::Unit => Expr::Unit,
-            RawExpr::Int(x) => Expr::Int(*x),
-            RawExpr::String(x) => Expr::String(x.clone()),
-            RawExpr::Float(x) => Expr::Float(*x),
-            RawExpr::Bool(x) => Expr::Bool(*x),
-            RawExpr::Type(x) => Expr::Type(x.clone()),
-            RawExpr::Pair(x, y) => Expr::Pair(
+            RawExpr::None => TracedExprRec::None,
+            RawExpr::Unit => TracedExprRec::Unit,
+            RawExpr::Int(x) => TracedExprRec::Int(*x),
+            RawExpr::String(x) => TracedExprRec::String(x.clone()),
+            RawExpr::Float(x) => TracedExprRec::Float(*x),
+            RawExpr::Bool(x) => TracedExprRec::Bool(*x),
+            RawExpr::Type(x) => TracedExprRec::Type(x.clone()),
+            RawExpr::Pair(x, y) => TracedExprRec::Pair(
                 Box::new(x.from_raw().traced()),
                 Box::new(y.from_raw().traced()),
             ),
-            RawExpr::List(xs) => {
-                Expr::List(xs.iter().map(|x| x.from_raw().traced()).collect())
+            RawExpr::List(xs) => TracedExprRec::List(
+                xs.iter().map(|x| x.from_raw().traced()).collect(),
+            ),
+            RawExpr::Node(x) => TracedExprRec::Node(*x),
+            RawExpr::BuiltinFunction(x) => TracedExprRec::BuiltinFunction(*x),
+            RawExpr::PolymorphicFunction(x) => {
+                TracedExprRec::PolymorphicFunction(*x)
             }
-            RawExpr::Node(x) => Expr::Node(*x),
-            RawExpr::BuiltinFunction(x) => Expr::BuiltinFunction(*x),
-            RawExpr::PolymorphicFunction(x) => Expr::PolymorphicFunction(*x),
-            RawExpr::Lambda(vars, stmts, body) => Expr::Lambda(
+            RawExpr::Lambda(vars, stmts, body) => TracedExprRec::Lambda(
                 vars.clone(),
                 stmts.clone(),
                 Box::new(body.from_raw().traced()),
             ),
-            RawExpr::Apply(f, args) => Expr::Apply(
+            RawExpr::Apply(f, args) => TracedExprRec::Apply(
                 Box::new(f.from_raw().traced()),
                 args.iter()
                     .map(|x| x.from_raw().traced())
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            RawExpr::Var(x) => Expr::Var(x.clone()),
+            RawExpr::Var(x) => TracedExprRec::Var(x.clone()),
         }
     }
 }
 
-impl<V: Clone> Expr<V> {
+impl<V: Clone> TracedExprRec<V> {
     pub fn traced(self) -> TracedExpr<V> {
         TracedExpr::new(self)
     }
@@ -133,41 +135,43 @@ impl<V: Clone> Expr<V> {
     ///  format.
     pub fn to_raw(&self) -> RawExpr<V> {
         match self {
-            Expr::None => RawExpr::None,
-            Expr::Unit => RawExpr::Unit,
-            Expr::Int(x) => RawExpr::Int(*x),
-            Expr::String(x) => RawExpr::String(x.clone()),
-            Expr::Float(x) => RawExpr::Float(*x),
-            Expr::Bool(x) => RawExpr::Bool(*x),
-            Expr::Type(x) => RawExpr::Type(x.clone()),
-            Expr::Pair(x, y) => RawExpr::Pair(
+            TracedExprRec::None => RawExpr::None,
+            TracedExprRec::Unit => RawExpr::Unit,
+            TracedExprRec::Int(x) => RawExpr::Int(*x),
+            TracedExprRec::String(x) => RawExpr::String(x.clone()),
+            TracedExprRec::Float(x) => RawExpr::Float(*x),
+            TracedExprRec::Bool(x) => RawExpr::Bool(*x),
+            TracedExprRec::Type(x) => RawExpr::Type(x.clone()),
+            TracedExprRec::Pair(x, y) => RawExpr::Pair(
                 Box::new(x.evaluated.to_raw()),
                 Box::new(y.evaluated.to_raw()),
             ),
-            Expr::List(xs) => {
+            TracedExprRec::List(xs) => {
                 RawExpr::List(xs.iter().map(|x| x.evaluated.to_raw()).collect())
             }
-            Expr::Node(x) => RawExpr::Node(*x),
-            Expr::BuiltinFunction(x) => RawExpr::BuiltinFunction(*x),
-            Expr::PolymorphicFunction(x) => RawExpr::PolymorphicFunction(*x),
-            Expr::Lambda(vars, stmts, body) => RawExpr::Lambda(
+            TracedExprRec::Node(x) => RawExpr::Node(*x),
+            TracedExprRec::BuiltinFunction(x) => RawExpr::BuiltinFunction(*x),
+            TracedExprRec::PolymorphicFunction(x) => {
+                RawExpr::PolymorphicFunction(*x)
+            }
+            TracedExprRec::Lambda(vars, stmts, body) => RawExpr::Lambda(
                 vars.clone(),
                 stmts.clone(),
                 Box::new(body.evaluated.to_raw()),
             ),
-            Expr::Apply(f, args) => RawExpr::Apply(
+            TracedExprRec::Apply(f, args) => RawExpr::Apply(
                 Box::new(f.evaluated.to_raw()),
                 args.iter()
                     .map(|x| x.evaluated.to_raw())
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            Expr::Var(x) => RawExpr::Var(x.clone()),
+            TracedExprRec::Var(x) => RawExpr::Var(x.clone()),
         }
     }
 }
 
-impl Arbitrary for Expr<String> {
+impl Arbitrary for TracedExprRec<String> {
     fn arbitrary(g: &mut Gen) -> Self {
         let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
@@ -175,7 +179,7 @@ impl Arbitrary for Expr<String> {
     }
 }
 
-impl Expr<String> {
+impl TracedExprRec<String> {
     fn arbitrary_with_depth<T: Debugger + 'static>(
         context: &Context<T>,
         g: &mut Gen,
@@ -204,48 +208,57 @@ impl Expr<String> {
         };
 
         match g.choose(&choices).unwrap() {
-            0 => Expr::None,
-            1 => Expr::Int(i32::arbitrary(g)),
-            2 => Expr::String(String::arbitrary(g)),
+            0 => TracedExprRec::None,
+            1 => TracedExprRec::Int(i32::arbitrary(g)),
+            2 => TracedExprRec::String(String::arbitrary(g)),
             3 => loop {
                 let value = f32::arbitrary(g);
                 if !value.is_nan() {
-                    return Expr::Float(value);
+                    return TracedExprRec::Float(value);
                 }
             },
             4 => {
                 let keys: Vec<&u32> =
                     context.expression_context.functions.keys().collect();
                 let key = **g.choose(&keys).unwrap();
-                Expr::BuiltinFunction(key)
+                TracedExprRec::BuiltinFunction(key)
             }
-            5 => Expr::Lambda(
+            5 => TracedExprRec::Lambda(
                 Vec::arbitrary(g),
                 (0..usize::arbitrary(g) % 3)
                     .map(|_| Statement::arbitrary_with_depth(g, depth + 1))
                     .collect(),
                 Box::new(
-                    Expr::arbitrary_with_depth(context, g, depth + 1).traced(),
+                    TracedExprRec::arbitrary_with_depth(context, g, depth + 1)
+                        .traced(),
                 ),
             ),
             6 => {
                 let num_args = usize::arbitrary(g) % 5; // Limit the number of arguments to a small number
                 let args = (0..num_args)
                     .map(|_| {
-                        Expr::arbitrary_with_depth(context, g, depth + 1)
-                            .traced()
+                        TracedExprRec::arbitrary_with_depth(
+                            context,
+                            g,
+                            depth + 1,
+                        )
+                        .traced()
                     })
                     .collect::<Vec<_>>()
                     .into_boxed_slice();
-                Expr::Apply(
+                TracedExprRec::Apply(
                     Box::new(
-                        Expr::arbitrary_with_depth(context, g, depth + 1)
-                            .traced(),
+                        TracedExprRec::arbitrary_with_depth(
+                            context,
+                            g,
+                            depth + 1,
+                        )
+                        .traced(),
                     ),
                     args,
                 )
             }
-            7 => Expr::Var(String::arbitrary(g)),
+            7 => TracedExprRec::Var(String::arbitrary(g)),
             _ => unreachable!(),
         }
     }
@@ -258,21 +271,23 @@ impl Statement<String> {
         Statement {
             location: None,
             var: Option::arbitrary(g),
-            expr: Expr::to_raw(&Expr::arbitrary_with_depth(&context, g, depth)),
+            expr: TracedExprRec::to_raw(&TracedExprRec::arbitrary_with_depth(
+                &context, g, depth,
+            )),
         }
     }
 }
 
-impl<V: Display> Display for Expr<V> {
+impl<V: Display> Display for TracedExprRec<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
         match self {
-            Expr::None => f.write_str("None"),
-            Expr::Unit => f.write_str("Unit"),
-            Expr::Int(x) => x.fmt(f),
-            Expr::Type(x) => x.fmt(f),
-            Expr::String(x) => {
+            TracedExprRec::None => f.write_str("None"),
+            TracedExprRec::Unit => f.write_str("Unit"),
+            TracedExprRec::Int(x) => x.fmt(f),
+            TracedExprRec::Type(x) => x.fmt(f),
+            TracedExprRec::String(x) => {
                 f.write_str("\"")?;
                 x.chars()
                     .map(|x| {
@@ -287,8 +302,8 @@ impl<V: Display> Display for Expr<V> {
                     .fmt(f)?;
                 f.write_str("\"")
             }
-            Expr::Float(x) => x.fmt(f),
-            Expr::BuiltinFunction(x) => {
+            TracedExprRec::Float(x) => x.fmt(f),
+            TracedExprRec::BuiltinFunction(x) => {
                 let name = context
                     .expression_context
                     .functions
@@ -299,7 +314,7 @@ impl<V: Display> Display for Expr<V> {
 
                 f.write_str(name.as_str())
             }
-            Expr::PolymorphicFunction(id) => {
+            TracedExprRec::PolymorphicFunction(id) => {
                 let index = context
                     .expression_context
                     .polymorphic_functions
@@ -318,7 +333,7 @@ impl<V: Display> Display for Expr<V> {
 
                 f.write_str(name.as_str())
             }
-            Expr::List(elements) => {
+            TracedExprRec::List(elements) => {
                 f.write_str("[")?;
                 for (i, element) in elements.iter().enumerate() {
                     if i > 0 {
@@ -328,7 +343,7 @@ impl<V: Display> Display for Expr<V> {
                 }
                 f.write_str("]")
             }
-            Expr::Lambda(vars, _, body) => {
+            TracedExprRec::Lambda(vars, _, body) => {
                 f.write_str("\\")?;
                 for var in vars {
                     var.fmt(f)?;
@@ -336,7 +351,7 @@ impl<V: Display> Display for Expr<V> {
                 f.write_str(" -> ")?;
                 body.as_ref().fmt(f)
             }
-            Expr::Apply(fun, args) => {
+            TracedExprRec::Apply(fun, args) => {
                 f.write_str("(")?;
                 fun.as_ref().fmt(f)?;
                 for arg in args {
@@ -345,13 +360,13 @@ impl<V: Display> Display for Expr<V> {
                 }
                 f.write_str(")")
             }
-            Expr::Var(x) => x.fmt(f),
-            Expr::Node(idx) => {
+            TracedExprRec::Var(x) => x.fmt(f),
+            TracedExprRec::Node(idx) => {
                 f.write_str("Node#")?;
                 idx.fmt(f)
             }
-            Expr::Bool(value) => value.fmt(f),
-            Expr::Pair(traced_expr, traced_expr1) => {
+            TracedExprRec::Bool(value) => value.fmt(f),
+            TracedExprRec::Pair(traced_expr, traced_expr1) => {
                 f.write_str("(")?;
                 traced_expr.as_ref().fmt(f)?;
                 f.write_str(",")?;
@@ -371,26 +386,29 @@ impl<V: Display> Display for Expr<V> {
 ///
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct TracedExpr<V> {
-    pub evaluated: Expr<V>,
-    pub stored_trace: Option<Expr<V>>,
+    pub evaluated: TracedExprRec<V>,
+    pub stored_trace: Option<TracedExprRec<V>>,
 }
 
 impl<V: Clone> TracedExpr<V> {
-    pub fn build(evaluated: Expr<V>, trace: Option<Expr<V>>) -> TracedExpr<V> {
+    pub fn build(
+        evaluated: TracedExprRec<V>,
+        trace: Option<TracedExprRec<V>>,
+    ) -> TracedExpr<V> {
         TracedExpr {
             evaluated: evaluated,
             stored_trace: trace,
         }
     }
 
-    pub fn get_trace(&self) -> Expr<V> {
+    pub fn get_trace(&self) -> TracedExprRec<V> {
         match &self.stored_trace {
             Some(expr) => expr.clone(),
             None => self.evaluated.clone(),
         }
     }
 
-    pub fn new(expr: Expr<V>) -> TracedExpr<V> {
+    pub fn new(expr: TracedExprRec<V>) -> TracedExpr<V> {
         TracedExpr {
             evaluated: expr,
             stored_trace: None,
@@ -411,7 +429,7 @@ mod tests {
     use bimap::BiMap;
 
     use crate::{
-        ast::Expr,
+        ast::TracedExprRec,
         debugging::NoOpDebugger,
         interpreter::{evaluate_traced, unwind_trace},
         stdlib::{ef3r_stdlib, INT_ADD_ID, INT_MUL_ID},
@@ -425,13 +443,18 @@ mod tests {
         )));
 
         // Example expression.
-        let expression = Expr::Apply(
-            Box::new(Expr::BuiltinFunction(INT_MUL_ID).traced()),
+        let expression = TracedExprRec::Apply(
+            Box::new(TracedExprRec::BuiltinFunction(INT_MUL_ID).traced()),
             Box::new([
-                Expr::Int(2).traced(),
-                Expr::Apply(
-                    Box::new(Expr::BuiltinFunction(INT_ADD_ID).traced()),
-                    Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
+                TracedExprRec::Int(2).traced(),
+                TracedExprRec::Apply(
+                    Box::new(
+                        TracedExprRec::BuiltinFunction(INT_ADD_ID).traced(),
+                    ),
+                    Box::new([
+                        TracedExprRec::Int(1).traced(),
+                        TracedExprRec::Int(2).traced(),
+                    ]),
                 )
                 .traced(),
             ]),
@@ -440,7 +463,7 @@ mod tests {
         let evaluated =
             evaluate_traced(context, expression.clone().traced()).unwrap();
 
-        assert_eq!(evaluated.evaluated, Expr::Int(6));
+        assert_eq!(evaluated.evaluated, TracedExprRec::Int(6));
 
         assert_eq!(evaluated.stored_trace, Some(expression));
     }
@@ -453,13 +476,18 @@ mod tests {
         )));
 
         // Example expression.
-        let expression = Expr::Apply(
-            Box::new(Expr::BuiltinFunction(INT_MUL_ID).traced()),
+        let expression = TracedExprRec::Apply(
+            Box::new(TracedExprRec::BuiltinFunction(INT_MUL_ID).traced()),
             Box::new([
-                Expr::Int(2).traced(),
-                Expr::Apply(
-                    Box::new(Expr::BuiltinFunction(INT_ADD_ID).traced()),
-                    Box::new([Expr::Int(1).traced(), Expr::Int(2).traced()]),
+                TracedExprRec::Int(2).traced(),
+                TracedExprRec::Apply(
+                    Box::new(
+                        TracedExprRec::BuiltinFunction(INT_ADD_ID).traced(),
+                    ),
+                    Box::new([
+                        TracedExprRec::Int(1).traced(),
+                        TracedExprRec::Int(2).traced(),
+                    ]),
                 )
                 .traced(),
             ]),
@@ -469,18 +497,18 @@ mod tests {
             evaluate_traced(context.clone(), expression.clone().traced())
                 .unwrap();
 
-        let second_expression = Expr::Apply(
-            Box::new(Expr::BuiltinFunction(INT_MUL_ID).traced()),
-            Box::new([Expr::Int(2).traced(), evaluated]),
+        let second_expression = TracedExprRec::Apply(
+            Box::new(TracedExprRec::BuiltinFunction(INT_MUL_ID).traced()),
+            Box::new([TracedExprRec::Int(2).traced(), evaluated]),
         );
 
         let second_evaluated =
             evaluate_traced(context, second_expression.clone().traced())
                 .unwrap();
 
-        let expected = Expr::Apply(
-            Box::new(Expr::BuiltinFunction(INT_MUL_ID).traced()),
-            Box::new([Expr::Int(2).traced(), expression.traced()]),
+        let expected = TracedExprRec::Apply(
+            Box::new(TracedExprRec::BuiltinFunction(INT_MUL_ID).traced()),
+            Box::new([TracedExprRec::Int(2).traced(), expression.traced()]),
         );
 
         assert_eq!(unwind_trace(second_evaluated).clone().evaluated, expected);
