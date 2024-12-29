@@ -1,7 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use bimap::BiMap;
-use ef3r::ast::{RawExpr, Statement, TracedExprRec};
+use ef3r::ast::raw_expr::RawExpr;
+use ef3r::ast::traced_expr::TracedExprRec;
+use ef3r::ast::Statement;
 use ef3r::debugging::NoOpDebugger;
 use ef3r::executable::load_efrs_source;
 use ef3r::interpreter::interpret;

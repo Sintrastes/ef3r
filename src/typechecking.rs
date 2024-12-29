@@ -1,6 +1,6 @@
 use crate::{
-    ast::TracedExprRec, debugging::Debugger, interpreter::ExpressionContext,
-    types::ExprType,
+    ast::traced_expr::TracedExprRec, debugging::Debugger,
+    interpreter::ExpressionContext, types::ExprType,
 };
 
 /// Attempts to infer the type of expressions.

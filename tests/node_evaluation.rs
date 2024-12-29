@@ -2,7 +2,7 @@ use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use bimap::BiMap;
 use ef3r::{
-    ast::{TracedExpr, TracedExprRec},
+    ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::NoOpDebugger,
     frp::{
         combined_node, filter_node, fold_node, map_node, process_event_frame,

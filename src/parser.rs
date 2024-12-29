@@ -83,7 +83,8 @@ fn lambda_expr(input: Span) -> IResult<Span, RawExpr<String>> {
     )(input)
 }
 
-use crate::ast::{RawExpr, Statement};
+use crate::ast::raw_expr::RawExpr;
+use crate::ast::Statement;
 use crate::types::ExprType;
 
 // Utility parsers

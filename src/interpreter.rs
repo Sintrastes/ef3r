@@ -8,7 +8,10 @@ use daggy::Dag;
 
 use crate::{
     ast::{
-        substitute, FunctionID, RawExpr, Statement, TracedExpr, TracedExprRec,
+        expr::FunctionID,
+        raw_expr::{substitute, RawExpr},
+        traced_expr::{TracedExpr, TracedExprRec},
+        Statement,
     },
     debugging::Debugger,
     frp::{with_lock, Node},
@@ -413,7 +416,8 @@ mod tests_for_symbols {
     use bimap::BiMap;
 
     use crate::{
-        ast::TracedExprRec, debugging::NoOpDebugger, stdlib::ef3r_stdlib,
+        ast::traced_expr::TracedExprRec, debugging::NoOpDebugger,
+        stdlib::ef3r_stdlib,
     };
 
     quickcheck! {
@@ -517,8 +521,8 @@ mod tests {
     use bimap::BiMap;
 
     use crate::{
-        ast::TracedExprRec, debugging::NoOpDebugger, interpreter::evaluate,
-        stdlib::ef3r_stdlib,
+        ast::traced_expr::TracedExprRec, debugging::NoOpDebugger,
+        interpreter::evaluate, stdlib::ef3r_stdlib,
     };
 
     quickcheck! {

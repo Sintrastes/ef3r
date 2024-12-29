@@ -9,7 +9,7 @@ use daggy::{
 };
 
 use crate::{
-    ast::TracedExpr, debugging::Debugger, interpreter::Context,
+    ast::traced_expr::TracedExpr, debugging::Debugger, interpreter::Context,
     typechecking::type_of, types::ExprType,
 };
 

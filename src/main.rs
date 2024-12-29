@@ -1,4 +1,5 @@
 use bimap::BiMap;
+use ef3r::ast::raw_expr::RawExpr;
 use ef3r::debugging::{GrpcDebugger, NoOpDebugger, StepDebugger};
 use ef3r::executable::{load_efrs_file, load_efrs_or_ef3r, Executable};
 use ef3r::interpreter::{self};
@@ -141,18 +142,14 @@ fn strip_line_numbers(
     }
 }
 
-fn strip_line_numbers_raw_expr(
-    expr: ef3r::ast::RawExpr<u32>,
-) -> ef3r::ast::RawExpr<u32> {
+fn strip_line_numbers_raw_expr(expr: RawExpr<u32>) -> RawExpr<u32> {
     match expr {
-        ef3r::ast::RawExpr::Lambda(vars, statements, body) => {
-            ef3r::ast::RawExpr::Lambda(
-                vars,
-                statements.into_iter().map(strip_line_numbers).collect(),
-                Box::new(strip_line_numbers_raw_expr(*body)),
-            )
-        }
-        ef3r::ast::RawExpr::Apply(func, args) => ef3r::ast::RawExpr::Apply(
+        RawExpr::Lambda(vars, statements, body) => RawExpr::Lambda(
+            vars,
+            statements.into_iter().map(strip_line_numbers).collect(),
+            Box::new(strip_line_numbers_raw_expr(*body)),
+        ),
+        RawExpr::Apply(func, args) => RawExpr::Apply(
             Box::new(strip_line_numbers_raw_expr(*func)),
             args.into_vec()
                 .into_iter()
@@ -160,11 +157,11 @@ fn strip_line_numbers_raw_expr(
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         ),
-        ef3r::ast::RawExpr::Pair(first, second) => ef3r::ast::RawExpr::Pair(
+        RawExpr::Pair(first, second) => RawExpr::Pair(
             Box::new(strip_line_numbers_raw_expr(*first)),
             Box::new(strip_line_numbers_raw_expr(*second)),
         ),
-        ef3r::ast::RawExpr::List(elements) => ef3r::ast::RawExpr::List(
+        RawExpr::List(elements) => RawExpr::List(
             elements
                 .into_iter()
                 .map(strip_line_numbers_raw_expr)

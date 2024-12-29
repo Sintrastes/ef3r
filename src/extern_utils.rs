@@ -1,5 +1,5 @@
 use crate::{
-    ast::{TracedExpr, TracedExprRec},
+    ast::traced_expr::{TracedExpr, TracedExprRec},
     types::ExprType,
 };
 

@@ -9,7 +9,11 @@ use bimap::BiMap;
 use daggy::{Dag, NodeIndex};
 
 use crate::{
-    ast::{RawExpr, Statement, TracedExpr, TracedExprRec},
+    ast::{
+        raw_expr::RawExpr,
+        traced_expr::{TracedExpr, TracedExprRec},
+        Statement,
+    },
     debugging::Debugger,
     extern_utils::{build_function, ExprTypeable},
     frp::{filter_node, fold_node, map_node, with_lock, Node},
