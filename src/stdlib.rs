@@ -1143,6 +1143,10 @@ pub fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
         .collect()
 }
 
+///
+/// Utility function to replace raw variable IDs for functions
+///  with their corresponding function IDs.
+///
 pub fn resolve_builtin_functions(
     statements: Vec<Statement<u32>>,
     polymorphic_functions: &HashMap<u32, u32>,
@@ -1151,7 +1155,7 @@ pub fn resolve_builtin_functions(
     statements
         .into_iter()
         .map(|stmt| {
-            replace_variables_in_statement(
+            resolve_functions_in_statement(
                 stmt,
                 polymorphic_functions,
                 stdlib_functions,
@@ -1160,7 +1164,7 @@ pub fn resolve_builtin_functions(
         .collect()
 }
 
-fn replace_variables_in_statement(
+fn resolve_functions_in_statement(
     stmt: Statement<u32>,
     polymorphic_functions: &HashMap<u32, u32>,
     stdlib_functions: &HashMap<u32, u32>,
@@ -1168,7 +1172,7 @@ fn replace_variables_in_statement(
     Statement {
         location: stmt.location,
         var: stmt.var,
-        expr: replace_variables_in_expr_raw(
+        expr: resolve_functions_in_expr_raw(
             stmt.expr,
             polymorphic_functions,
             stdlib_functions,
@@ -1176,7 +1180,7 @@ fn replace_variables_in_statement(
     }
 }
 
-fn replace_variables_in_expr_raw(
+fn resolve_functions_in_expr_raw(
     expr: RawExpr<u32>,
     polymorphic_functions: &HashMap<u32, u32>,
     stdlib_functions: &HashMap<u32, u32>,
@@ -1192,7 +1196,7 @@ fn replace_variables_in_expr_raw(
             }
         }
         RawExpr::Apply(func, args) => RawExpr::Apply(
-            Box::new(replace_variables_in_expr_raw(
+            Box::new(resolve_functions_in_expr_raw(
                 *func,
                 polymorphic_functions,
                 stdlib_functions,
@@ -1200,7 +1204,7 @@ fn replace_variables_in_expr_raw(
             args.into_vec()
                 .into_iter()
                 .map(|a| {
-                    replace_variables_in_expr_raw(
+                    resolve_functions_in_expr_raw(
                         a,
                         polymorphic_functions,
                         stdlib_functions,
@@ -1210,12 +1214,12 @@ fn replace_variables_in_expr_raw(
                 .into_boxed_slice(),
         ),
         RawExpr::Pair(first, second) => RawExpr::Pair(
-            Box::new(replace_variables_in_expr_raw(
+            Box::new(resolve_functions_in_expr_raw(
                 *first,
                 polymorphic_functions,
                 stdlib_functions,
             )),
-            Box::new(replace_variables_in_expr_raw(
+            Box::new(resolve_functions_in_expr_raw(
                 *second,
                 polymorphic_functions,
                 stdlib_functions,
@@ -1228,7 +1232,7 @@ fn replace_variables_in_expr_raw(
                 polymorphic_functions,
                 stdlib_functions,
             ),
-            Box::new(replace_variables_in_expr_raw(
+            Box::new(resolve_functions_in_expr_raw(
                 *body,
                 polymorphic_functions,
                 stdlib_functions,
