@@ -46,7 +46,11 @@ mod tests {
     use bimap::BiMap;
 
     use crate::{
-        ast::{raw_expr::RawExpr, traced_expr::TracedExprRec},
+        ast::{
+            expr::Expr,
+            raw_expr::RawExpr,
+            traced_expr::{TracedExpr, TracedExprRec},
+        },
         debugging::NoOpDebugger,
         interpreter::evaluate_traced,
         stdlib::{ef3r_stdlib, INT_ADD_ID, INT_MUL_ID},
@@ -93,15 +97,15 @@ mod tests {
         )));
 
         // Example expression. 2 * (1 + 2)
-        let expression = RawExpr::Apply(
-            Box::new(RawExpr::BuiltinFunction(INT_MUL_ID)),
-            Box::new([
-                RawExpr::Int(2),
-                RawExpr::Apply(
-                    Box::new(RawExpr::BuiltinFunction(INT_ADD_ID)),
-                    Box::new([RawExpr::Int(1), RawExpr::Int(2)]),
+        let expression = RawExpr::apply(
+            RawExpr::builtin_function(INT_MUL_ID),
+            [
+                RawExpr::int(2),
+                RawExpr::apply(
+                    RawExpr::BuiltinFunction(INT_ADD_ID),
+                    [RawExpr::Int(1), RawExpr::Int(2)],
                 ),
-            ]),
+            ],
         );
 
         let evaluated = evaluate_traced(
@@ -111,18 +115,17 @@ mod tests {
         .unwrap();
 
         // 2 * (2 * (1 + 2))
-        let second_expression = TracedExprRec::Apply(
-            Box::new(TracedExprRec::BuiltinFunction(INT_MUL_ID).traced()),
-            Box::new([TracedExprRec::Int(2).traced(), evaluated]),
+        let second_expression = TracedExpr::apply(
+            TracedExpr::builtin_function(INT_MUL_ID),
+            [TracedExpr::int(2), evaluated],
         );
 
         let second_evaluated =
-            evaluate_traced(context, second_expression.clone().traced())
-                .unwrap();
+            evaluate_traced(context, second_expression.clone()).unwrap();
 
-        let expected = RawExpr::Apply(
-            Box::new(RawExpr::BuiltinFunction(INT_MUL_ID)),
-            Box::new([RawExpr::Int(2), expression]),
+        let expected = RawExpr::apply(
+            RawExpr::builtin_function(INT_MUL_ID),
+            [RawExpr::int(2), expression],
         );
 
         assert_eq!(second_evaluated.full_trace(), expected);

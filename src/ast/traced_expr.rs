@@ -11,7 +11,11 @@ use crate::{
     types::ExprType,
 };
 
-use super::{expr::FunctionID, raw_expr::RawExpr, Statement};
+use super::{
+    expr::{Expr, FunctionID},
+    raw_expr::RawExpr,
+    Statement,
+};
 
 ///
 /// An expression together with an optional un-evaluated
@@ -76,6 +80,72 @@ impl<V: Clone> TracedExpr<V> {
             evaluated: expr,
             stored_trace: None,
         }
+    }
+}
+
+impl Expr for TracedExpr<u32> {
+    fn evaluated(self) -> RawExpr<u32> {
+        self.evaluated.to_raw()
+    }
+
+    fn none() -> Self {
+        TracedExpr::new(TracedExprRec::None)
+    }
+
+    fn unit() -> Self {
+        TracedExpr::new(TracedExprRec::Unit)
+    }
+
+    fn int(value: i32) -> Self {
+        TracedExpr::new(TracedExprRec::Int(value))
+    }
+
+    fn string(value: i32) -> Self {
+        TracedExpr::new(TracedExprRec::String(value.to_string()))
+    }
+
+    fn float(value: f32) -> Self {
+        TracedExpr::new(TracedExprRec::Float(value))
+    }
+
+    fn bool(value: bool) -> Self {
+        TracedExpr::new(TracedExprRec::Bool(value))
+    }
+
+    fn type_(value: ExprType) -> Self {
+        TracedExpr::new(TracedExprRec::Type(value))
+    }
+
+    fn pair(lhs: Self, rhs: Self) -> Self {
+        TracedExpr::new(TracedExprRec::Pair(Box::new(lhs), Box::new(rhs)))
+    }
+
+    fn list(elements: Vec<Self>) -> Self {
+        TracedExpr::new(TracedExprRec::List(elements))
+    }
+
+    fn node(value: usize) -> Self {
+        TracedExpr::new(TracedExprRec::Node(value))
+    }
+
+    fn builtin_function(value: FunctionID) -> Self {
+        TracedExpr::new(TracedExprRec::BuiltinFunction(value))
+    }
+
+    fn polymorphic_function(value: PolymorphicFunctionID) -> Self {
+        TracedExpr::new(TracedExprRec::PolymorphicFunction(value))
+    }
+
+    fn lambda(vars: Vec<u32>, stmts: Vec<Statement<u32>>, body: Self) -> Self {
+        TracedExpr::new(TracedExprRec::Lambda(vars, stmts, Box::new(body)))
+    }
+
+    fn apply<const N: usize>(fun: Self, args: [Self; N]) -> Self {
+        TracedExpr::new(TracedExprRec::Apply(Box::new(fun), Box::new(args)))
+    }
+
+    fn var(value: u32) -> Self {
+        TracedExpr::new(TracedExprRec::Var(value))
     }
 }
 

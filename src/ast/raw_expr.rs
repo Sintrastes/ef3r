@@ -286,16 +286,12 @@ impl Expr for RawExpr<u32> {
         RawExpr::PolymorphicFunction(value)
     }
 
-    fn lambda(
-        vars: Vec<u32>,
-        stmts: Vec<Statement<u32>>,
-        body: Box<Self>,
-    ) -> Self {
-        RawExpr::Lambda(vars, stmts, body)
+    fn lambda(vars: Vec<u32>, stmts: Vec<Statement<u32>>, body: Self) -> Self {
+        RawExpr::Lambda(vars, stmts, Box::new(body))
     }
 
-    fn apply(fun: Box<Self>, args: Box<[Self]>) -> Self {
-        RawExpr::Apply(fun, args)
+    fn apply<const N: usize>(fun: Self, args: [Self; N]) -> Self {
+        RawExpr::Apply(Box::new(fun), Box::new(args))
     }
 
     fn var(value: u32) -> Self {

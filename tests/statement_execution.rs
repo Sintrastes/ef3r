@@ -7,7 +7,6 @@ use ef3r::ast::Statement;
 use ef3r::debugging::NoOpDebugger;
 use ef3r::executable::load_efrs_source;
 use ef3r::interpreter::interpret;
-use ef3r::parser::CodeLocation;
 use ef3r::stdlib::ef3r_stdlib;
 
 #[test]
