@@ -98,6 +98,7 @@ pub const STRING_SPLIT_ID: u32 = 41;
 pub const INTERSPERSE_ID: u32 = 42;
 pub const INT_MODULO: u32 = 43;
 pub const EQUALS_ID: u32 = 44;
+pub const DEBUG_TRACE_ID: u32 = 45;
 
 pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
     debugger: T,
@@ -489,6 +490,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                         with_lock(ctx.as_ref(), |ctx| ctx
                             .expression_context
                             .restore_symbols(first.evaluated))
+                        .to_raw()
                     );
                 }
             }
@@ -862,6 +864,25 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
 
     // TODO: Implement a combine operation for nodes.
 
+    let dbg_trace_fn = build_function!(
+        T,
+        "dbg_trace",
+        ExprType::Unit,
+        vec![ExprType::Any],
+        |ctx, first| {
+            let resolved = with_lock(ctx.as_ref(), |lock| {
+                lock.expression_context
+                    .restore_symbols_traced(first.clone())
+            });
+            println!(
+                "{} = {}",
+                resolved.untraced(),
+                resolved.get_trace().to_raw()
+            );
+            Ok(TracedExprRec::Unit)
+        }
+    );
+
     let dbg_trace_full_fn = build_function!(
         T,
         "dbg_trace_full",
@@ -872,7 +893,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                 lock.expression_context
                     .restore_symbols_traced(first.clone())
             });
-            println!("{} = {}", resolved, resolved.get_trace());
+            println!("{} = {}", resolved.untraced(), resolved.full_trace());
             Ok(TracedExprRec::Unit)
         }
     );
@@ -1092,6 +1113,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                 (INTERSPERSE_ID, intersperse_fn),
                 (INT_MODULO, int_modulo),
                 (EQUALS_ID, equals_fn),
+                (DEBUG_TRACE_ID, dbg_trace_fn),
             ]),
             variables: HashMap::new(),
         },

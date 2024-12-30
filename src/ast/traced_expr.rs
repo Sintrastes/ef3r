@@ -44,17 +44,38 @@ impl<V: Clone> TracedExpr<V> {
         }
     }
 
+    pub fn untraced(&self) -> RawExpr<V> {
+        self.evaluated.to_raw()
+    }
+
+    pub fn full_trace(&self) -> RawExpr<V> {
+        match self {
+            TracedExpr {
+                evaluated,
+                stored_trace,
+            } => {
+                let actual_trace = stored_trace.as_ref().unwrap_or(evaluated);
+                match actual_trace {
+                    TracedExprRec::Apply(function, arguments) => {
+                        RawExpr::Apply(
+                            Box::new(function.full_trace()),
+                            arguments
+                                .iter()
+                                .map(|x| x.to_owned().full_trace())
+                                .collect(),
+                        )
+                    }
+                    _ => actual_trace.to_raw(),
+                }
+            }
+        }
+    }
+
     pub fn new(expr: TracedExprRec<V>) -> TracedExpr<V> {
         TracedExpr {
             evaluated: expr,
             stored_trace: None,
         }
-    }
-}
-
-impl<V: Display> Display for TracedExpr<V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.evaluated.fmt(f)
     }
 }
 
@@ -140,105 +161,6 @@ impl<V: Clone> TracedExprRec<V> {
                     .into_boxed_slice(),
             ),
             TracedExprRec::Var(x) => RawExpr::Var(x.clone()),
-        }
-    }
-}
-
-impl<V: Display> Display for TracedExprRec<V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
-
-        match self {
-            TracedExprRec::None => f.write_str("None"),
-            TracedExprRec::Unit => f.write_str("Unit"),
-            TracedExprRec::Int(x) => x.fmt(f),
-            TracedExprRec::Type(x) => x.fmt(f),
-            TracedExprRec::String(x) => {
-                f.write_str("\"")?;
-                x.chars()
-                    .map(|x| {
-                        if x == '\n' {
-                            "\\n".to_string()
-                        } else {
-                            x.to_string()
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("")
-                    .fmt(f)?;
-                f.write_str("\"")
-            }
-            TracedExprRec::Float(x) => x.fmt(f),
-            TracedExprRec::BuiltinFunction(x) => {
-                let name = context
-                    .expression_context
-                    .functions
-                    .get(x)
-                    .unwrap()
-                    .name
-                    .clone();
-
-                f.write_str(name.as_str())
-            }
-            TracedExprRec::PolymorphicFunction(id) => {
-                let index = context
-                    .expression_context
-                    .polymorphic_functions
-                    .iter()
-                    .find(|(x, _)| x.id == *id)
-                    .unwrap()
-                    .1;
-
-                let name = context
-                    .expression_context
-                    .functions
-                    .get(&index)
-                    .unwrap()
-                    .name
-                    .clone();
-
-                f.write_str(name.as_str())
-            }
-            TracedExprRec::List(elements) => {
-                f.write_str("[")?;
-                for (i, element) in elements.iter().enumerate() {
-                    if i > 0 {
-                        f.write_str(", ")?;
-                    }
-                    element.fmt(f)?;
-                }
-                f.write_str("]")
-            }
-            TracedExprRec::Lambda(vars, _, body) => {
-                f.write_str("\\")?;
-                for var in vars {
-                    var.fmt(f)?;
-                }
-                f.write_str(" -> ")?;
-                body.as_ref().fmt(f)
-            }
-            TracedExprRec::Apply(fun, args) => {
-                f.write_str("(")?;
-                fun.as_ref().fmt(f)?;
-                for arg in args {
-                    f.write_str(" ")?;
-                    arg.fmt(f)?;
-                }
-                f.write_str(")")
-            }
-            TracedExprRec::Var(x) => x.fmt(f),
-            TracedExprRec::Node(idx) => {
-                f.write_str("Node#")?;
-                idx.fmt(f)
-            }
-            TracedExprRec::Bool(value) => value.fmt(f),
-            TracedExprRec::Pair(traced_expr, traced_expr1) => {
-                f.write_str("(")?;
-                traced_expr.as_ref().fmt(f)?;
-                f.write_str(",")?;
-                traced_expr1.as_ref().fmt(f)?;
-                f.write_str(")")
-            }
         }
     }
 }

@@ -166,7 +166,7 @@ impl Debugger for GrpcDebugger {
         let mut client = self.client.clone();
 
         let node_type = node.expr_type.to_string();
-        let label = node.value.read().unwrap().to_string();
+        let label = node.value.read().unwrap().evaluated.to_raw().to_string();
         let id: u64 = node_id.try_into().unwrap();
 
         std::thread::spawn(move || {

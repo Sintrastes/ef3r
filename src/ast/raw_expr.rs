@@ -1,6 +1,12 @@
+use std::fmt::Display;
+
+use bimap::BiMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{interpreter::PolymorphicFunctionID, types::ExprType};
+use crate::{
+    debugging::NoOpDebugger, interpreter::PolymorphicFunctionID,
+    stdlib::ef3r_stdlib, types::ExprType,
+};
 
 use super::{
     expr::{Expr, FunctionID},
@@ -73,6 +79,105 @@ impl<V: Clone> RawExpr<V> {
                     .into_boxed_slice(),
             ),
             RawExpr::Var(x) => TracedExprRec::Var(x.clone()),
+        }
+    }
+}
+
+impl<V: Display> Display for RawExpr<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+
+        match self {
+            RawExpr::None => f.write_str("None"),
+            RawExpr::Unit => f.write_str("Unit"),
+            RawExpr::Int(x) => x.fmt(f),
+            RawExpr::Type(x) => x.fmt(f),
+            RawExpr::String(x) => {
+                f.write_str("\"")?;
+                x.chars()
+                    .map(|x| {
+                        if x == '\n' {
+                            "\\n".to_string()
+                        } else {
+                            x.to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("")
+                    .fmt(f)?;
+                f.write_str("\"")
+            }
+            RawExpr::Float(x) => x.fmt(f),
+            RawExpr::BuiltinFunction(x) => {
+                let name = context
+                    .expression_context
+                    .functions
+                    .get(x)
+                    .unwrap()
+                    .name
+                    .clone();
+
+                f.write_str(name.as_str())
+            }
+            RawExpr::PolymorphicFunction(id) => {
+                let index = context
+                    .expression_context
+                    .polymorphic_functions
+                    .iter()
+                    .find(|(x, _)| x.id == *id)
+                    .unwrap()
+                    .1;
+
+                let name = context
+                    .expression_context
+                    .functions
+                    .get(&index)
+                    .unwrap()
+                    .name
+                    .clone();
+
+                f.write_str(name.as_str())
+            }
+            RawExpr::List(elements) => {
+                f.write_str("[")?;
+                for (i, element) in elements.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    element.fmt(f)?;
+                }
+                f.write_str("]")
+            }
+            RawExpr::Lambda(vars, _, body) => {
+                f.write_str("\\")?;
+                for var in vars {
+                    var.fmt(f)?;
+                }
+                f.write_str(" -> ")?;
+                body.as_ref().fmt(f)
+            }
+            RawExpr::Apply(fun, args) => {
+                f.write_str("(")?;
+                fun.as_ref().fmt(f)?;
+                for arg in args {
+                    f.write_str(" ")?;
+                    arg.fmt(f)?;
+                }
+                f.write_str(")")
+            }
+            RawExpr::Var(x) => x.fmt(f),
+            RawExpr::Node(idx) => {
+                f.write_str("Node#")?;
+                idx.fmt(f)
+            }
+            RawExpr::Bool(value) => value.fmt(f),
+            RawExpr::Pair(traced_expr, traced_expr1) => {
+                f.write_str("(")?;
+                traced_expr.as_ref().fmt(f)?;
+                f.write_str(",")?;
+                traced_expr1.as_ref().fmt(f)?;
+                f.write_str(")")
+            }
         }
     }
 }

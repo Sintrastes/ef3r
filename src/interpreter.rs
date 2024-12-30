@@ -432,32 +432,6 @@ mod tests_for_symbols {
     }
 }
 
-pub fn unwind_trace(expr: TracedExpr<u32>) -> TracedExpr<u32> {
-    match expr {
-        TracedExpr {
-            evaluated,
-            stored_trace,
-        } => {
-            let actual_trace = stored_trace.unwrap_or(evaluated);
-            TracedExpr {
-                evaluated: match actual_trace {
-                    TracedExprRec::Apply(function, arguments) => {
-                        TracedExprRec::Apply(
-                            Box::new(unwind_trace(*function)),
-                            arguments
-                                .iter()
-                                .map(|x| unwind_trace(x.to_owned()))
-                                .collect(),
-                        )
-                    }
-                    _ => actual_trace,
-                },
-                stored_trace: None,
-            }
-        }
-    }
-}
-
 /// Apply an expression to a list of arguments in a traced manner.
 pub fn apply_traced<T: Debugger + 'static>(
     ctx: Arc<Mutex<Context<T>>>,
@@ -528,8 +502,6 @@ mod tests {
     quickcheck! {
         fn evaluation_is_idempotent(expr: TracedExprRec<String>) -> bool {
             let mut context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
-
-            println!("Evaluating: {}", &expr);
 
             let expr = context.expression_context.strip_symbols(expr);
 
@@ -642,8 +614,8 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
                     .evaluated
                     .clone();
 
-            let expanded_args = args
-                .iter()
+            let expanded_args: Vec<TracedExpr<u32>> = args
+                .into_iter()
                 .map(|arg| {
                     if let TracedExprRec::Var(var_name) = &arg.evaluated {
                         if let Some(value) = ctx
@@ -653,7 +625,7 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
                             .variables
                             .get(var_name)
                         {
-                            value.get_trace().traced()
+                            value.clone()
                         } else {
                             arg.clone()
                         }
@@ -671,7 +643,10 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
 
             Ok(TracedExpr::build(
                 (action_fn)(ctx, &evaluated_args.as_mut_slice())?,
-                Some(TracedExprRec::Apply(action.clone(), expanded_args)),
+                Some(TracedExprRec::Apply(
+                    action.clone(),
+                    expanded_args.into(),
+                )),
             ))
         }
         _ => {
