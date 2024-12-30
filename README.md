@@ -7,16 +7,15 @@ Work in progress.
 Ef3r, prononced "effer", as in "effervescent", (will be) a
 
  - Minimalistic
- - Dynamically / gradually typed
- - Lazily evaluated (or not, IDK at this point)
+ - Dynamically / gradually type
  - Functional programming language
 
 with:
 
- - First-class language support for (pull) Functional Reactive Programming.
+ - First-class language support for (push) Functional Reactive Programming.
  - An innovative visual debugger with "expression tracing" capabilities.
  - Universal Function Call Syntax.
- - Extensible records and variants.
+ - Extensible records.
 
 # Philosophy
 
