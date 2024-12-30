@@ -23,7 +23,9 @@ let y = 3;
 let z = x + y;
 
 dbg_trace_full(z);
-dbg_trace(z);
 
-dbg_trace(z + 3);
-dbg_trace_full(z + 3);
+let w = z + 3;
+
+dbg_trace_full(w);
+
+let bad = 10 / (w - 8);
