@@ -327,3 +327,21 @@ impl TracedExprRec<String> {
         }
     }
 }
+
+///
+/// Converts a traced expression into reverse polish notation order.
+///
+pub fn to_rpn<V: Clone>(expr: &TracedExpr<V>) -> Vec<TracedExpr<V>> {
+    match &expr.evaluated {
+        TracedExprRec::Apply(function, arguments) => {
+            let mut result = vec![];
+            for arg in arguments.iter() {
+                result.extend(to_rpn(arg));
+            }
+            result.extend(to_rpn(function));
+            result.push(expr.clone());
+            result
+        }
+        _ => vec![expr.clone()],
+    }
+}
