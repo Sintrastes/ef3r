@@ -1,7 +1,9 @@
-use std::fmt::Display;
-
+use crate::ast::raw_expr::{RawExpr, RawExprRec};
+use crate::ast::Statement;
+use crate::types::ExprType;
 use nom::bytes::streaming::take_while;
 use nom::character::complete::satisfy;
+use nom::error::Error;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
@@ -11,6 +13,7 @@ use nom::{
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
+use nom::{AsChar, InputIter, Slice};
 use nom_locate::LocatedSpan;
 use serde::{Deserialize, Serialize};
 
@@ -94,11 +97,6 @@ fn lambda_expr(input: Span) -> IResult<Span, RawExpr<String>> {
         },
     )(input)
 }
-
-use crate::ast::expr::Expr;
-use crate::ast::raw_expr::{RawExpr, RawExprRec};
-use crate::ast::Statement;
-use crate::types::ExprType;
 
 // Utility parsers
 fn ws<'a, F: 'a, O>(inner: F) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, O>
@@ -237,25 +235,28 @@ fn non_arrow_type(input: Span) -> IResult<Span, ExprType> {
     ))(input)
 }
 
+pub static ALLOWABLE_SYMBOLS: [char; 10] =
+    ['=', '+', '-', '*', '/', '.', '&', '|', '!', '%'];
+
+pub fn char_in<const N: usize>(
+    c: [char; N],
+) -> impl Fn(Span) -> IResult<Span, char> {
+    move |i: Span| match (i).iter_elements().next().map(|t| {
+        let b = c.contains(&t.as_char());
+        (t.clone(), b)
+    }) {
+        Some((c, true)) => Ok((i.slice(c.len()..), c.as_char())),
+        _ => Err(nom::Err::Error(Error::new(i, nom::error::ErrorKind::Fail))),
+    }
+}
+
 // Symbol parser
 fn symbol(input: Span) -> IResult<Span, String> {
     alt((
         delimited(char('`'), identifier, char('`')),
-        map(
-            recognize(many0(alt((
-                char('='),
-                char('+'),
-                char('-'),
-                char('*'),
-                char('/'),
-                char('.'),
-                char('&'),
-                char('|'),
-                char('!'),
-                char('%'),
-            )))),
-            |s: Span| s.fragment().to_string(),
-        ),
+        map(recognize(many0(char_in(ALLOWABLE_SYMBOLS))), |s: Span| {
+            s.fragment().to_string()
+        }),
     ))(input)
 }
 
