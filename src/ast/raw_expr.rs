@@ -1,16 +1,16 @@
-use std::fmt::Display;
+use std::{fmt::Display, sync::RwLock};
 
 use bimap::BiMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     debugging::NoOpDebugger, interpreter::PolymorphicFunctionID,
-    stdlib::ef3r_stdlib, types::ExprType,
+    parser::CodeLocation, stdlib::ef3r_stdlib, types::ExprType,
 };
 
 use super::{
     expr::{Expr, FunctionID},
-    traced_expr::TracedExprRec,
+    traced_expr::{TracedExpr, TracedExprRec},
     Statement,
 };
 
@@ -19,7 +19,7 @@ use super::{
 ///  traces.
 ///
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum RawExpr<V> {
+pub enum RawExprRec<V> {
     None,
     Unit,
     Int(i32),
@@ -42,43 +42,71 @@ pub enum RawExpr<V> {
     Var(V),
 }
 
+impl<V: Clone> RawExprRec<V> {
+    pub fn as_expr(self) -> RawExpr<V> {
+        RawExpr {
+            expr: self,
+            location: None,
+        }
+    }
+
+    pub fn at_loc(self, location: CodeLocation) -> RawExpr<V> {
+        RawExpr {
+            expr: self,
+            location: Some(location),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RawExpr<V> {
+    pub expr: RawExprRec<V>,
+    pub location: Option<CodeLocation>,
+}
+
 impl<V: Clone> RawExpr<V> {
     /// Convert a "raw" format expression into one traced with
     ///  expression data.
-    pub fn from_raw(&self) -> TracedExprRec<V> {
-        match self {
-            RawExpr::None => TracedExprRec::None,
-            RawExpr::Unit => TracedExprRec::Unit,
-            RawExpr::Int(x) => TracedExprRec::Int(*x),
-            RawExpr::String(x) => TracedExprRec::String(x.clone()),
-            RawExpr::Float(x) => TracedExprRec::Float(*x),
-            RawExpr::Bool(x) => TracedExprRec::Bool(*x),
-            RawExpr::Type(x) => TracedExprRec::Type(x.clone()),
-            RawExpr::Pair(x, y) => TracedExprRec::Pair(
-                Box::new(x.from_raw().traced()),
-                Box::new(y.from_raw().traced()),
-            ),
-            RawExpr::List(xs) => TracedExprRec::List(
-                xs.iter().map(|x| x.from_raw().traced()).collect(),
-            ),
-            RawExpr::Node(x) => TracedExprRec::Node(*x),
-            RawExpr::BuiltinFunction(x) => TracedExprRec::BuiltinFunction(*x),
-            RawExpr::PolymorphicFunction(x) => {
-                TracedExprRec::PolymorphicFunction(*x)
-            }
-            RawExpr::Lambda(vars, stmts, body) => TracedExprRec::Lambda(
-                vars.clone(),
-                stmts.clone(),
-                Box::new(body.from_raw().traced()),
-            ),
-            RawExpr::Apply(f, args) => TracedExprRec::Apply(
-                Box::new(f.from_raw().traced()),
-                args.iter()
-                    .map(|x| x.from_raw().traced())
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            ),
-            RawExpr::Var(x) => TracedExprRec::Var(x.clone()),
+    pub fn from_raw(&self) -> TracedExpr<V> {
+        TracedExpr {
+            location: self.location,
+            stored_trace: None,
+            evaluated: match &self.expr {
+                RawExprRec::None => TracedExprRec::None,
+                RawExprRec::Unit => TracedExprRec::Unit,
+                RawExprRec::Int(x) => TracedExprRec::Int(*x),
+                RawExprRec::String(x) => TracedExprRec::String(x.clone()),
+                RawExprRec::Float(x) => TracedExprRec::Float(*x),
+                RawExprRec::Bool(x) => TracedExprRec::Bool(*x),
+                RawExprRec::Type(x) => TracedExprRec::Type(x.clone()),
+                RawExprRec::Pair(x, y) => TracedExprRec::Pair(
+                    Box::new(x.from_raw()),
+                    Box::new(y.from_raw()),
+                ),
+                RawExprRec::List(xs) => TracedExprRec::List(
+                    xs.iter().map(|x| x.from_raw()).collect(),
+                ),
+                RawExprRec::Node(x) => TracedExprRec::Node(*x),
+                RawExprRec::BuiltinFunction(x) => {
+                    TracedExprRec::BuiltinFunction(*x)
+                }
+                RawExprRec::PolymorphicFunction(x) => {
+                    TracedExprRec::PolymorphicFunction(*x)
+                }
+                RawExprRec::Lambda(vars, stmts, body) => TracedExprRec::Lambda(
+                    vars.clone(),
+                    stmts.clone(),
+                    Box::new(body.from_raw()),
+                ),
+                RawExprRec::Apply(f, args) => TracedExprRec::Apply(
+                    Box::new(f.from_raw()),
+                    args.iter()
+                        .map(|x| x.from_raw())
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice(),
+                ),
+                RawExprRec::Var(x) => TracedExprRec::Var(x.clone()),
+            },
         }
     }
 }
@@ -87,12 +115,12 @@ impl<V: Display> Display for RawExpr<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
-        match self {
-            RawExpr::None => f.write_str("None"),
-            RawExpr::Unit => f.write_str("Unit"),
-            RawExpr::Int(x) => x.fmt(f),
-            RawExpr::Type(x) => x.fmt(f),
-            RawExpr::String(x) => {
+        match &self.expr {
+            RawExprRec::None => f.write_str("None"),
+            RawExprRec::Unit => f.write_str("Unit"),
+            RawExprRec::Int(x) => x.fmt(f),
+            RawExprRec::Type(x) => x.fmt(f),
+            RawExprRec::String(x) => {
                 f.write_str("\"")?;
                 x.chars()
                     .map(|x| {
@@ -107,19 +135,19 @@ impl<V: Display> Display for RawExpr<V> {
                     .fmt(f)?;
                 f.write_str("\"")
             }
-            RawExpr::Float(x) => x.fmt(f),
-            RawExpr::BuiltinFunction(x) => {
+            RawExprRec::Float(x) => x.fmt(f),
+            RawExprRec::BuiltinFunction(x) => {
                 let name = context
                     .expression_context
                     .functions
-                    .get(x)
+                    .get(&x)
                     .unwrap()
                     .name
                     .clone();
 
                 f.write_str(name.as_str())
             }
-            RawExpr::PolymorphicFunction(id) => {
+            RawExprRec::PolymorphicFunction(id) => {
                 let index = context
                     .expression_context
                     .polymorphic_functions
@@ -138,7 +166,7 @@ impl<V: Display> Display for RawExpr<V> {
 
                 f.write_str(name.as_str())
             }
-            RawExpr::List(elements) => {
+            RawExprRec::List(elements) => {
                 f.write_str("[")?;
                 for (i, element) in elements.iter().enumerate() {
                     if i > 0 {
@@ -148,7 +176,7 @@ impl<V: Display> Display for RawExpr<V> {
                 }
                 f.write_str("]")
             }
-            RawExpr::Lambda(vars, _, body) => {
+            RawExprRec::Lambda(vars, _, body) => {
                 f.write_str("\\")?;
                 for var in vars {
                     var.fmt(f)?;
@@ -156,7 +184,7 @@ impl<V: Display> Display for RawExpr<V> {
                 f.write_str(" -> ")?;
                 body.as_ref().fmt(f)
             }
-            RawExpr::Apply(fun, args) => {
+            RawExprRec::Apply(fun, args) => {
                 f.write_str("(")?;
                 fun.as_ref().fmt(f)?;
                 for arg in args {
@@ -165,13 +193,13 @@ impl<V: Display> Display for RawExpr<V> {
                 }
                 f.write_str(")")
             }
-            RawExpr::Var(x) => x.fmt(f),
-            RawExpr::Node(idx) => {
+            RawExprRec::Var(x) => x.fmt(f),
+            RawExprRec::Node(idx) => {
                 f.write_str("Node#")?;
                 idx.fmt(f)
             }
-            RawExpr::Bool(value) => value.fmt(f),
-            RawExpr::Pair(traced_expr, traced_expr1) => {
+            RawExprRec::Bool(value) => value.fmt(f),
+            RawExprRec::Pair(traced_expr, traced_expr1) => {
                 f.write_str("(")?;
                 traced_expr.as_ref().fmt(f)?;
                 f.write_str(",")?;
@@ -188,36 +216,39 @@ pub fn substitute<V: Clone + PartialEq + Eq>(
     with: &RawExpr<V>,
     in_expr: RawExpr<V>,
 ) -> RawExpr<V> {
-    match in_expr {
-        RawExpr::Pair(x, y) => RawExpr::Pair(
-            Box::new(substitute(variable, with, *x)),
-            Box::new(substitute(variable, with, *y)),
-        ),
-        RawExpr::Apply(f, xs) => RawExpr::Apply(
-            Box::new(substitute(variable, with, *f)),
-            xs.into_vec()
-                .into_iter()
-                .map(|x| substitute(variable, with, x))
-                .collect(),
-        ),
-        RawExpr::Var(x) => {
-            if *variable == x {
-                with.clone()
-            } else {
-                RawExpr::Var(x)
+    RawExpr {
+        location: in_expr.location,
+        expr: match in_expr.expr {
+            RawExprRec::Pair(x, y) => RawExprRec::Pair(
+                Box::new(substitute(variable, with, *x)),
+                Box::new(substitute(variable, with, *y)),
+            ),
+            RawExprRec::Apply(f, xs) => RawExprRec::Apply(
+                Box::new(substitute(variable, with, *f)),
+                xs.into_vec()
+                    .into_iter()
+                    .map(|x| substitute(variable, with, x))
+                    .collect(),
+            ),
+            RawExprRec::Var(x) => {
+                if *variable == x {
+                    with.clone().expr
+                } else {
+                    RawExprRec::Var(x)
+                }
             }
-        }
-        RawExpr::Lambda(vars, statements, expr) => RawExpr::Lambda(
-            vars,
-            statements
-                .into_iter()
-                .map(|statement| {
-                    substitute_statement(variable, with, statement)
-                })
-                .collect(),
-            Box::new(substitute(variable, with, *expr)),
-        ),
-        _ => in_expr,
+            RawExprRec::Lambda(vars, statements, expr) => RawExprRec::Lambda(
+                vars,
+                statements
+                    .into_iter()
+                    .map(|statement| {
+                        substitute_statement(variable, with, statement)
+                    })
+                    .collect(),
+                Box::new(substitute(variable, with, *expr)),
+            ),
+            _ => in_expr.expr,
+        },
     }
 }
 
@@ -239,62 +270,107 @@ impl Expr for RawExpr<u32> {
     }
 
     fn none() -> Self {
-        RawExpr::None
+        RawExpr {
+            location: None,
+            expr: RawExprRec::None,
+        }
     }
 
     fn unit() -> Self {
-        RawExpr::Unit
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Unit,
+        }
     }
 
     fn int(value: i32) -> Self {
-        RawExpr::Int(value)
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Int(value),
+        }
     }
 
     fn string(value: i32) -> Self {
-        RawExpr::String(value.to_string())
+        RawExpr {
+            location: None,
+            expr: RawExprRec::String(value.to_string()),
+        }
     }
 
     fn float(value: f32) -> Self {
-        RawExpr::Float(value)
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Float(value),
+        }
     }
 
     fn bool(value: bool) -> Self {
-        RawExpr::Bool(value)
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Bool(value),
+        }
     }
 
     fn type_(value: ExprType) -> Self {
-        RawExpr::Type(value)
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Type(value),
+        }
     }
 
     fn pair(lhs: Self, rhs: Self) -> Self {
-        RawExpr::Pair(Box::new(lhs), Box::new(rhs))
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Pair(Box::new(lhs), Box::new(rhs)),
+        }
     }
 
     fn list(elements: Vec<Self>) -> Self {
-        RawExpr::List(elements)
+        RawExpr {
+            location: None,
+            expr: RawExprRec::List(elements),
+        }
     }
 
     fn node(value: usize) -> Self {
-        RawExpr::Node(value)
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Node(value),
+        }
     }
 
     fn builtin_function(value: FunctionID) -> Self {
-        RawExpr::BuiltinFunction(value)
+        RawExpr {
+            location: None,
+            expr: RawExprRec::BuiltinFunction(value),
+        }
     }
 
     fn polymorphic_function(value: PolymorphicFunctionID) -> Self {
-        RawExpr::PolymorphicFunction(value)
+        RawExpr {
+            location: None,
+            expr: RawExprRec::PolymorphicFunction(value),
+        }
     }
 
     fn lambda(vars: Vec<u32>, stmts: Vec<Statement<u32>>, body: Self) -> Self {
-        RawExpr::Lambda(vars, stmts, Box::new(body))
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Lambda(vars, stmts, Box::new(body)),
+        }
     }
 
     fn apply<const N: usize>(fun: Self, args: [Self; N]) -> Self {
-        RawExpr::Apply(Box::new(fun), Box::new(args))
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Apply(Box::new(fun), Box::new(args)),
+        }
     }
 
     fn var(value: u32) -> Self {
-        RawExpr::Var(value)
+        RawExpr {
+            location: None,
+            expr: RawExprRec::Var(value),
+        }
     }
 }

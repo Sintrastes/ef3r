@@ -6,7 +6,7 @@ use bimap::BiMap;
 use quickcheck::{Arbitrary, Gen};
 use raw_expr::RawExpr;
 use serde::{Deserialize, Serialize};
-use traced_expr::TracedExprRec;
+use traced_expr::{TracedExpr, TracedExprRec};
 
 use crate::{
     debugging::NoOpDebugger, parser::CodeLocation, stdlib::ef3r_stdlib,
@@ -32,9 +32,10 @@ impl Statement<String> {
         Statement {
             location: None,
             var: Option::arbitrary(g),
-            expr: TracedExprRec::to_raw(&TracedExprRec::arbitrary_with_depth(
-                &context, g, depth,
-            )),
+            expr: TracedExprRec::untraced(
+                &TracedExprRec::arbitrary_with_depth(&context, g, depth),
+            )
+            .as_expr(),
         }
     }
 }
@@ -102,17 +103,15 @@ mod tests {
             [
                 RawExpr::int(2),
                 RawExpr::apply(
-                    RawExpr::BuiltinFunction(INT_ADD_ID),
-                    [RawExpr::Int(1), RawExpr::Int(2)],
+                    RawExpr::builtin_function(INT_ADD_ID),
+                    [RawExpr::int(1), RawExpr::int(2)],
                 ),
             ],
         );
 
-        let evaluated = evaluate_traced(
-            context.clone(),
-            expression.from_raw().traced().clone(),
-        )
-        .unwrap();
+        let evaluated =
+            evaluate_traced(context.clone(), expression.from_raw().clone())
+                .unwrap();
 
         // 2 * (2 * (1 + 2))
         let second_expression = TracedExpr::apply(

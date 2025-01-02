@@ -10,7 +10,7 @@ use daggy::{Dag, NodeIndex};
 
 use crate::{
     ast::{
-        raw_expr::RawExpr,
+        raw_expr::{RawExpr, RawExprRec},
         traced_expr::{TracedExpr, TracedExprRec},
         Statement,
     },
@@ -121,10 +121,40 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
             Ok(x + y)
         });
 
-    let int_div =
-        build_function!(T, "/", ExprType::Int, |_cx, x: i32, y: i32| {
-            Ok(x / y)
-        });
+    let int_div = FunctionDefinition {
+        name: "/".to_string(),
+        argument_types: vec![ExprType::Int, ExprType::Int],
+        result_type: ExprType::Int,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Int(i) => i,
+                _ => unreachable!(),
+            };
+            let y = match args[1].evaluated {
+                TracedExprRec::Int(i) => i,
+                _ => unreachable!(),
+            };
+
+            // Check for division by zero
+            if y == 0 {
+                // Get full expression trace
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[1].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: division by zero. The denominator \
+                    was 0 because of the runtime values: \n\n{}\n",
+                    expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Int(x / y))
+        },
+    };
 
     let int_sub =
         build_function!(T, "-", ExprType::Int, |_cx, x: i32, y: i32| {
@@ -148,6 +178,8 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
 
     let float_div =
         build_function!(T, "/", ExprType::Float, |_cx, x: f32, y: f32| {
+            if (y == 0.0) {}
+
             Ok(x / y)
         });
 
@@ -490,7 +522,8 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                         with_lock(ctx.as_ref(), |ctx| ctx
                             .expression_context
                             .restore_symbols(first.evaluated))
-                        .to_raw()
+                        .untraced()
+                        .as_expr()
                     );
                 }
             }
@@ -877,7 +910,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
             println!(
                 "{} = {}",
                 resolved.untraced(),
-                resolved.get_trace().to_raw()
+                resolved.get_trace().untraced()
             );
             Ok(TracedExprRec::Unit)
         }
@@ -1207,59 +1240,63 @@ fn resolve_functions_in_expr_raw(
     polymorphic_functions: &HashMap<u32, u32>,
     stdlib_functions: &HashMap<u32, u32>,
 ) -> RawExpr<u32> {
-    match expr {
-        RawExpr::Var(var_name) => {
-            if let Some(poly_func_id) = polymorphic_functions.get(&var_name) {
-                RawExpr::PolymorphicFunction(*poly_func_id)
-            } else if let Some(func_id) = stdlib_functions.get(&var_name) {
-                RawExpr::BuiltinFunction(*func_id)
-            } else {
-                RawExpr::Var(var_name)
+    RawExpr {
+        location: expr.location,
+        expr: match expr.expr {
+            RawExprRec::Var(var_name) => {
+                if let Some(poly_func_id) = polymorphic_functions.get(&var_name)
+                {
+                    RawExprRec::PolymorphicFunction(*poly_func_id)
+                } else if let Some(func_id) = stdlib_functions.get(&var_name) {
+                    RawExprRec::BuiltinFunction(*func_id)
+                } else {
+                    RawExprRec::Var(var_name)
+                }
             }
-        }
-        RawExpr::Apply(func, args) => RawExpr::Apply(
-            Box::new(resolve_functions_in_expr_raw(
-                *func,
-                polymorphic_functions,
-                stdlib_functions,
-            )),
-            args.into_vec()
-                .into_iter()
-                .map(|a| {
-                    resolve_functions_in_expr_raw(
-                        a,
-                        polymorphic_functions,
-                        stdlib_functions,
-                    )
-                })
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        ),
-        RawExpr::Pair(first, second) => RawExpr::Pair(
-            Box::new(resolve_functions_in_expr_raw(
-                *first,
-                polymorphic_functions,
-                stdlib_functions,
-            )),
-            Box::new(resolve_functions_in_expr_raw(
-                *second,
-                polymorphic_functions,
-                stdlib_functions,
-            )),
-        ),
-        RawExpr::Lambda(vars, stmts, body) => RawExpr::Lambda(
-            vars,
-            resolve_builtin_functions(
-                stmts,
-                polymorphic_functions,
-                stdlib_functions,
+            RawExprRec::Apply(func, args) => RawExprRec::Apply(
+                Box::new(resolve_functions_in_expr_raw(
+                    *func,
+                    polymorphic_functions,
+                    stdlib_functions,
+                )),
+                args.into_vec()
+                    .into_iter()
+                    .map(|a| {
+                        resolve_functions_in_expr_raw(
+                            a,
+                            polymorphic_functions,
+                            stdlib_functions,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
             ),
-            Box::new(resolve_functions_in_expr_raw(
-                *body,
-                polymorphic_functions,
-                stdlib_functions,
-            )),
-        ),
-        _ => expr,
+            RawExprRec::Pair(first, second) => RawExprRec::Pair(
+                Box::new(resolve_functions_in_expr_raw(
+                    *first,
+                    polymorphic_functions,
+                    stdlib_functions,
+                )),
+                Box::new(resolve_functions_in_expr_raw(
+                    *second,
+                    polymorphic_functions,
+                    stdlib_functions,
+                )),
+            ),
+            RawExprRec::Lambda(vars, stmts, body) => RawExprRec::Lambda(
+                vars,
+                resolve_builtin_functions(
+                    stmts,
+                    polymorphic_functions,
+                    stdlib_functions,
+                ),
+                Box::new(resolve_functions_in_expr_raw(
+                    *body,
+                    polymorphic_functions,
+                    stdlib_functions,
+                )),
+            ),
+            _ => expr.expr,
+        },
     }
 }

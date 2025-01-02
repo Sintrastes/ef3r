@@ -9,7 +9,7 @@ use daggy::Dag;
 use crate::{
     ast::{
         expr::FunctionID,
-        raw_expr::{substitute, RawExpr},
+        raw_expr::{substitute, RawExpr, RawExprRec},
         traced_expr::{TracedExpr, TracedExprRec},
         Statement,
     },
@@ -164,6 +164,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
         expr: TracedExpr<String>,
     ) -> TracedExpr<u32> {
         TracedExpr {
+            location: expr.location,
             evaluated: self.strip_symbols(expr.evaluated),
             stored_trace: expr.stored_trace.map(|t| self.strip_symbols(t)),
         }
@@ -192,64 +193,71 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     }
 
     pub fn strip_symbols_raw(&mut self, expr: RawExpr<String>) -> RawExpr<u32> {
-        match expr {
-            RawExpr::None => RawExpr::None,
-            RawExpr::Unit => RawExpr::Unit,
-            RawExpr::Int(x) => RawExpr::Int(x),
-            RawExpr::String(x) => RawExpr::String(x),
-            RawExpr::Float(x) => RawExpr::Float(x),
-            RawExpr::Bool(x) => RawExpr::Bool(x),
-            RawExpr::Type(x) => RawExpr::Type(x),
-            RawExpr::Pair(x, y) => RawExpr::Pair(
-                Box::new(self.strip_symbols_raw(*x)),
-                Box::new(self.strip_symbols_raw(*y)),
-            ),
-            RawExpr::List(xs) => RawExpr::List(
-                xs.into_iter().map(|x| self.strip_symbols_raw(x)).collect(),
-            ),
-            RawExpr::Node(x) => RawExpr::Node(x),
-            RawExpr::BuiltinFunction(x) => RawExpr::BuiltinFunction(x),
-            RawExpr::PolymorphicFunction(x) => RawExpr::PolymorphicFunction(x),
-            RawExpr::Lambda(vars, stmts, body) => {
-                let stripped_vars: Vec<_> = vars
-                    .into_iter()
-                    .map(|var| match self.symbol_table.get_by_right(&var) {
+        RawExpr {
+            location: expr.location,
+            expr: match expr.expr {
+                RawExprRec::None => RawExprRec::None,
+                RawExprRec::Unit => RawExprRec::Unit,
+                RawExprRec::Int(x) => RawExprRec::Int(x),
+                RawExprRec::String(x) => RawExprRec::String(x),
+                RawExprRec::Float(x) => RawExprRec::Float(x),
+                RawExprRec::Bool(x) => RawExprRec::Bool(x),
+                RawExprRec::Type(x) => RawExprRec::Type(x),
+                RawExprRec::Pair(x, y) => RawExprRec::Pair(
+                    Box::new(self.strip_symbols_raw(*x)),
+                    Box::new(self.strip_symbols_raw(*y)),
+                ),
+                RawExprRec::List(xs) => RawExprRec::List(
+                    xs.into_iter().map(|x| self.strip_symbols_raw(x)).collect(),
+                ),
+                RawExprRec::Node(x) => RawExprRec::Node(x),
+                RawExprRec::BuiltinFunction(x) => {
+                    RawExprRec::BuiltinFunction(x)
+                }
+                RawExprRec::PolymorphicFunction(x) => {
+                    RawExprRec::PolymorphicFunction(x)
+                }
+                RawExprRec::Lambda(vars, stmts, body) => {
+                    let stripped_vars: Vec<_> = vars
+                        .into_iter()
+                        .map(|var| match self.symbol_table.get_by_right(&var) {
+                            Some(id) => *id,
+                            None => {
+                                let id = self.symbol_table.len() as u32;
+                                self.symbol_table.insert(id, var);
+                                id
+                            }
+                        })
+                        .collect();
+
+                    RawExprRec::Lambda(
+                        stripped_vars,
+                        stmts
+                            .into_iter()
+                            .map(|stmt| self.strip_symbols_statement(stmt))
+                            .collect(),
+                        Box::new(self.strip_symbols_raw(*body)),
+                    )
+                }
+                RawExprRec::Apply(f, args) => RawExprRec::Apply(
+                    Box::new(self.strip_symbols_raw(*f)),
+                    args.into_vec()
+                        .into_iter()
+                        .map(|a| self.strip_symbols_raw(a))
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice(),
+                ),
+                RawExprRec::Var(x) => {
+                    RawExprRec::Var(match self.symbol_table.get_by_right(&x) {
                         Some(id) => *id,
                         None => {
                             let id = self.symbol_table.len() as u32;
-                            self.symbol_table.insert(id, var);
+                            self.symbol_table.insert(id, x);
                             id
                         }
                     })
-                    .collect();
-
-                RawExpr::Lambda(
-                    stripped_vars,
-                    stmts
-                        .into_iter()
-                        .map(|stmt| self.strip_symbols_statement(stmt))
-                        .collect(),
-                    Box::new(self.strip_symbols_raw(*body)),
-                )
-            }
-            RawExpr::Apply(f, args) => RawExpr::Apply(
-                Box::new(self.strip_symbols_raw(*f)),
-                args.into_vec()
-                    .into_iter()
-                    .map(|a| self.strip_symbols_raw(a))
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            ),
-            RawExpr::Var(x) => {
-                RawExpr::Var(match self.symbol_table.get_by_right(&x) {
-                    Some(id) => *id,
-                    None => {
-                        let id = self.symbol_table.len() as u32;
-                        self.symbol_table.insert(id, x);
-                        id
-                    }
-                })
-            }
+                }
+            },
         }
     }
 
@@ -327,6 +335,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
         expr: TracedExpr<u32>,
     ) -> TracedExpr<String> {
         TracedExpr {
+            location: expr.location,
             evaluated: self.restore_symbols(expr.evaluated),
             stored_trace: expr.stored_trace.map(|t| self.restore_symbols(t)),
         }
@@ -353,60 +362,67 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     /// Restore the symbols to the raw expression by looking up variables
     /// in the symbol table.
     pub fn restore_symbols_raw(&self, expr: RawExpr<u32>) -> RawExpr<String> {
-        match expr {
-            RawExpr::None => RawExpr::None,
-            RawExpr::Unit => RawExpr::Unit,
-            RawExpr::Int(x) => RawExpr::Int(x),
-            RawExpr::String(x) => RawExpr::String(x),
-            RawExpr::Float(x) => RawExpr::Float(x),
-            RawExpr::Bool(x) => RawExpr::Bool(x),
-            RawExpr::Type(x) => RawExpr::Type(x),
-            RawExpr::Pair(x, y) => RawExpr::Pair(
-                Box::new(self.restore_symbols_raw(*x)),
-                Box::new(self.restore_symbols_raw(*y)),
-            ),
-            RawExpr::List(xs) => RawExpr::List(
-                xs.into_iter()
-                    .map(|x| self.restore_symbols_raw(x))
-                    .collect(),
-            ),
-            RawExpr::Node(x) => RawExpr::Node(x),
-            RawExpr::BuiltinFunction(x) => RawExpr::BuiltinFunction(x),
-            RawExpr::PolymorphicFunction(x) => RawExpr::PolymorphicFunction(x),
-            RawExpr::Lambda(vars, stmts, body) => {
-                let restored_vars: Vec<_> = vars
-                    .into_iter()
-                    .map(|id| {
-                        self.symbol_table
-                            .get_by_left(&id)
-                            .unwrap_or(&format!("var_{}", id))
-                            .to_string()
-                    })
-                    .collect();
-
-                RawExpr::Lambda(
-                    restored_vars,
-                    stmts
-                        .into_iter()
-                        .map(|stmt| self.restore_symbols_statement(stmt))
+        RawExpr {
+            location: expr.location,
+            expr: match expr.expr {
+                RawExprRec::None => RawExprRec::None,
+                RawExprRec::Unit => RawExprRec::Unit,
+                RawExprRec::Int(x) => RawExprRec::Int(x),
+                RawExprRec::String(x) => RawExprRec::String(x),
+                RawExprRec::Float(x) => RawExprRec::Float(x),
+                RawExprRec::Bool(x) => RawExprRec::Bool(x),
+                RawExprRec::Type(x) => RawExprRec::Type(x),
+                RawExprRec::Pair(x, y) => RawExprRec::Pair(
+                    Box::new(self.restore_symbols_raw(*x)),
+                    Box::new(self.restore_symbols_raw(*y)),
+                ),
+                RawExprRec::List(xs) => RawExprRec::List(
+                    xs.into_iter()
+                        .map(|x| self.restore_symbols_raw(x))
                         .collect(),
-                    Box::new(self.restore_symbols_raw(*body)),
-                )
-            }
-            RawExpr::Apply(f, args) => RawExpr::Apply(
-                Box::new(self.restore_symbols_raw(*f)),
-                args.into_vec()
-                    .into_iter()
-                    .map(|a| self.restore_symbols_raw(a))
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            ),
-            RawExpr::Var(id) => RawExpr::Var(
-                self.symbol_table
-                    .get_by_left(&id)
-                    .unwrap_or(&format!("var_{}", id))
-                    .to_string(),
-            ),
+                ),
+                RawExprRec::Node(x) => RawExprRec::Node(x),
+                RawExprRec::BuiltinFunction(x) => {
+                    RawExprRec::BuiltinFunction(x)
+                }
+                RawExprRec::PolymorphicFunction(x) => {
+                    RawExprRec::PolymorphicFunction(x)
+                }
+                RawExprRec::Lambda(vars, stmts, body) => {
+                    let restored_vars: Vec<_> = vars
+                        .into_iter()
+                        .map(|id| {
+                            self.symbol_table
+                                .get_by_left(&id)
+                                .unwrap_or(&format!("var_{}", id))
+                                .to_string()
+                        })
+                        .collect();
+
+                    RawExprRec::Lambda(
+                        restored_vars,
+                        stmts
+                            .into_iter()
+                            .map(|stmt| self.restore_symbols_statement(stmt))
+                            .collect(),
+                        Box::new(self.restore_symbols_raw(*body)),
+                    )
+                }
+                RawExprRec::Apply(f, args) => RawExprRec::Apply(
+                    Box::new(self.restore_symbols_raw(*f)),
+                    args.into_vec()
+                        .into_iter()
+                        .map(|a| self.restore_symbols_raw(a))
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice(),
+                ),
+                RawExprRec::Var(id) => RawExprRec::Var(
+                    self.symbol_table
+                        .get_by_left(&id)
+                        .unwrap_or(&format!("var_{}", id))
+                        .to_string(),
+                ),
+            },
         }
     }
 }
@@ -469,13 +485,11 @@ pub fn apply_traced<T: Debugger + 'static>(
 
     let trace = TracedExprRec::Apply(
         Box::new(expr.clone()),
-        expanded_args
-            .iter()
-            .map(|x| x.get_trace().traced())
-            .collect(),
+        expanded_args.iter().map(|x| x.get_trace()).collect(),
     );
 
     Ok(TracedExpr {
+        location: expr.location,
         evaluated: evaluated?.evaluated,
         stored_trace: Some(trace),
     })
@@ -582,7 +596,7 @@ where
         });
 
         let evaluated =
-            evaluate::<T>(ctx.clone(), statement.expr.clone().from_raw())?;
+            evaluate_traced::<T>(ctx.clone(), statement.expr.from_raw())?;
 
         if let Some(var) = &statement.var {
             ctx.lock()
@@ -782,7 +796,8 @@ fn function_from_expression<T: Debugger + 'static>(
                                                 &var_value
                                                     .evaluated
                                                     .clone()
-                                                    .to_raw(),
+                                                    .untraced()
+                                                    .as_expr(),
                                                 acc,
                                             )
                                         },
@@ -799,22 +814,20 @@ fn function_from_expression<T: Debugger + 'static>(
                     interpret::<T>(ctx.clone(), &substituted_statements)?;
 
                     // Substitute variables in result expression
-                    let substituted_result_expr =
-                        vars.iter().zip(var_values.iter()).fold(
-                            result.evaluated.clone(),
+                    let substituted_result_expr = vars
+                        .iter()
+                        .zip(var_values.iter())
+                        .fold(
+                            result.untraced().clone(),
                             |acc, (var, var_value)| {
-                                substitute(
-                                    var,
-                                    &var_value.evaluated.to_raw(),
-                                    acc.to_raw(),
-                                )
-                                .from_raw()
+                                substitute(var, &var_value.untraced(), acc)
                             },
-                        );
+                        )
+                        .from_raw();
 
                     // Run the result to get the return value
                     let result: Result<TracedExprRec<u32>, EvaluationError> =
-                        evaluate::<T>(ctx, substituted_result_expr)
+                        evaluate_traced::<T>(ctx, substituted_result_expr)
                             .map(|x| x.evaluated);
 
                     result

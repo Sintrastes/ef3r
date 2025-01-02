@@ -7,13 +7,14 @@ use serde::{Deserialize, Serialize};
 use crate::{
     debugging::{Debugger, NoOpDebugger},
     interpreter::{Context, PolymorphicFunctionID},
+    parser::CodeLocation,
     stdlib::ef3r_stdlib,
     types::ExprType,
 };
 
 use super::{
     expr::{Expr, FunctionID},
-    raw_expr::RawExpr,
+    raw_expr::{RawExpr, RawExprRec},
     Statement,
 };
 
@@ -27,6 +28,7 @@ use super::{
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct TracedExpr<V> {
     pub evaluated: TracedExprRec<V>,
+    pub location: Option<CodeLocation>,
     pub stored_trace: Option<TracedExprRec<V>>,
 }
 
@@ -38,38 +40,57 @@ impl<V: Clone> TracedExpr<V> {
         TracedExpr {
             evaluated: evaluated,
             stored_trace: trace,
+            location: None,
         }
     }
 
-    pub fn get_trace(&self) -> TracedExprRec<V> {
-        match &self.stored_trace {
+    pub fn get_trace(&self) -> TracedExpr<V> {
+        let trace = match &self.stored_trace {
             Some(expr) => expr.clone(),
             None => self.evaluated.clone(),
+        };
+
+        TracedExpr {
+            location: self.location,
+            evaluated: trace,
+            stored_trace: None,
         }
     }
 
+    /// Strip an expression of any "trace" data, converting it into the "raw"
+    ///  format.
     pub fn untraced(&self) -> RawExpr<V> {
-        self.evaluated.to_raw()
+        RawExpr {
+            location: self.location,
+            expr: self.evaluated.untraced(),
+        }
     }
 
     pub fn full_trace(&self) -> RawExpr<V> {
         match self {
             TracedExpr {
                 evaluated,
+                location,
                 stored_trace,
             } => {
                 let actual_trace = stored_trace.as_ref().unwrap_or(evaluated);
                 match actual_trace {
-                    TracedExprRec::Apply(function, arguments) => {
-                        RawExpr::Apply(
+                    TracedExprRec::Apply(function, arguments) => RawExpr {
+                        location: *location,
+                        expr: RawExprRec::Apply(
                             Box::new(function.full_trace()),
                             arguments
                                 .iter()
                                 .map(|x| x.to_owned().full_trace())
                                 .collect(),
-                        )
+                        ),
+                    },
+                    _ => TracedExpr {
+                        location: *location,
+                        evaluated: actual_trace.clone(),
+                        stored_trace: None,
                     }
-                    _ => actual_trace.to_raw(),
+                    .untraced(),
                 }
             }
         }
@@ -79,13 +100,14 @@ impl<V: Clone> TracedExpr<V> {
         TracedExpr {
             evaluated: expr,
             stored_trace: None,
+            location: None,
         }
     }
 }
 
 impl Expr for TracedExpr<u32> {
     fn evaluated(self) -> RawExpr<u32> {
-        self.evaluated.to_raw()
+        self.untraced()
     }
 
     fn none() -> Self {
@@ -195,42 +217,41 @@ impl<V: Clone> TracedExprRec<V> {
         TracedExpr::new(self)
     }
 
-    /// Strip an expression of any "trace" data, converting it into the "raw"
-    ///  format.
-    pub fn to_raw(&self) -> RawExpr<V> {
+    pub fn untraced(&self) -> RawExprRec<V> {
         match self {
-            TracedExprRec::None => RawExpr::None,
-            TracedExprRec::Unit => RawExpr::Unit,
-            TracedExprRec::Int(x) => RawExpr::Int(*x),
-            TracedExprRec::String(x) => RawExpr::String(x.clone()),
-            TracedExprRec::Float(x) => RawExpr::Float(*x),
-            TracedExprRec::Bool(x) => RawExpr::Bool(*x),
-            TracedExprRec::Type(x) => RawExpr::Type(x.clone()),
-            TracedExprRec::Pair(x, y) => RawExpr::Pair(
-                Box::new(x.evaluated.to_raw()),
-                Box::new(y.evaluated.to_raw()),
-            ),
+            TracedExprRec::None => RawExprRec::None,
+            TracedExprRec::Unit => RawExprRec::Unit,
+            TracedExprRec::Int(x) => RawExprRec::Int(*x),
+            TracedExprRec::String(x) => RawExprRec::String(x.clone()),
+            TracedExprRec::Float(x) => RawExprRec::Float(*x),
+            TracedExprRec::Bool(x) => RawExprRec::Bool(*x),
+            TracedExprRec::Type(x) => RawExprRec::Type(x.clone()),
+            TracedExprRec::Pair(x, y) => {
+                RawExprRec::Pair(Box::new(x.untraced()), Box::new(y.untraced()))
+            }
             TracedExprRec::List(xs) => {
-                RawExpr::List(xs.iter().map(|x| x.evaluated.to_raw()).collect())
+                RawExprRec::List(xs.iter().map(|x| x.untraced()).collect())
             }
-            TracedExprRec::Node(x) => RawExpr::Node(*x),
-            TracedExprRec::BuiltinFunction(x) => RawExpr::BuiltinFunction(*x),
+            TracedExprRec::Node(x) => RawExprRec::Node(*x),
+            TracedExprRec::BuiltinFunction(x) => {
+                RawExprRec::BuiltinFunction(*x)
+            }
             TracedExprRec::PolymorphicFunction(x) => {
-                RawExpr::PolymorphicFunction(*x)
+                RawExprRec::PolymorphicFunction(*x)
             }
-            TracedExprRec::Lambda(vars, stmts, body) => RawExpr::Lambda(
+            TracedExprRec::Lambda(vars, stmts, body) => RawExprRec::Lambda(
                 vars.clone(),
                 stmts.clone(),
-                Box::new(body.evaluated.to_raw()),
+                Box::new(body.untraced()),
             ),
-            TracedExprRec::Apply(f, args) => RawExpr::Apply(
-                Box::new(f.evaluated.to_raw()),
+            TracedExprRec::Apply(f, args) => RawExprRec::Apply(
+                Box::new(f.untraced()),
                 args.iter()
-                    .map(|x| x.evaluated.to_raw())
+                    .map(|x| x.untraced())
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            TracedExprRec::Var(x) => RawExpr::Var(x.clone()),
+            TracedExprRec::Var(x) => RawExprRec::Var(x.clone()),
         }
     }
 }
@@ -331,17 +352,81 @@ impl TracedExprRec<String> {
 ///
 /// Converts a traced expression into reverse polish notation order.
 ///
-pub fn to_rpn<V: Clone>(expr: &TracedExpr<V>) -> Vec<TracedExpr<V>> {
-    match &expr.evaluated {
-        TracedExprRec::Apply(function, arguments) => {
+pub fn to_rpn<V: Clone>(expr: &RawExpr<V>) -> Vec<RawExpr<V>> {
+    match &expr.expr {
+        RawExprRec::Apply(function, arguments) => {
             let mut result = vec![];
             for arg in arguments.iter() {
                 result.extend(to_rpn(arg));
             }
             result.extend(to_rpn(function));
-            result.push(expr.clone());
+            //result.push(expr.clone());
             result
         }
         _ => vec![expr.clone()],
+    }
+}
+
+impl TracedExpr<String> {
+    pub fn expression_trace(&self) -> String {
+        let rpn = to_rpn(&self.full_trace());
+        rpn.iter()
+            .map(|expr| {
+                "    ".to_owned()
+                    + match (expr.location, &expr.expr) {
+                        (loc, RawExprRec::BuiltinFunction(_)) => {
+                            format!(
+                                "at line {} -> {} (applied function)",
+                                CodeLocation::format(loc),
+                                &expr
+                            )
+                        }
+                        (loc, RawExprRec::PolymorphicFunction(_)) => {
+                            format!(
+                                "at line {} -> {} (applied function)",
+                                CodeLocation::format(loc),
+                                &expr
+                            )
+                        }
+                        (loc, RawExprRec::Int(n)) => {
+                            format!(
+                                "at line {} -> {} (constant)",
+                                CodeLocation::format(loc),
+                                n
+                            )
+                        }
+                        (loc, RawExprRec::Float(n)) => {
+                            format!(
+                                "at line {} -> {} (constant)",
+                                CodeLocation::format(loc),
+                                n
+                            )
+                        }
+                        (loc, RawExprRec::String(s)) => {
+                            format!(
+                                "at line {} -> \"{}\" (constant)",
+                                CodeLocation::format(loc),
+                                s
+                            )
+                        }
+                        (loc, RawExprRec::Bool(b)) => {
+                            format!(
+                                "at line {} -> {} (constant)",
+                                CodeLocation::format(loc),
+                                b
+                            )
+                        }
+                        (loc, x) => {
+                            format!(
+                                "at line {} -> {} (constant)",
+                                CodeLocation::format(loc),
+                                x.clone().as_expr()
+                            )
+                        }
+                    }
+                    .as_str()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }

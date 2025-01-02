@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use nom::bytes::streaming::take_while;
 use nom::character::complete::satisfy;
 use nom::{
@@ -19,6 +21,15 @@ pub struct CodeLocation {
     pub line: u32,
     pub column: usize,
     pub offset: usize,
+}
+
+impl CodeLocation {
+    pub fn format(loc: Option<CodeLocation>) -> String {
+        match loc {
+            None => "??:??".to_string(),
+            Some(loc) => format!("{}:{}", loc.line, loc.column),
+        }
+    }
 }
 
 impl From<Span<'_>> for CodeLocation {
@@ -60,30 +71,32 @@ fn lambda_body(input: Span) -> IResult<Span, Vec<Statement<String>>> {
 
 fn lambda_expr(input: Span) -> IResult<Span, RawExpr<String>> {
     map(
-        delimited(
+        loc(delimited(
             ws(char('{')),
             tuple((lambda_params, lambda_body)),
             ws(char('}')),
-        ),
-        |(params, body)| {
+        )),
+        |(lambda_location, (params, body))| {
             // Get the last statement from the body
             let (statements, return_expr) =
                 if let Some((last, rest)) = body.split_last() {
                     if last.var.is_none() {
                         (rest.to_vec(), last.expr.clone())
                     } else {
-                        (body, RawExpr::Unit)
+                        (body, RawExprRec::Unit.as_expr())
                     }
                 } else {
-                    (body, RawExpr::Unit)
+                    (body, RawExprRec::Unit.as_expr())
                 };
 
-            RawExpr::Lambda(params, statements, Box::new(return_expr))
+            RawExprRec::Lambda(params, statements, Box::new(return_expr))
+                .at_loc(lambda_location)
         },
     )(input)
 }
 
-use crate::ast::raw_expr::RawExpr;
+use crate::ast::expr::Expr;
+use crate::ast::raw_expr::{RawExpr, RawExprRec};
 use crate::ast::Statement;
 use crate::types::ExprType;
 
@@ -97,6 +110,36 @@ where
         inner,
         delimited(multispace0, opt(comment), multispace0),
     )
+}
+
+fn ws_loc<'a, F: 'a, O>(
+    mut inner: F,
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, (CodeLocation, O)>
+where
+    F: FnMut(Span<'a>) -> IResult<Span<'a>, O>,
+{
+    move |input: Span<'a>| {
+        let (input, _) =
+            delimited(multispace0, opt(comment), multispace0)(input)?;
+        let location = input.into();
+        let (input, value) = inner(input)?;
+        let (input, _) =
+            delimited(multispace0, opt(comment), multispace0)(input)?;
+        Ok((input, (location, value)))
+    }
+}
+
+fn loc<'a, F: 'a, O>(
+    mut inner: F,
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, (CodeLocation, O)>
+where
+    F: FnMut(Span<'a>) -> IResult<Span<'a>, O>,
+{
+    move |input: Span<'a>| {
+        let location = input.into();
+        let (input, value) = inner(input)?;
+        Ok((input, (location, value)))
+    }
 }
 
 fn comment(input: Span) -> IResult<Span, ()> {
@@ -221,34 +264,37 @@ fn float(input: Span) -> IResult<Span, RawExpr<String>> {
     map(
         tuple((recognize(digit1), char('.'), recognize(digit1))),
         |(int_digits, _, frac_digits): (Span, char, Span)| {
-            RawExpr::Float(
+            RawExprRec::Float(
                 (int_digits.fragment().to_string().to_owned()
                     + "."
                     + frac_digits.fragment())
                 .parse()
                 .unwrap(),
             )
+            .at_loc(input.into())
         },
     )(input)
 }
 
 fn integer(input: Span) -> IResult<Span, RawExpr<String>> {
     map(recognize(digit1), |digits: Span| {
-        RawExpr::Int(digits.parse().unwrap())
+        RawExprRec::Int(digits.parse().unwrap()).at_loc(input.into())
     })(input)
 }
 
 fn string_literal(input: Span) -> IResult<Span, RawExpr<String>> {
     map(
         delimited(char('"'), take_while(|c| c != '"'), char('"')),
-        |s: Span| RawExpr::String(s.to_string()),
+        |s: Span| RawExprRec::String(s.to_string()).at_loc(input.into()),
     )(input)
 }
 
 fn boolean(input: Span) -> IResult<Span, RawExpr<String>> {
     alt((
-        map(tag("true"), |_| RawExpr::Bool(true)),
-        map(tag("false"), |_| RawExpr::Bool(false)),
+        map(tag("true"), |_| RawExprRec::Bool(true).at_loc(input.into())),
+        map(tag("false"), |_| {
+            RawExprRec::Bool(false).at_loc(input.into())
+        }),
     ))(input)
 }
 
@@ -258,8 +304,8 @@ fn literal(input: Span) -> IResult<Span, RawExpr<String>> {
         integer,
         string_literal,
         boolean,
-        map(tag("None"), |_| RawExpr::None),
-        map(tag("()"), |_| RawExpr::Unit),
+        map(tag("None"), |_| RawExprRec::None.at_loc(input.into())),
+        map(tag("()"), |_| RawExprRec::Unit.at_loc(input.into())),
     ))(input)
 }
 
@@ -267,8 +313,8 @@ fn literal(input: Span) -> IResult<Span, RawExpr<String>> {
 fn primary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
     alt((
         ws(literal),
-        map(ws(type_expr), RawExpr::Type),
-        map(ws(identifier), RawExpr::Var),
+        map(ws(type_expr), |x| RawExprRec::Type(x).at_loc(input.into())),
+        map(ws(identifier), |x| RawExprRec::Var(x).at_loc(input.into())),
         delimited(ws(char('(')), expression, ws(char(')'))),
     ))(input)
 }
@@ -276,12 +322,14 @@ fn primary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
 fn function_call(input: Span) -> IResult<Span, RawExpr<String>> {
     let (input, func) = identifier(input)?;
 
+    let func_exp = RawExprRec::Var(func).at_loc(input.into());
+
     // Handle both cases: with parentheses (possibly with args) and without
     let (input, args) = function_invocation(input)?;
 
     Ok((
         input,
-        RawExpr::Apply(Box::new(RawExpr::Var(func)), args.into()),
+        RawExprRec::Apply(Box::new(func_exp), args.into()).at_loc(input.into()),
     ))
 }
 
@@ -316,43 +364,55 @@ fn binary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
     let (input, first) = non_binary_expression(input)?;
 
     let (input, rest) =
-        many0(tuple((ws(symbol), non_binary_expression)))(input)?;
+        many0(tuple((ws_loc(symbol), non_binary_expression)))(input)?;
 
     // Build up the binary expression chain
-    let result = rest.into_iter().fold(first, |acc, (sym, right)| {
-        RawExpr::Apply(
-            Box::new(RawExpr::Var(sym.to_string())),
-            vec![acc, right].into_boxed_slice(),
-        )
-    });
+    let result =
+        rest.into_iter()
+            .fold(first, |acc, ((location, sym), right)| {
+                RawExprRec::Apply(
+                    Box::new(RawExprRec::Var(sym.to_string()).at_loc(location)),
+                    vec![acc, right].into_boxed_slice(),
+                )
+                .at_loc(location)
+            });
 
     Ok((input, result))
 }
 
-fn method_call(input: Span) -> IResult<Span, RawExpr<String>> {
+fn method_call(
+    input: Span,
+) -> IResult<Span, (CodeLocation, (String, Vec<RawExpr<String>>))> {
+    let (input, result) = tuple((
+        preceded(ws(char('.')), identifier),
+        function_invocation,
+    ))(input)?;
+
+    Ok((input, (input.into(), result)))
+}
+
+fn method_calls(input: Span) -> IResult<Span, RawExpr<String>> {
     let (input, initial) = primary_expr(input)?;
 
     // Parse zero or more method calls
-    let (input, method_chains) = many0(tuple((
-        preceded(ws(char('.')), identifier),
-        function_invocation,
-    )))(input)?;
+    let (input, method_chains) = many0(method_call)(input)?;
 
     // Transform the chain of method calls into nested function calls
-    let result =
-        method_chains
-            .into_iter()
-            .fold(initial, |acc, (method, args)| {
-                // Create a new argument list with the receiver as the first argument
-                let mut full_args = vec![acc];
-                full_args.extend(args);
+    let result = method_chains.into_iter().fold(
+        initial,
+        |acc, (location, (method, args))| {
+            // Create a new argument list with the receiver as the first argument
+            let mut full_args = vec![acc];
+            full_args.extend(args);
 
-                // Construct the function call expression
-                RawExpr::Apply(
-                    Box::new(RawExpr::Var(method)),
-                    full_args.into_boxed_slice(),
-                )
-            });
+            // Construct the function call expression
+            RawExprRec::Apply(
+                Box::new(RawExprRec::Var(method).at_loc(location)),
+                full_args.into_boxed_slice(),
+            )
+            .at_loc(location)
+        },
+    );
 
     Ok((input, result))
 }
@@ -362,7 +422,7 @@ fn expression(input: Span) -> IResult<Span, RawExpr<String>> {
 }
 
 fn non_binary_expression(input: Span) -> IResult<Span, RawExpr<String>> {
-    alt((lambda_expr, function_call, method_call, primary_expr))(input)
+    alt((lambda_expr, function_call, method_calls, primary_expr))(input)
 }
 
 // Statement parsers

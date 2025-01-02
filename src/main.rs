@@ -1,5 +1,5 @@
 use bimap::BiMap;
-use ef3r::ast::raw_expr::RawExpr;
+use ef3r::ast::raw_expr::{RawExpr, RawExprRec};
 use ef3r::debugging::{GrpcDebugger, NoOpDebugger, StepDebugger};
 use ef3r::executable::{load_efrs_file, load_efrs_or_ef3r, Executable};
 use ef3r::interpreter::{self};
@@ -143,30 +143,33 @@ fn strip_line_numbers(
 }
 
 fn strip_line_numbers_raw_expr(expr: RawExpr<u32>) -> RawExpr<u32> {
-    match expr {
-        RawExpr::Lambda(vars, statements, body) => RawExpr::Lambda(
-            vars,
-            statements.into_iter().map(strip_line_numbers).collect(),
-            Box::new(strip_line_numbers_raw_expr(*body)),
-        ),
-        RawExpr::Apply(func, args) => RawExpr::Apply(
-            Box::new(strip_line_numbers_raw_expr(*func)),
-            args.into_vec()
-                .into_iter()
-                .map(strip_line_numbers_raw_expr)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        ),
-        RawExpr::Pair(first, second) => RawExpr::Pair(
-            Box::new(strip_line_numbers_raw_expr(*first)),
-            Box::new(strip_line_numbers_raw_expr(*second)),
-        ),
-        RawExpr::List(elements) => RawExpr::List(
-            elements
-                .into_iter()
-                .map(strip_line_numbers_raw_expr)
-                .collect(),
-        ),
-        _ => expr,
+    RawExpr {
+        location: expr.location,
+        expr: match expr.expr {
+            RawExprRec::Lambda(vars, statements, body) => RawExprRec::Lambda(
+                vars,
+                statements.into_iter().map(strip_line_numbers).collect(),
+                Box::new(strip_line_numbers_raw_expr(*body)),
+            ),
+            RawExprRec::Apply(func, args) => RawExprRec::Apply(
+                Box::new(strip_line_numbers_raw_expr(*func)),
+                args.into_vec()
+                    .into_iter()
+                    .map(strip_line_numbers_raw_expr)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            RawExprRec::Pair(first, second) => RawExprRec::Pair(
+                Box::new(strip_line_numbers_raw_expr(*first)),
+                Box::new(strip_line_numbers_raw_expr(*second)),
+            ),
+            RawExprRec::List(elements) => RawExprRec::List(
+                elements
+                    .into_iter()
+                    .map(strip_line_numbers_raw_expr)
+                    .collect(),
+            ),
+            _ => expr.expr,
+        },
     }
 }

@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use bimap::BiMap;
+use ef3r::ast::expr::Expr;
 use ef3r::ast::raw_expr::RawExpr;
 use ef3r::ast::traced_expr::TracedExprRec;
 use ef3r::ast::Statement;
@@ -16,7 +17,7 @@ fn variable_assignment() {
 
     let cloned_ctx = context.clone();
 
-    let expression = RawExpr::Int(3);
+    let expression = RawExpr::int(3);
     let statement = Statement {
         location: None,
         var: Some(0),
@@ -34,7 +35,7 @@ fn variable_assignment() {
             .get(&0)
             .unwrap()
             .evaluated,
-        expression.from_raw()
+        expression.from_raw().evaluated
     );
 }
 
@@ -48,12 +49,12 @@ fn reassignment_of_statement() {
     let statement1 = Statement {
         location: None,
         var: Some(0),
-        expr: RawExpr::Int(2),
+        expr: RawExpr::int(2),
     };
     let statement2 = Statement {
         location: None,
         var: Some(0),
-        expr: RawExpr::Int(3),
+        expr: RawExpr::int(3),
     };
 
     interpret(context, &vec![statement1, statement2]).unwrap();
