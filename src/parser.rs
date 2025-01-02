@@ -433,8 +433,8 @@ fn non_binary_expression(input: Span) -> IResult<Span, RawExpr<String>> {
 // Statement parsers
 fn let_statement(input: Span) -> IResult<Span, Statement<String>> {
     map(
-        tuple((ws(tag("let")), ws(identifier), ws(char('=')), expression)),
-        |(_, id, _, expr)| Statement {
+        tuple((ws(identifier), ws(char('=')), expression)),
+        |(id, _, expr)| Statement {
             location: Some(input.into()),
             var: Some(id),
             expr: expr,
@@ -537,14 +537,12 @@ fn test_await() {
 #[test]
 fn test_assert() {
     assert!(expression(Span::new("assert(node.value == 0)")).is_ok());
-    assert!(
-        let_statement(Span::new("let x = assert(node.value == 0);")).is_ok()
-    );
+    assert!(let_statement(Span::new("x = assert(node.value == 0);")).is_ok());
 }
 
 #[test]
 fn test_statements() {
-    assert!(let_statement(Span::new("let x = 42;")).is_ok());
+    assert!(let_statement(Span::new("x = 42;")).is_ok());
     assert!(expression(Span::new("foo()")).is_ok());
 }
 
@@ -554,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_original_syntax() {
-        let input = r#"let f = {
+        let input = r#"f = {
                 println("Hello, world!");
                 let value = node.value();
             };"#;

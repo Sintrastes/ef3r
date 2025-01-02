@@ -76,11 +76,11 @@ fn reassignment_of_statement() {
 fn execute_example_program() {
     let program = r#"print("Hello, world!");
 
-        let f = { x -> uppercase(x) };
+        f = { x -> uppercase(x) };
 
-        let concat = { xs -> fold(xs, "", { x, y -> x + y }) };
+        concat = { xs -> fold(xs, "", { x, y -> x + y }) };
 
-        let join_to_string = { strs, sep ->
+        join_to_string = { strs, sep ->
             strs
                 .intersperse(sep)
                 .concat()
@@ -88,11 +88,11 @@ fn execute_example_program() {
 
         print(join_to_string(list("hello", "world"), ", "));
 
-        let y = f("test");
+        y = f("test");
 
-        let node = new_node(Int, 0);
+        node = new_node(Int, 0);
 
-        let current_value = node.current_value();
+        current_value = node.current_value();
 
         print(current_value);
 
@@ -111,25 +111,25 @@ fn execute_example_program() {
         new_node(Pair(Int, Int), pair(2, 3));
 
         // Test list processing
-        let xs = list(1, 2, 3);
+        xs = list(1, 2, 3);
 
-        let ys = xs
+        ys = xs
             .map { x -> x + 2 }
             .filter { x -> x % 2 == 0 };
 
         // Test floating point arithmetic
 
-        let foo = 3.2 * 5.6 + 0.2 - 0.01;
+        foo = 3.2 * 5.6 + 0.2 - 0.01;
 
         // Test infix function syntax.
 
-        let op = { x, y -> 2 * x + y };
+        op = { x, y -> 2 * x + y };
 
-        let applied = 2 `op` 3;
+        applied = 2 `op` 3;
 
         /* Test launcing a thread. */
         launch {
-            let x = "test";
+            x = "test";
 
             print("Hello " + x.uppercase());
 

@@ -1,29 +1,29 @@
 print("Hello, world!");
 
-let node = new_node(Int, 2);
+node = new_node(Int, 2);
 
-let response = readln();
+response = readln();
 
-let xs = list(1, 2, 3);
+xs = list(1, 2, 3);
 
-let mapped_list = xs.map { x -> x + 2 };
+mapped_list = xs.map { x -> x + 2 };
 
 xs.print();
 print(mapped_list);
 
 print(response.uppercase());
 
-let mapped = node
+mapped = node
     .map { x -> x + 3 }
     .map { x -> x * 7 };
 
-let x = 2;
-let y = 3;
+x = 2;
+y = 3;
 
-let z = x + y;
+z = x + y;
 
 dbg_trace_full(z);
 
-let w = z + 3;
+w = z + 3;
 
 dbg_trace_full(w);
