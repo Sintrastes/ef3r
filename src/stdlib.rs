@@ -1,5 +1,6 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
+    hash::{BuildHasherDefault, DefaultHasher},
     io::{self, BufRead},
     sync::{atomic::AtomicBool, Arc, Mutex},
     thread,
@@ -24,18 +25,6 @@ use crate::{
     typechecking::type_of,
     types::ExprType,
 };
-
-// Polymorphic function IDs
-
-pub const POLYMORPHIC_MAP_ID: u32 = 0;
-pub const POLYMORPHIC_FIRST_ID: u32 = 1;
-pub const POLYMORPHIC_ADD: u32 = 2;
-pub const POLYMORPHIC_SUB: u32 = 3;
-pub const POLYMORPHIC_DIV: u32 = 4;
-pub const POLYMORPHIC_MUL: u32 = 5;
-pub const POLYMORPHIC_LENGTH_ID: u32 = 6;
-pub const POLYMORPHIC_FILTER_ID: u32 = 7;
-pub const POLYMORPHIC_FOLD_ID: u32 = 8;
 
 // Function IDs
 
@@ -115,1421 +104,1409 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
     debugger: T,
     symbol_table: BiMap<u32, String>,
 ) -> Context<'a, T> {
-    let equals_fn = build_function!(
-        T,
-        "==",
-        ExprType::Bool,
-        |_cx, x: TracedExprRec<u32>, y: TracedExprRec<u32>| { Ok(x == y) }
-    );
+    let functions = HashMap::from([
+        (
+            INT_MUL_ID,
+            build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
+                Ok(x * y)
+            }),
+        ),
+        (
+            INT_ADD_ID,
+            build_function!(T, "+", ExprType::Int, |_cx, x: i32, y: i32| {
+                Ok(x + y)
+            }),
+        ),
+        (
+            INT_DIV_ID,
+            FunctionDefinition {
+                name: "/".to_string(),
+                argument_types: vec![ExprType::Int, ExprType::Int],
+                result_type: ExprType::Int,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Int(i) => i,
+                        _ => unreachable!(),
+                    };
+                    let y = match args[1].evaluated {
+                        TracedExprRec::Int(i) => i,
+                        _ => unreachable!(),
+                    };
 
-    let int_mul =
-        build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
-            Ok(x * y)
-        });
-
-    let int_add =
-        build_function!(T, "+", ExprType::Int, |_cx, x: i32, y: i32| {
-            Ok(x + y)
-        });
-
-    let int_div = FunctionDefinition {
-        name: "/".to_string(),
-        argument_types: vec![ExprType::Int, ExprType::Int],
-        result_type: ExprType::Int,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Int(i) => i,
-                _ => unreachable!(),
-            };
-            let y = match args[1].evaluated {
-                TracedExprRec::Int(i) => i,
-                _ => unreachable!(),
-            };
-
-            // Check for division by zero
-            if y == 0 {
-                // Get full expression trace
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[1].clone())
-                    .expression_trace();
-
-                panic!(
-                    "\nError: division by zero. The denominator \
-                    was 0 because of the runtime values: \n\n{}\n",
-                    expr_trace
-                );
-            }
-
-            Ok(TracedExprRec::Int(x / y))
-        },
-    };
-
-    let int_sub =
-        build_function!(T, "-", ExprType::Int, |_cx, x: i32, y: i32| {
-            Ok(x - y)
-        });
-
-    let int_modulo =
-        build_function!(T, "%", ExprType::Int, |_cx, x: i32, y: i32| {
-            Ok(x % y)
-        });
-
-    let float_mul =
-        build_function!(T, "*", ExprType::Float, |_cx, x: f32, y: f32| {
-            Ok(x * y)
-        });
-
-    let float_add =
-        build_function!(T, "+", ExprType::Float, |_cx, x: f32, y: f32| {
-            Ok(x + y)
-        });
-
-    let float_div = FunctionDefinition {
-        name: "/".to_string(),
-        argument_types: vec![ExprType::Float, ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
-            let y = match args[1].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
-
-            // Check for division by zero
-            if y == 0.0 {
-                // Get full expression trace
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[1].clone())
-                    .expression_trace();
-
-                panic!(
-                    "\nError: division by zero. The denominator \
-                    was 0 because of the runtime values: \n\n{}\n",
-                    expr_trace
-                );
-            }
-
-            Ok(TracedExprRec::Float(x / y))
-        },
-    };
-
-    let log_fn = build_function!(
-        T,
-        "log",
-        ExprType::Float,
-        vec![ExprType::Int, ExprType::Float],
-        |ctx, base, number| {
-            match (&base.evaluated, &number.evaluated) {
-                (
-                    TracedExprRec::Int(base_value),
-                    TracedExprRec::Float(num_value),
-                ) => {
-                    if *base_value <= 0 {
+                    // Check for division by zero
+                    if y == 0 {
+                        // Get full expression trace
                         let expr_trace = ctx
                             .lock()
                             .unwrap()
                             .expression_context
-                            .restore_symbols_traced(base.clone())
+                            .restore_symbols_traced(args[1].clone())
                             .expression_trace();
 
                         panic!(
-                                "\nError: logarithm base must be positive. The base \
-                                was {} because of runtime values: \n\n{}\n",
-                                base_value,
-                                expr_trace
-                            );
-                    }
-                    if *num_value <= 0.0 {
-                        let expr_trace = ctx
-                            .lock()
-                            .unwrap()
-                            .expression_context
-                            .restore_symbols_traced(number.clone())
-                            .expression_trace();
-
-                        panic!(
-                                "\nError: logarithm argument must be positive. The number \
-                                was {} because of runtime values: \n\n{}\n",
-                                num_value,
-                                expr_trace
-                            );
-                    }
-
-                    Ok(TracedExprRec::Float(
-                        num_value.ln() / (*base_value as f32).ln(),
-                    ))
-                }
-                _ => unreachable!(),
-            }
-        }
-    );
-
-    let float_sub =
-        build_function!(T, "-", ExprType::Float, |_cx, x: f32, y: f32| {
-            Ok(x - y)
-        });
-
-    let and =
-        build_function!(T, "&&", ExprType::Bool, |_cx, x: bool, y: bool| {
-            Ok(x && y)
-        });
-
-    let or =
-        build_function!(T, "||", ExprType::Bool, |_cx, x: bool, y: bool| {
-            Ok(x || y)
-        });
-
-    let not =
-        build_function!(T, "not", ExprType::Bool, |_cx, x: bool| { Ok(!x) });
-
-    let assert = FunctionDefinition {
-        name: "assert".to_string(),
-        argument_types: vec![ExprType::Bool],
-        result_type: ExprType::Unit,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let condition = match args[0].evaluated {
-                TracedExprRec::Bool(b) => b,
-                _ => unreachable!(),
-            };
-
-            if !condition {
-                // Get full expression trace
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[0].clone())
-                    .expression_trace();
-
-                panic!(
-                    "\nAssertion failed. The condition evaluated to false because of the runtime values: \n\n{}\n",
-                    expr_trace
-                );
-            }
-
-            Ok(TracedExprRec::Unit)
-        },
-    };
-
-    let append = build_function!(
-        T,
-        "+",
-        ExprType::String,
-        |_cx, x: String, y: String| { Ok(x.to_owned() + y.as_ref()) }
-    );
-
-    let uppercase =
-        build_function!(T, "uppercase", ExprType::String, |_cx, x: String| {
-            Ok(x.to_uppercase())
-        });
-
-    let lowercase =
-        build_function!(T, "lowercase", ExprType::String, |_cx, x: String| {
-            Ok(x.to_lowercase())
-        });
-
-    let drop_list_fn = build_function!(
-        T,
-        "drop",
-        ExprType::List(Box::new(ExprType::Any)),
-        |_cx, list: Vec<TracedExpr<u32>>, n: i32| {
-            Ok(if n <= 0 {
-                list
-            } else {
-                list.into_iter().skip(n as usize).collect()
-            })
-        }
-    );
-
-    let drop_last_list_fn = build_function!(
-        T,
-        "drop_last",
-        ExprType::List(Box::new(ExprType::Any)),
-        |_cx, list: Vec<TracedExpr<u32>>, n: i32| {
-            Ok(if n <= 0 {
-                list
-            } else {
-                let length = &list.len();
-                list.into_iter()
-                    .take(length.saturating_sub(n as usize))
-                    .collect()
-            })
-        }
-    );
-
-    let intersperse_fn = build_function!(
-        T,
-        "intersperse",
-        ExprType::List(Box::new(ExprType::Any)),
-        |_cx, list: Vec<TracedExpr<u32>>, separator: TracedExprRec<u32>| {
-            if list.is_empty() {
-                return Ok(TracedExprRec::List(list));
-            }
-
-            let mut result = Vec::with_capacity(list.len() * 2 - 1);
-
-            for (i, item) in list.into_iter().enumerate() {
-                if i > 0 {
-                    result.push(separator.clone().traced());
-                }
-                result.push(item);
-            }
-
-            Ok(TracedExprRec::List(result))
-        }
-    );
-
-    let list_fn = FunctionDefinition {
-        name: "list".to_string(),
-        argument_types: vec![], // Vararg function
-        result_type: ExprType::List(Box::new(ExprType::Any)),
-        definition: |_, xs: &[TracedExpr<u32>]| {
-            Ok(TracedExprRec::List(xs.to_vec()))
-        },
-    };
-
-    let length_list_fn =
-        build_function!(T, "length", ExprType::Int, |_cx,
-                                                     list: Vec<
-            TracedExpr<u32>,
-        >| {
-            Ok(list.len() as i32)
-        });
-
-    let append_lists_fn = build_function!(
-        T,
-        "+",
-        ExprType::List(Box::new(ExprType::Any)),
-        |_cx, list1: Vec<TracedExpr<u32>>, list2: Vec<TracedExpr<u32>>| {
-            let mut result = list1;
-            result.extend(list2);
-            Ok(result)
-        }
-    );
-
-    let map_list_fn = build_function!(
-        T,
-        "map",
-        ExprType::List(Box::new(ExprType::Any)),
-        vec![
-            ExprType::List(Box::new(ExprType::Any)),
-            ExprType::Func(vec![ExprType::Any], Box::new(ExprType::Any))
-        ],
-        |ctx, list, f| {
-            match list.evaluated {
-                TracedExprRec::List(elements) => {
-                    let mapped = elements
-                        .into_iter()
-                        .map(|e| {
-                            evaluate_function_application(
-                                ctx.clone(),
-                                &TracedExprRec::Apply(
-                                    Box::new(f.clone()),
-                                    Box::new([e]),
-                                ),
-                            )
-                            .unwrap()
-                        })
-                        .collect();
-                    Ok(TracedExprRec::List(mapped))
-                }
-                _ => unreachable!(),
-            }
-        }
-    );
-
-    let filter_list_fn = build_function!(
-        T,
-        "filter",
-        ExprType::List(Box::new(ExprType::Any)),
-        vec![
-            ExprType::List(Box::new(ExprType::Any)),
-            ExprType::Func(vec![ExprType::Any], Box::new(ExprType::Bool))
-        ],
-        |ctx, list, pred| {
-            match list.evaluated {
-                TracedExprRec::List(elements) => {
-                    let filtered = elements
-                        .into_iter()
-                        .filter(|e| {
-                            match evaluate_function_application(
-                                ctx.clone(),
-                                &TracedExprRec::Apply(
-                                    Box::new(pred.clone()),
-                                    Box::new([e.clone()]),
-                                ),
-                            )
-                            .unwrap()
-                            .evaluated
-                            {
-                                TracedExprRec::Bool(b) => b,
-                                _ => unreachable!(),
-                            }
-                        })
-                        .collect();
-                    Ok(TracedExprRec::List(filtered))
-                }
-                _ => unreachable!(),
-            }
-        }
-    );
-
-    let fold_list_fn = build_function!(
-        T,
-        "fold",
-        ExprType::Any,
-        vec![
-            ExprType::List(Box::new(ExprType::Any)),
-            ExprType::Any,
-            ExprType::Func(
-                vec![ExprType::Any, ExprType::Any],
-                Box::new(ExprType::Any)
-            )
-        ],
-        |ctx, list, init, f| {
-            match list.evaluated {
-                TracedExprRec::List(elements) => {
-                    let result = elements.into_iter().fold(init, |acc, e| {
-                        evaluate_function_application(
-                            ctx.clone(),
-                            &TracedExprRec::Apply(
-                                Box::new(f.clone()),
-                                Box::new([e, acc]),
-                            ),
-                        )
-                        .unwrap()
-                    });
-                    Ok(result.evaluated)
-                }
-                _ => unreachable!(),
-            }
-        }
-    );
-
-    let first_list_fn =
-        build_function!(T, "first", ExprType::Any, |_cx,
-                                                    list: Vec<
-            TracedExpr<u32>,
-        >| {
-            Ok(list
-                .first()
-                .map(|x| x.evaluated.clone())
-                .unwrap_or(TracedExprRec::None))
-        });
-
-    let last_list_fn =
-        build_function!(T, "last", ExprType::Any, |_cx,
-                                                   list: Vec<
-            TracedExpr<u32>,
-        >| {
-            Ok(list
-                .last()
-                .map(|x| x.evaluated.clone())
-                .unwrap_or(TracedExprRec::None))
-        });
-
-    let type_of_fn = build_function!(
-        T,
-        "type_of",
-        ExprType::Type,
-        vec![ExprType::Any],
-        |ctx, first| {
-            Ok(
-                match type_of(
-                    &ctx.lock().unwrap().expression_context,
-                    &first.evaluated,
-                ) {
-                    Some(x) => TracedExprRec::Type(x),
-                    None => TracedExprRec::None,
-                },
-            )
-        }
-    );
-
-    let pair_first_fn = build_function!(
-        T,
-        "first",
-        ExprType::Any,
-        vec![ExprType::Pair(
-            Box::new(ExprType::Any),
-            Box::new(ExprType::Any)
-        )],
-        |ctx, pair| {
-            match pair.evaluated {
-                TracedExprRec::Pair(x, _) => Ok(x.evaluated),
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Pair(
-                        Box::new(ExprType::Any),
-                        Box::new(ExprType::Any),
-                    ),
-                    actual: type_of(
-                        &ctx.lock().unwrap().expression_context,
-                        &actual,
-                    )
-                    .unwrap(),
-                    at_loc: "first".to_string(),
-                }),
-            }
-        }
-    );
-
-    let pair_second_fn = build_function!(
-        T,
-        "second",
-        ExprType::Any,
-        vec![ExprType::Pair(
-            Box::new(ExprType::Any),
-            Box::new(ExprType::Any)
-        )],
-        |ctx, pair| {
-            match pair.evaluated {
-                TracedExprRec::Pair(_, y) => Ok(y.evaluated),
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Pair(
-                        Box::new(ExprType::Any),
-                        Box::new(ExprType::Any),
-                    ),
-                    actual: type_of(
-                        &ctx.lock().unwrap().expression_context,
-                        &actual,
-                    )
-                    .unwrap(),
-                    at_loc: "second".to_string(),
-                }),
-            }
-        }
-    );
-
-    let pair_fn = build_function!(
-        T,
-        "pair",
-        ExprType::Pair(Box::new(ExprType::Any), Box::new(ExprType::Any)),
-        vec![ExprType::Any, ExprType::Any],
-        |_cx, first, second| {
-            Ok(TracedExprRec::Pair(Box::new(first), Box::new(second)))
-        }
-    );
-
-    let print_fn = build_function!(
-        T,
-        "print",
-        ExprType::Unit,
-        vec![ExprType::Any],
-        |ctx, first| {
-            match first.evaluated {
-                TracedExprRec::String(string) => {
-                    println!("{}", string);
-                }
-                _ => {
-                    println!(
-                        "{}",
-                        with_lock(ctx.as_ref(), |ctx| ctx
-                            .expression_context
-                            .restore_symbols(first.evaluated))
-                        .untraced()
-                        .as_expr()
-                    );
-                }
-            }
-            Ok(TracedExprRec::None)
-        }
-    );
-
-    let readln_fn = FunctionDefinition {
-        name: "readln".to_string(),
-        argument_types: vec![],
-        result_type: ExprType::String,
-        definition: |_, _: &[TracedExpr<u32>]| {
-            let stdin = io::stdin();
-            let result = stdin.lock().lines().next().unwrap().unwrap();
-
-            Result::Ok(TracedExprRec::String(result))
-        },
-    };
-
-    let update_node_fn = build_function!(
-        T,
-        "update_node",
-        ExprType::Unit,
-        vec![ExprType::Node(Box::new(ExprType::Any)), ExprType::Any],
-        |ctx, first, second| {
-            match first.evaluated {
-                TracedExprRec::Node(node_id) => {
-                    ctx.lock()
-                        .unwrap()
-                        .graph
-                        .node_weight_mut(NodeIndex::new(node_id))
-                        .unwrap()
-                        .update(second);
-
-                    Ok(TracedExprRec::Unit)
-                }
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: type_of(
-                        &ctx.lock().unwrap().expression_context,
-                        &actual,
-                    )
-                    .unwrap(),
-                    at_loc: "update_node".to_string(),
-                }),
-            }
-        }
-    );
-
-    let node_current_value_fn = build_function!(
-        T,
-        "current_value",
-        ExprType::Any,
-        vec![ExprType::Node(Box::new(ExprType::Any))],
-        |ctx, first| {
-            match first.evaluated {
-                TracedExprRec::Node(node_id) => {
-                    let value = ctx
-                        .lock()
-                        .unwrap()
-                        .graph
-                        .node_weight_mut(NodeIndex::new(node_id))
-                        .unwrap()
-                        .current();
-
-                    Ok(value.evaluated)
-                }
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: type_of(
-                        &ctx.lock().unwrap().expression_context,
-                        &actual,
-                    )
-                    .unwrap(),
-                    at_loc: "current_value".to_string(),
-                }),
-            }
-        }
-    );
-
-    let new_node_fn = build_function!(
-        T,
-        "new_node",
-        ExprType::Node(Box::new(ExprType::Any)),
-        vec![ExprType::Type, ExprType::Any],
-        |ctx, first, second| {
-            match first.evaluated {
-                TracedExprRec::Type(x) => {
-                    if type_of(
-                        &ctx.lock().unwrap().expression_context,
-                        &second.evaluated,
-                    ) == Some(x.clone())
-                    {
-                        let fresh_id = Node::new(
-                            |_| {},
-                            Arc::new(AtomicBool::new(false)),
-                            &mut ctx.lock().unwrap().graph,
-                            x,
-                            second,
+                            "\nError: division by zero. The denominator \
+                            was 0 because of the runtime values: \n\n{}\n",
+                            expr_trace
                         );
+                    }
 
-                        with_lock(ctx.as_ref(), |lock| {
-                            let node =
-                                lock.graph.node_weight(fresh_id).unwrap();
+                    Ok(TracedExprRec::Int(x / y))
+                },
+            },
+        ),
+        (
+            INT_SUB_ID,
+            build_function!(T, "-", ExprType::Int, |_cx, x: i32, y: i32| {
+                Ok(x - y)
+            }),
+        ),
+        (
+            FLOAT_MUL_ID,
+            build_function!(T, "*", ExprType::Float, |_cx, x: f32, y: f32| {
+                Ok(x * y)
+            }),
+        ),
+        (
+            FLOAT_ADD_ID,
+            build_function!(T, "+", ExprType::Float, |_cx, x: f32, y: f32| {
+                Ok(x + y)
+            }),
+        ),
+        (
+            FLOAT_DIV_ID,
+            FunctionDefinition {
+                name: "/".to_string(),
+                argument_types: vec![ExprType::Float, ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
+                    let y = match args[1].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-                            lock.debugger.on_node_added(node, fresh_id.index());
-                        });
+                    // Check for division by zero
+                    if y == 0.0 {
+                        // Get full expression trace
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(args[1].clone())
+                            .expression_trace();
 
-                        Ok(TracedExprRec::Node(fresh_id.index()))
-                    } else {
-                        Err(EvaluationError::TypeError {
-                            expected: x,
+                        panic!(
+                            "\nError: division by zero. The denominator \
+                            was 0 because of the runtime values: \n\n{}\n",
+                            expr_trace
+                        );
+                    }
+
+                    Ok(TracedExprRec::Float(x / y))
+                },
+            },
+        ),
+        (
+            FLOAT_SUB_ID,
+            build_function!(T, "-", ExprType::Float, |_cx, x: f32, y: f32| {
+                Ok(x - y)
+            }),
+        ),
+        (
+            APPEND_ID,
+            build_function!(
+                T,
+                "+",
+                ExprType::String,
+                |_cx, x: String, y: String| { Ok(x.to_owned() + y.as_ref()) }
+            ),
+        ),
+        (
+            UPPERCASE_ID,
+            build_function!(
+                T,
+                "uppercase",
+                ExprType::String,
+                |_cx, x: String| { Ok(x.to_uppercase()) }
+            ),
+        ),
+        (
+            PAIR_FIRST_ID,
+            build_function!(
+                T,
+                "first",
+                ExprType::Any,
+                vec![ExprType::Pair(
+                    Box::new(ExprType::Any),
+                    Box::new(ExprType::Any)
+                )],
+                |ctx, pair| {
+                    match pair.evaluated {
+                        TracedExprRec::Pair(x, _) => Ok(x.evaluated),
+                        actual => Err(EvaluationError::TypeError {
+                            expected: ExprType::Pair(
+                                Box::new(ExprType::Any),
+                                Box::new(ExprType::Any),
+                            ),
                             actual: type_of(
                                 &ctx.lock().unwrap().expression_context,
+                                &actual,
+                            )
+                            .unwrap(),
+                            at_loc: "first".to_string(),
+                        }),
+                    }
+                }
+            ),
+        ),
+        (
+            PAIR_SECOND_ID,
+            build_function!(
+                T,
+                "second",
+                ExprType::Any,
+                vec![ExprType::Pair(
+                    Box::new(ExprType::Any),
+                    Box::new(ExprType::Any)
+                )],
+                |ctx, pair| {
+                    match pair.evaluated {
+                        TracedExprRec::Pair(_, y) => Ok(y.evaluated),
+                        actual => Err(EvaluationError::TypeError {
+                            expected: ExprType::Pair(
+                                Box::new(ExprType::Any),
+                                Box::new(ExprType::Any),
+                            ),
+                            actual: type_of(
+                                &ctx.lock().unwrap().expression_context,
+                                &actual,
+                            )
+                            .unwrap(),
+                            at_loc: "second".to_string(),
+                        }),
+                    }
+                }
+            ),
+        ),
+        (
+            PRINT_ID,
+            build_function!(
+                T,
+                "print",
+                ExprType::Unit,
+                vec![ExprType::Any],
+                |ctx, first| {
+                    match first.evaluated {
+                        TracedExprRec::String(string) => {
+                            println!("{}", string);
+                        }
+                        _ => {
+                            println!(
+                                "{}",
+                                with_lock(ctx.as_ref(), |ctx| ctx
+                                    .expression_context
+                                    .restore_symbols(first.evaluated))
+                                .untraced()
+                                .as_expr()
+                            );
+                        }
+                    }
+                    Ok(TracedExprRec::None)
+                }
+            ),
+        ),
+        (
+            READLN_ID,
+            FunctionDefinition {
+                name: "readln".to_string(),
+                argument_types: vec![],
+                result_type: ExprType::String,
+                definition: |_, _: &[TracedExpr<u32>]| {
+                    let stdin = io::stdin();
+                    let result = stdin.lock().lines().next().unwrap().unwrap();
+
+                    Result::Ok(TracedExprRec::String(result))
+                },
+            },
+        ),
+        (
+            NEW_NODE_ID,
+            build_function!(
+                T,
+                "new_node",
+                ExprType::Node(Box::new(ExprType::Any)),
+                vec![ExprType::Type, ExprType::Any],
+                |ctx, first, second| {
+                    match first.evaluated {
+                        TracedExprRec::Type(x) => {
+                            if type_of(
+                                &ctx.lock().unwrap().expression_context,
                                 &second.evaluated,
+                            ) == Some(x.clone())
+                            {
+                                let fresh_id = Node::new(
+                                    |_| {},
+                                    Arc::new(AtomicBool::new(false)),
+                                    &mut ctx.lock().unwrap().graph,
+                                    x,
+                                    second,
+                                );
+
+                                with_lock(ctx.as_ref(), |lock| {
+                                    let node = lock
+                                        .graph
+                                        .node_weight(fresh_id)
+                                        .unwrap();
+
+                                    lock.debugger
+                                        .on_node_added(node, fresh_id.index());
+                                });
+
+                                Ok(TracedExprRec::Node(fresh_id.index()))
+                            } else {
+                                Err(EvaluationError::TypeError {
+                                    expected: x,
+                                    actual: type_of(
+                                        &ctx.lock().unwrap().expression_context,
+                                        &second.evaluated,
+                                    )
+                                    .unwrap(),
+                                    at_loc: "new_node".to_string(),
+                                })
+                            }
+                        }
+                        actual => Err(EvaluationError::TypeError {
+                            expected: ExprType::Type,
+                            actual: type_of(
+                                &ctx.lock().unwrap().expression_context,
+                                &actual,
                             )
                             .unwrap(),
                             at_loc: "new_node".to_string(),
-                        })
+                        }),
                     }
                 }
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Type,
-                    actual: type_of(
-                        &ctx.lock().unwrap().expression_context,
-                        &actual,
-                    )
-                    .unwrap(),
-                    at_loc: "new_node".to_string(),
-                }),
-            }
-        }
-    );
+            ),
+        ),
+        (
+            UPDATE_NODE_ID,
+            build_function!(
+                T,
+                "update_node",
+                ExprType::Unit,
+                vec![ExprType::Node(Box::new(ExprType::Any)), ExprType::Any],
+                |ctx, first, second| {
+                    match first.evaluated {
+                        TracedExprRec::Node(node_id) => {
+                            ctx.lock()
+                                .unwrap()
+                                .graph
+                                .node_weight_mut(NodeIndex::new(node_id))
+                                .unwrap()
+                                .update(second);
 
-    let launch_fn = build_function!(
-        T,
-        "launch",
-        ExprType::Unit,
-        vec![ExprType::Func(vec![], Box::new(ExprType::Unit))],
-        |ctx, first| {
-            let thread_ctx = ctx.clone();
-
-            thread::spawn(move || {
-                evaluate_function_application(
-                    thread_ctx,
-                    &TracedExprRec::Apply(Box::new(first), Box::new([])),
-                )
-            });
-            Ok(TracedExprRec::Unit)
-        }
-    );
-
-    let map_node_fn = build_function!(
-        T,
-        "map",
-        ExprType::Node(Box::new(ExprType::Any)),
-        vec![
-            ExprType::Node(Box::new(ExprType::Any)),
-            ExprType::Func(vec![ExprType::Any], Box::new(ExprType::Any))
-        ],
-        |ctx, first, second| {
-            match first.evaluated {
-                TracedExprRec::Node(node_id) => {
-                    let ctx_clone = ctx.clone();
-                    let second_clone = second.clone();
-                    let transform =
-                        Arc::new(Mutex::new(move |expr: TracedExpr<u32>| {
-                            evaluate_function_application(
-                                ctx_clone.clone(),
-                                &TracedExprRec::Apply(
-                                    Box::new(second_clone.clone()),
-                                    Box::new([expr]),
-                                ),
+                            Ok(TracedExprRec::Unit)
+                        }
+                        actual => Err(EvaluationError::TypeError {
+                            expected: ExprType::Node(Box::new(ExprType::Any)),
+                            actual: type_of(
+                                &ctx.lock().unwrap().expression_context,
+                                &actual,
                             )
-                            .unwrap()
-                        }));
-
-                    let fresh_id = map_node(
-                        |_| {},
-                        Arc::new(AtomicBool::new(false)),
-                        ctx.clone(),
-                        NodeIndex::new(node_id),
-                        // TODO: Actually get type of function here.
-                        ExprType::Any,
-                        transform,
-                    );
-
-                    with_lock(ctx.as_ref(), |lock| {
-                        let node = lock.graph.node_weight(fresh_id).unwrap();
-
-                        lock.debugger.on_node_added(node, fresh_id.index());
-                    });
-
-                    Ok(TracedExprRec::Node(fresh_id.index()))
+                            .unwrap(),
+                            at_loc: "update_node".to_string(),
+                        }),
+                    }
                 }
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: type_of(
-                        &ctx.lock().unwrap().expression_context,
-                        &actual,
-                    )
-                    .unwrap(),
-                    at_loc: "map_node".to_string(),
-                }),
-            }
-        }
-    );
+            ),
+        ),
+        (
+            NODE_CURRENT_VALUE,
+            build_function!(
+                T,
+                "current_value",
+                ExprType::Any,
+                vec![ExprType::Node(Box::new(ExprType::Any))],
+                |ctx, first| {
+                    match first.evaluated {
+                        TracedExprRec::Node(node_id) => {
+                            let value = ctx
+                                .lock()
+                                .unwrap()
+                                .graph
+                                .node_weight_mut(NodeIndex::new(node_id))
+                                .unwrap()
+                                .current();
 
-    let filter_node_fn = build_function!(
-        T,
-        "filter",
-        ExprType::Node(Box::new(ExprType::Any)),
-        vec![
-            ExprType::Node(Box::new(ExprType::Any)),
-            ExprType::Func(vec![ExprType::Any], Box::new(ExprType::Bool))
-        ],
-        |ctx, first, second| {
-            match first.evaluated {
-                TracedExprRec::Node(node_id) => {
-                    let ctx_clone = ctx.clone();
-                    let second_clone = second.clone();
-                    let transform = move |expr: TracedExpr<u32>| {
-                        let result = evaluate_function_application(
-                            ctx_clone.clone(),
+                            Ok(value.evaluated)
+                        }
+                        actual => Err(EvaluationError::TypeError {
+                            expected: ExprType::Node(Box::new(ExprType::Any)),
+                            actual: type_of(
+                                &ctx.lock().unwrap().expression_context,
+                                &actual,
+                            )
+                            .unwrap(),
+                            at_loc: "current_value".to_string(),
+                        }),
+                    }
+                }
+            ),
+        ),
+        (
+            LAUNCH,
+            build_function!(
+                T,
+                "launch",
+                ExprType::Unit,
+                vec![ExprType::Func(vec![], Box::new(ExprType::Unit))],
+                |ctx, first| {
+                    let thread_ctx = ctx.clone();
+
+                    thread::spawn(move || {
+                        evaluate_function_application(
+                            thread_ctx,
                             &TracedExprRec::Apply(
-                                Box::new(second_clone.clone()),
-                                Box::new([expr]),
+                                Box::new(first),
+                                Box::new([]),
                             ),
                         )
-                        .unwrap()
-                        .evaluated;
-
-                        match result {
-                            TracedExprRec::Bool(x) => x,
-                            _ => todo!(),
-                        }
+                    });
+                    Ok(TracedExprRec::Unit)
+                }
+            ),
+        ),
+        (
+            PAIR_ID,
+            build_function!(
+                T,
+                "pair",
+                ExprType::Pair(
+                    Box::new(ExprType::Any),
+                    Box::new(ExprType::Any)
+                ),
+                vec![ExprType::Any, ExprType::Any],
+                |_cx, first, second| {
+                    Ok(TracedExprRec::Pair(Box::new(first), Box::new(second)))
+                }
+            ),
+        ),
+        (
+            TYPE_OF_ID,
+            build_function!(
+                T,
+                "type_of",
+                ExprType::Type,
+                vec![ExprType::Any],
+                |ctx, first| {
+                    Ok(
+                        match type_of(
+                            &ctx.lock().unwrap().expression_context,
+                            &first.evaluated,
+                        ) {
+                            Some(x) => TracedExprRec::Type(x),
+                            None => TracedExprRec::None,
+                        },
+                    )
+                }
+            ),
+        ),
+        (
+            AND_ID,
+            build_function!(
+                T,
+                "&&",
+                ExprType::Bool,
+                |_cx, x: bool, y: bool| { Ok(x && y) }
+            ),
+        ),
+        (
+            OR_ID,
+            build_function!(
+                T,
+                "||",
+                ExprType::Bool,
+                |_cx, x: bool, y: bool| { Ok(x || y) }
+            ),
+        ),
+        (
+            NOT_ID,
+            build_function!(T, "not", ExprType::Bool, |_cx, x: bool| {
+                Ok(!x)
+            }),
+        ),
+        (
+            ASSERT_ID,
+            FunctionDefinition {
+                name: "assert".to_string(),
+                argument_types: vec![ExprType::Bool],
+                result_type: ExprType::Unit,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let condition = match args[0].evaluated {
+                        TracedExprRec::Bool(b) => b,
+                        _ => unreachable!(),
                     };
 
-                    let fresh_id = filter_node(
-                        |_| {},
-                        Arc::new(AtomicBool::new(false)),
-                        &mut ctx.lock().unwrap().graph,
-                        NodeIndex::new(node_id),
-                        Box::new(transform),
-                    );
-
-                    with_lock(ctx.as_ref(), |lock| {
-                        let node = lock.graph.node_weight(fresh_id).unwrap();
-
-                        lock.debugger.on_node_added(node, fresh_id.index());
-                    });
-
-                    Ok(TracedExprRec::Node(fresh_id.index()))
-                }
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: with_lock(ctx.as_ref(), |lock| {
-                        type_of(&lock.expression_context, &actual).unwrap()
-                    }),
-                    at_loc: "filter_node".to_string(),
-                }),
-            }
-        }
-    );
-
-    let fold_node_fn = build_function!(
-        T,
-        "fold",
-        ExprType::Node(Box::new(ExprType::Any)),
-        vec![
-            ExprType::Node(Box::new(ExprType::Any)),
-            ExprType::Func(
-                vec![ExprType::Any, ExprType::Any],
-                Box::new(ExprType::Any)
-            )
-        ],
-        |ctx, first, second| {
-            match first.evaluated {
-                TracedExprRec::Node(node_id) => {
-                    let ctx_clone = ctx.clone();
-                    let second_clone = second.clone();
-                    let transform = Box::new(
-                        move |expr: TracedExpr<u32>, acc: TracedExpr<u32>| {
-                            evaluate_function_application(
-                                ctx_clone.clone(),
-                                &TracedExprRec::Apply(
-                                    Box::new(second_clone.clone()),
-                                    Box::new([expr, acc]),
-                                ),
-                            )
+                    if !condition {
+                        // Get full expression trace
+                        let expr_trace = ctx
+                            .lock()
                             .unwrap()
-                        },
-                    );
+                            .expression_context
+                            .restore_symbols_traced(args[0].clone())
+                            .expression_trace();
 
-                    let fresh_id = fold_node(
-                        ctx.clone(),
-                        |_| {},
-                        Arc::new(AtomicBool::new(false)),
-                        NodeIndex::new(node_id),
-                        TracedExprRec::None.traced(),
-                        transform,
-                    );
+                        panic!(
+                            "\nAssertion failed. The condition evaluated to false \
+                            because of the runtime values: \n\n{}\n",
+                            expr_trace
+                        );
+                    }
 
-                    with_lock(ctx.as_ref(), |lock| {
-                        let node = lock.graph.node_weight(fresh_id).unwrap();
+                    Ok(TracedExprRec::Unit)
+                },
+            },
+        ),
+        (
+            MAP_NODE_ID,
+            build_function!(
+                T,
+                "map",
+                ExprType::Node(Box::new(ExprType::Any)),
+                vec![
+                    ExprType::Node(Box::new(ExprType::Any)),
+                    // TODO: Typechecking does not currently work in this case, so we
+                    // can't dispatch on the second argument.
+                    // ExprType::Func(
+                    //     vec![ExprType::Any],
+                    //     Box::new(ExprType::Any)
+                    // )
+                ],
+                |ctx, first, second| {
+                    match first.evaluated {
+                        TracedExprRec::Node(node_id) => {
+                            let ctx_clone = ctx.clone();
+                            let second_clone = second.clone();
+                            let transform = Arc::new(Mutex::new(
+                                move |expr: TracedExpr<u32>| {
+                                    evaluate_function_application(
+                                        ctx_clone.clone(),
+                                        &TracedExprRec::Apply(
+                                            Box::new(second_clone.clone()),
+                                            Box::new([expr]),
+                                        ),
+                                    )
+                                    .unwrap()
+                                },
+                            ));
 
-                        lock.debugger.on_node_added(node, fresh_id.index());
+                            let fresh_id = map_node(
+                                |_| {},
+                                Arc::new(AtomicBool::new(false)),
+                                ctx.clone(),
+                                NodeIndex::new(node_id),
+                                // TODO: Actually get type of function here.
+                                ExprType::Any,
+                                transform,
+                            );
+
+                            with_lock(ctx.as_ref(), |lock| {
+                                let node =
+                                    lock.graph.node_weight(fresh_id).unwrap();
+
+                                lock.debugger
+                                    .on_node_added(node, fresh_id.index());
+                            });
+
+                            Ok(TracedExprRec::Node(fresh_id.index()))
+                        }
+                        actual => Err(EvaluationError::TypeError {
+                            expected: ExprType::Node(Box::new(ExprType::Any)),
+                            actual: type_of(
+                                &ctx.lock().unwrap().expression_context,
+                                &actual,
+                            )
+                            .unwrap(),
+                            at_loc: "map_node".to_string(),
+                        }),
+                    }
+                }
+            ),
+        ),
+        (
+            FILTER_NODE_ID,
+            build_function!(
+                T,
+                "filter",
+                ExprType::Node(Box::new(ExprType::Any)),
+                vec![
+                    ExprType::Node(Box::new(ExprType::Any)),
+                    ExprType::Func(
+                        vec![ExprType::Any],
+                        Box::new(ExprType::Bool)
+                    )
+                ],
+                |ctx, first, second| {
+                    match first.evaluated {
+                        TracedExprRec::Node(node_id) => {
+                            let ctx_clone = ctx.clone();
+                            let second_clone = second.clone();
+                            let transform = move |expr: TracedExpr<u32>| {
+                                let result = evaluate_function_application(
+                                    ctx_clone.clone(),
+                                    &TracedExprRec::Apply(
+                                        Box::new(second_clone.clone()),
+                                        Box::new([expr]),
+                                    ),
+                                )
+                                .unwrap()
+                                .evaluated;
+
+                                match result {
+                                    TracedExprRec::Bool(x) => x,
+                                    _ => todo!(),
+                                }
+                            };
+
+                            let fresh_id = filter_node(
+                                |_| {},
+                                Arc::new(AtomicBool::new(false)),
+                                &mut ctx.lock().unwrap().graph,
+                                NodeIndex::new(node_id),
+                                Box::new(transform),
+                            );
+
+                            with_lock(ctx.as_ref(), |lock| {
+                                let node =
+                                    lock.graph.node_weight(fresh_id).unwrap();
+
+                                lock.debugger
+                                    .on_node_added(node, fresh_id.index());
+                            });
+
+                            Ok(TracedExprRec::Node(fresh_id.index()))
+                        }
+                        actual => Err(EvaluationError::TypeError {
+                            expected: ExprType::Node(Box::new(ExprType::Any)),
+                            actual: with_lock(ctx.as_ref(), |lock| {
+                                type_of(&lock.expression_context, &actual)
+                                    .unwrap()
+                            }),
+                            at_loc: "filter_node".to_string(),
+                        }),
+                    }
+                }
+            ),
+        ),
+        (
+            FOLD_NODE_ID,
+            build_function!(
+                T,
+                "fold",
+                ExprType::Node(Box::new(ExprType::Any)),
+                vec![
+                    ExprType::Node(Box::new(ExprType::Any)),
+                    // ExprType::Func(
+                    //     vec![ExprType::Any, ExprType::Any],
+                    //     Box::new(ExprType::Any)
+                    // )
+                ],
+                |ctx, first, second| {
+                    match first.evaluated {
+                        TracedExprRec::Node(node_id) => {
+                            let ctx_clone = ctx.clone();
+                            let second_clone = second.clone();
+                            let transform = Box::new(
+                                move |expr: TracedExpr<u32>, acc: TracedExpr<u32>| {
+                                    evaluate_function_application(
+                                        ctx_clone.clone(),
+                                        &TracedExprRec::Apply(
+                                            Box::new(second_clone.clone()),
+                                            Box::new([expr, acc]),
+                                        ),
+                                    )
+                                    .unwrap()
+                                },
+                            );
+
+                            let fresh_id = fold_node(
+                                ctx.clone(),
+                                |_| {},
+                                Arc::new(AtomicBool::new(false)),
+                                NodeIndex::new(node_id),
+                                TracedExprRec::None.traced(),
+                                transform,
+                            );
+
+                            with_lock(ctx.as_ref(), |lock| {
+                                let node =
+                                    lock.graph.node_weight(fresh_id).unwrap();
+
+                                lock.debugger
+                                    .on_node_added(node, fresh_id.index());
+                            });
+
+                            Ok(TracedExprRec::Node(fresh_id.index()))
+                        }
+                        actual => Err(EvaluationError::TypeError {
+                            expected: ExprType::Node(Box::new(ExprType::Any)),
+                            actual: with_lock(ctx.as_ref(), |lock| {
+                                type_of(&lock.expression_context, &actual)
+                                    .unwrap()
+                            }),
+                            at_loc: "fold_node".to_string(),
+                        }),
+                    }
+                }
+            ),
+        ),
+        (
+            DEBUG_TRACE_FULL_ID,
+            build_function!(
+                T,
+                "dbg_trace_full",
+                ExprType::Unit,
+                vec![ExprType::Any],
+                |ctx, first| {
+                    let resolved = with_lock(ctx.as_ref(), |lock| {
+                        lock.expression_context
+                            .restore_symbols_traced(first.clone())
                     });
-
-                    Ok(TracedExprRec::Node(fresh_id.index()))
+                    println!(
+                        "{} = {}",
+                        resolved.untraced(),
+                        resolved.full_trace()
+                    );
+                    Ok(TracedExprRec::Unit)
                 }
-                actual => Err(EvaluationError::TypeError {
-                    expected: ExprType::Node(Box::new(ExprType::Any)),
-                    actual: with_lock(ctx.as_ref(), |lock| {
-                        type_of(&lock.expression_context, &actual).unwrap()
-                    }),
-                    at_loc: "fold_node".to_string(),
-                }),
-            }
-        }
-    );
-
-    let list_length_fn = build_function!(
-        T,
-        "length",
-        ExprType::Int,
-        vec![ExprType::List(Box::new(ExprType::Any))],
-        |_ctx, first| {
-            match first.evaluated {
-                TracedExprRec::List(xs) => {
-                    Ok(TracedExprRec::Int(xs.len() as i32))
+            ),
+        ),
+        (
+            LOWERCASE_ID,
+            build_function!(
+                T,
+                "lowercase",
+                ExprType::String,
+                |_cx, x: String| { Ok(x.to_lowercase()) }
+            ),
+        ),
+        (
+            DROP_LIST_ID,
+            build_function!(
+                T,
+                "drop",
+                ExprType::List(Box::new(ExprType::Any)),
+                |_cx, list: Vec<TracedExpr<u32>>, n: i32| {
+                    Ok(if n <= 0 {
+                        list
+                    } else {
+                        list.into_iter().skip(n as usize).collect()
+                    })
                 }
-                _ => unreachable!(),
-            }
-        }
-    );
-
-    let string_length_fn = build_function!(
-        T,
-        "length",
-        ExprType::Int,
-        vec![ExprType::String],
-        |_ctx, first| {
-            match first.evaluated {
-                TracedExprRec::String(s) => {
-                    Ok(TracedExprRec::Int(s.len() as i32))
+            ),
+        ),
+        (
+            DROP_LAST_LIST_ID,
+            build_function!(
+                T,
+                "drop_last",
+                ExprType::List(Box::new(ExprType::Any)),
+                |_cx, list: Vec<TracedExpr<u32>>, n: i32| {
+                    Ok(if n <= 0 {
+                        list
+                    } else {
+                        let length = &list.len();
+                        list.into_iter()
+                            .take(length.saturating_sub(n as usize))
+                            .collect()
+                    })
                 }
-                _ => unreachable!(),
-            }
-        }
-    );
-
-    let string_split_fn = build_function!(
-        T,
-        "split",
-        ExprType::List(Box::new(ExprType::String)),
-        vec![ExprType::String, ExprType::String],
-        |_ctx, first, second| {
-            match (first.evaluated, second.evaluated) {
-                (TracedExprRec::String(s), TracedExprRec::String(delim)) => {
-                    let split = s
-                        .split(&delim)
-                        .map(|s| TracedExprRec::String(s.to_string()).traced())
-                        .collect();
-                    Ok(TracedExprRec::List(split))
+            ),
+        ),
+        // (
+        //     LENGTH_LIST_ID,
+        //     build_function!(T, "length", ExprType::Int, |_cx,
+        //                                                  list: Vec<
+        //         TracedExpr<u32>,
+        //     >| {
+        //         Ok(list.len() as i32)
+        //     }),
+        // ),
+        (
+            APPEND_LISTS_ID,
+            build_function!(
+                T,
+                "+",
+                ExprType::List(Box::new(ExprType::Any)),
+                |_cx,
+                 list1: Vec<TracedExpr<u32>>,
+                 list2: Vec<TracedExpr<u32>>| {
+                    let mut result = list1;
+                    result.extend(list2);
+                    Ok(result)
                 }
-                _ => unreachable!(),
-            }
-        }
-    );
+            ),
+        ),
+        (
+            MAP_LIST_ID,
+            build_function!(
+                T,
+                "map",
+                ExprType::List(Box::new(ExprType::Any)),
+                vec![
+                    ExprType::List(Box::new(ExprType::Any)),
+                    // TODO: Typechecking does not currently work in this case, so we
+                    // can't dispatch on the second argument.
+                    // ExprType::Func(
+                    //    vec![ExprType::Any],
+                    //    Box::new(ExprType::Any)
+                    //)
+                ],
+                |ctx, list, f| {
+                    match list.evaluated {
+                        TracedExprRec::List(elements) => {
+                            let mapped = elements
+                                .into_iter()
+                                .map(|e| {
+                                    evaluate_function_application(
+                                        ctx.clone(),
+                                        &TracedExprRec::Apply(
+                                            Box::new(f.clone()),
+                                            Box::new([e]),
+                                        ),
+                                    )
+                                    .unwrap()
+                                })
+                                .collect();
+                            Ok(TracedExprRec::List(mapped))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            ),
+        ),
+        (
+            FILTER_LIST_ID,
+            build_function!(
+                T,
+                "filter",
+                ExprType::List(Box::new(ExprType::Any)),
+                vec![
+                    ExprType::List(Box::new(ExprType::Any)),
+                    ExprType::Func(
+                        vec![ExprType::Any],
+                        Box::new(ExprType::Bool)
+                    )
+                ],
+                |ctx, list, pred| {
+                    match list.evaluated {
+                        TracedExprRec::List(elements) => {
+                            let filtered = elements
+                                .into_iter()
+                                .filter(
+                                    |e| match evaluate_function_application(
+                                        ctx.clone(),
+                                        &TracedExprRec::Apply(
+                                            Box::new(pred.clone()),
+                                            Box::new([e.clone()]),
+                                        ),
+                                    )
+                                    .unwrap()
+                                    .evaluated
+                                    {
+                                        TracedExprRec::Bool(b) => b,
+                                        _ => unreachable!(),
+                                    },
+                                )
+                                .collect();
+                            Ok(TracedExprRec::List(filtered))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            ),
+        ),
+        (
+            FOLD_LIST_ID,
+            build_function!(
+                T,
+                "fold",
+                ExprType::Any,
+                vec![
+                    ExprType::List(Box::new(ExprType::Any)),
+                    // ExprType::Any,
+                    // ExprType::Func(
+                    //     vec![ExprType::Any, ExprType::Any],
+                    //     Box::new(ExprType::Any)
+                    // )
+                ],
+                |ctx, list, init, f| {
+                    match list.evaluated {
+                        TracedExprRec::List(elements) => {
+                            let result =
+                                elements.into_iter().fold(init, |acc, e| {
+                                    evaluate_function_application(
+                                        ctx.clone(),
+                                        &TracedExprRec::Apply(
+                                            Box::new(f.clone()),
+                                            Box::new([e, acc]),
+                                        ),
+                                    )
+                                    .unwrap()
+                                });
+                            Ok(result.evaluated)
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            ),
+        ),
+        (
+            FIRST_LIST_ID,
+            build_function!(T, "first", ExprType::Any, |_cx,
+                                                        list: Vec<
+                TracedExpr<u32>,
+            >| {
+                Ok(list
+                    .first()
+                    .map(|x| x.evaluated.clone())
+                    .unwrap_or(TracedExprRec::None))
+            }),
+        ),
+        (
+            LAST_LIST_ID,
+            build_function!(T, "last", ExprType::Any, |_cx,
+                                                       list: Vec<
+                TracedExpr<u32>,
+            >| {
+                Ok(list
+                    .last()
+                    .map(|x| x.evaluated.clone())
+                    .unwrap_or(TracedExprRec::None))
+            }),
+        ),
+        (
+            LIST_ID,
+            FunctionDefinition {
+                name: "list".to_string(),
+                argument_types: vec![], // Vararg function
+                result_type: ExprType::List(Box::new(ExprType::Any)),
+                definition: |_, xs: &[TracedExpr<u32>]| {
+                    Ok(TracedExprRec::List(xs.to_vec()))
+                },
+            },
+        ),
+        (
+            LIST_LENGTH_ID,
+            build_function!(
+                T,
+                "length",
+                ExprType::Int,
+                vec![ExprType::List(Box::new(ExprType::Any))],
+                |_ctx, first| {
+                    match first.evaluated {
+                        TracedExprRec::List(xs) => {
+                            Ok(TracedExprRec::Int(xs.len() as i32))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            ),
+        ),
+        (
+            STRING_LENGTH_ID,
+            build_function!(
+                T,
+                "length",
+                ExprType::Int,
+                vec![ExprType::String],
+                |_ctx, first| {
+                    match first.evaluated {
+                        TracedExprRec::String(s) => {
+                            Ok(TracedExprRec::Int(s.len() as i32))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            ),
+        ),
+        (
+            STRING_SPLIT_ID,
+            build_function!(
+                T,
+                "split",
+                ExprType::List(Box::new(ExprType::String)),
+                vec![ExprType::String, ExprType::String],
+                |_ctx, first, second| {
+                    match (first.evaluated, second.evaluated) {
+                        (
+                            TracedExprRec::String(s),
+                            TracedExprRec::String(delim),
+                        ) => {
+                            let split = s
+                                .split(&delim)
+                                .map(|s| {
+                                    TracedExprRec::String(s.to_string())
+                                        .traced()
+                                })
+                                .collect();
+                            Ok(TracedExprRec::List(split))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            ),
+        ),
+        (
+            INTERSPERSE_ID,
+            build_function!(
+                T,
+                "intersperse",
+                ExprType::List(Box::new(ExprType::Any)),
+                |_cx,
+                 list: Vec<TracedExpr<u32>>,
+                 separator: TracedExprRec<u32>| {
+                    if list.is_empty() {
+                        return Ok(TracedExprRec::List(list));
+                    }
 
-    // TODO: Implement a combine operation for nodes.
+                    let mut result = Vec::with_capacity(list.len() * 2 - 1);
 
-    let dbg_trace_fn = build_function!(
-        T,
-        "dbg_trace",
-        ExprType::Unit,
-        vec![ExprType::Any],
-        |ctx, first| {
-            let resolved = with_lock(ctx.as_ref(), |lock| {
-                lock.expression_context
-                    .restore_symbols_traced(first.clone())
-            });
-            println!(
-                "{} = {}",
-                resolved.untraced(),
-                resolved.get_trace().untraced()
-            );
-            Ok(TracedExprRec::Unit)
-        }
-    );
+                    for (i, item) in list.into_iter().enumerate() {
+                        if i > 0 {
+                            result.push(separator.clone().traced());
+                        }
+                        result.push(item);
+                    }
 
-    let dbg_trace_full_fn = build_function!(
-        T,
-        "dbg_trace_full",
-        ExprType::Unit,
-        vec![ExprType::Any],
-        |ctx, first| {
-            let resolved = with_lock(ctx.as_ref(), |lock| {
-                lock.expression_context
-                    .restore_symbols_traced(first.clone())
-            });
-            println!("{} = {}", resolved.untraced(), resolved.full_trace());
-            Ok(TracedExprRec::Unit)
-        }
-    );
+                    Ok(TracedExprRec::List(result))
+                }
+            ),
+        ),
+        (
+            INT_MODULO,
+            build_function!(T, "%", ExprType::Int, |_cx, x: i32, y: i32| {
+                Ok(x % y)
+            }),
+        ),
+        (
+            EQUALS_ID,
+            build_function!(T, "==", ExprType::Bool, |_cx,
+                                                      x: TracedExprRec<
+                u32,
+            >,
+                                                      y: TracedExprRec<
+                u32,
+            >| {
+                Ok(x == y)
+            }),
+        ),
+        (
+            DEBUG_TRACE_ID,
+            build_function!(
+                T,
+                "dbg_trace",
+                ExprType::Unit,
+                vec![ExprType::Any],
+                |ctx, first| {
+                    let resolved = with_lock(ctx.as_ref(), |lock| {
+                        lock.expression_context
+                            .restore_symbols_traced(first.clone())
+                    });
+                    println!(
+                        "{} = {}",
+                        resolved.untraced(),
+                        resolved.get_trace().untraced()
+                    );
+                    Ok(TracedExprRec::Unit)
+                }
+            ),
+        ),
+        (
+            LOG_ID,
+            build_function!(
+                T,
+                "log",
+                ExprType::Float,
+                vec![ExprType::Int, ExprType::Float],
+                |ctx, base, number| {
+                    match (&base.evaluated, &number.evaluated) {
+                        (
+                            TracedExprRec::Int(base_value),
+                            TracedExprRec::Float(num_value),
+                        ) => {
+                            if *base_value <= 0 {
+                                let expr_trace = ctx
+                                    .lock()
+                                    .unwrap()
+                                    .expression_context
+                                    .restore_symbols_traced(base.clone())
+                                    .expression_trace();
 
-    let arcsin_fn = FunctionDefinition {
-        name: "asin".to_string(),
-        argument_types: vec![ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
+                                panic!(
+                        "\nError: logarithm base must be positive. The base \
+                        was {} because of runtime values: \n\n{}\n",
+                        base_value,
+                        expr_trace
+                    );
+                            }
+                            if *num_value <= 0.0 {
+                                let expr_trace = ctx
+                                    .lock()
+                                    .unwrap()
+                                    .expression_context
+                                    .restore_symbols_traced(number.clone())
+                                    .expression_trace();
 
-            if x < -1.0 || x > 1.0 {
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[0].clone())
-                    .expression_trace();
+                                panic!(
+                        "\nError: logarithm argument must be positive. The number \
+                        was {} because of runtime values: \n\n{}\n",
+                        num_value,
+                        expr_trace
+                    );
+                            }
 
-                panic!(
-                    "\nError: arcsin input must be between -1 and 1. The input \
-                    was {} because of runtime values: \n\n{}\n",
-                    x,
-                    expr_trace
-                );
-            }
+                            Ok(TracedExprRec::Float(
+                                num_value.ln() / (*base_value as f32).ln(),
+                            ))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            ),
+        ),
+        (
+            ARCSIN_FN_ID,
+            FunctionDefinition {
+                name: "asin".to_string(),
+                argument_types: vec![ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-            Ok(TracedExprRec::Float(x.asin()))
-        },
-    };
+                    if x < -1.0 || x > 1.0 {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(args[0].clone())
+                            .expression_trace();
 
-    let acos_fn = FunctionDefinition {
-        name: "acos".to_string(),
-        argument_types: vec![ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
+                        panic!(
+            "\nError: arcsin input must be between -1 and 1. The input \
+            was {} because of runtime values: \n\n{}\n",
+            x,
+            expr_trace
+        );
+                    }
 
-            if x < -1.0 || x > 1.0 {
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[0].clone())
-                    .expression_trace();
+                    Ok(TracedExprRec::Float(x.asin()))
+                },
+            },
+        ),
+        (
+            ACOS_FN_ID,
+            FunctionDefinition {
+                name: "acos".to_string(),
+                argument_types: vec![ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-                panic!(
-                    "\nError: arccos input must be between -1 and 1. The input \
-                    was {} because of runtime values: \n\n{}\n",
-                    x,
-                    expr_trace
-                );
-            }
+                    if x < -1.0 || x > 1.0 {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(args[0].clone())
+                            .expression_trace();
 
-            Ok(TracedExprRec::Float(x.acos()))
-        },
-    };
+                        panic!(
+                            "\nError: arccos input must be between -1 and 1. The input \
+                            was {} because of runtime values: \n\n{}\n",
+                            x,
+                            expr_trace
+                        );
+                    }
 
-    let tan_fn = FunctionDefinition {
-        name: "tan".to_string(),
-        argument_types: vec![ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
+                    Ok(TracedExprRec::Float(x.acos()))
+                },
+            },
+        ),
+        (
+            TAN_FN_ID,
+            FunctionDefinition {
+                name: "tan".to_string(),
+                argument_types: vec![ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-            let cos = x.cos();
-            if cos.abs() < f32::EPSILON {
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[0].clone())
-                    .expression_trace();
+                    let cos = x.cos();
+                    if cos.abs() < f32::EPSILON {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(args[0].clone())
+                            .expression_trace();
 
-                panic!(
-                    "\nError: tangent undefined at π/2 + nπ. The input \
-                    was {} because of runtime values: \n\n{}\n",
-                    x, expr_trace
-                );
-            }
+                        panic!(
+                            "\nError: tangent undefined at π/2 + nπ. The input \
+                            was {} because of runtime values: \n\n{}\n",
+                            x, expr_trace
+                        );
+                    }
 
-            Ok(TracedExprRec::Float(x.tan()))
-        },
-    };
+                    Ok(TracedExprRec::Float(x.tan()))
+                },
+            },
+        ),
+        (
+            COT_FN_ID,
+            FunctionDefinition {
+                name: "cot".to_string(),
+                argument_types: vec![ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-    let cot_fn = FunctionDefinition {
-        name: "cot".to_string(),
-        argument_types: vec![ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
+                    let sin = x.sin();
+                    if sin.abs() < f32::EPSILON {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(args[0].clone())
+                            .expression_trace();
 
-            let sin = x.sin();
-            if sin.abs() < f32::EPSILON {
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[0].clone())
-                    .expression_trace();
+                        panic!(
+                            "\nError: cotangent undefined at nπ. The input \
+                            was {} because of runtime values: \n\n{}\n",
+                            x, expr_trace
+                        );
+                    }
 
-                panic!(
-                    "\nError: cotangent undefined at nπ. The input \
-                    was {} because of runtime values: \n\n{}\n",
-                    x, expr_trace
-                );
-            }
+                    Ok(TracedExprRec::Float(1.0 / x.tan()))
+                },
+            },
+        ),
+        (
+            TANH_FN_ID,
+            FunctionDefinition {
+                name: "tanh".to_string(),
+                argument_types: vec![ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |_ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-            Ok(TracedExprRec::Float(1.0 / x.tan()))
-        },
-    };
+                    Ok(TracedExprRec::Float(x.tanh()))
+                },
+            },
+        ),
+        (
+            COSH_FN_ID,
+            FunctionDefinition {
+                name: "cosh".to_string(),
+                argument_types: vec![ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |_ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-    let tanh_fn = FunctionDefinition {
-        name: "tanh".to_string(),
-        argument_types: vec![ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |_ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
+                    Ok(TracedExprRec::Float(x.cosh()))
+                },
+            },
+        ),
+        (
+            ACOSH_FN_ID,
+            FunctionDefinition {
+                name: "acosh".to_string(),
+                argument_types: vec![ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-            Ok(TracedExprRec::Float(x.tanh()))
-        },
-    };
+                    if x < 1.0 {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(args[0].clone())
+                            .expression_trace();
 
-    let cosh_fn = FunctionDefinition {
-        name: "cosh".to_string(),
-        argument_types: vec![ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |_ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
+                        panic!(
+                            "\nError: acosh undefined for values < 1. The input \
+                            was {} because of runtime values: \n\n{}\n",
+                            x, expr_trace
+                        );
+                    }
 
-            Ok(TracedExprRec::Float(x.cosh()))
-        },
-    };
+                    Ok(TracedExprRec::Float(x.acosh()))
+                },
+            },
+        ),
+        (
+            ATANH_FN_ID,
+            FunctionDefinition {
+                name: "atanh".to_string(),
+                argument_types: vec![ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let x = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-    let acosh_fn = FunctionDefinition {
-        name: "acosh".to_string(),
-        argument_types: vec![ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
+                    if x <= -1.0 || x >= 1.0 {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(args[0].clone())
+                            .expression_trace();
 
-            if x < 1.0 {
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[0].clone())
-                    .expression_trace();
+                        panic!(
+                            "\nError: atanh undefined outside (-1, 1). The input \
+                            was {} because of runtime values: \n\n{}\n",
+                            x, expr_trace
+                        );
+                    }
 
-                panic!(
-                    "\nError: acosh undefined for values < 1. The input \
-                    was {} because of runtime values: \n\n{}\n",
-                    x, expr_trace
-                );
-            }
+                    Ok(TracedExprRec::Float(x.atanh()))
+                },
+            },
+        ),
+        (
+            POW_FN_ID,
+            FunctionDefinition {
+                name: "pow".to_string(),
+                argument_types: vec![ExprType::Float, ExprType::Float],
+                result_type: ExprType::Float,
+                definition: |ctx, args: &[TracedExpr<u32>]| {
+                    let base = match args[0].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
+                    let exp = match args[1].evaluated {
+                        TracedExprRec::Float(i) => i,
+                        _ => unreachable!(),
+                    };
 
-            Ok(TracedExprRec::Float(x.acosh()))
-        },
-    };
+                    if base == 0.0 && exp < 0.0 {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(args[0].clone())
+                            .expression_trace();
 
-    let atanh_fn = FunctionDefinition {
-        name: "atanh".to_string(),
-        argument_types: vec![ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let x = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
+                        panic!(
+                            "\nError: zero base with negative exponent. The base \
+                            was {} because of runtime values: \n\n{}\n",
+                            base, expr_trace
+                        );
+                    }
 
-            if x <= -1.0 || x >= 1.0 {
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[0].clone())
-                    .expression_trace();
+                    if base < 0.0 && !exp.fract().is_normal() {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(args[0].clone())
+                            .expression_trace();
 
-                panic!(
-                    "\nError: atanh undefined outside (-1, 1). The input \
-                    was {} because of runtime values: \n\n{}\n",
-                    x, expr_trace
-                );
-            }
+                        panic!(
+                            "\nError: negative base with non-integer exponent. The base \
+                            was {} because of runtime values: \n\n{}\n",
+                            base,
+                            expr_trace
+                        );
+                    }
 
-            Ok(TracedExprRec::Float(x.atanh()))
-        },
-    };
-
-    let pow_fn = FunctionDefinition {
-        name: "pow".to_string(),
-        argument_types: vec![ExprType::Float, ExprType::Float],
-        result_type: ExprType::Float,
-        definition: |ctx, args: &[TracedExpr<u32>]| {
-            let base = match args[0].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
-            let exp = match args[1].evaluated {
-                TracedExprRec::Float(i) => i,
-                _ => unreachable!(),
-            };
-
-            if base == 0.0 && exp < 0.0 {
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[0].clone())
-                    .expression_trace();
-
-                panic!(
-                    "\nError: zero base with negative exponent. The base \
-                    was {} because of runtime values: \n\n{}\n",
-                    base, expr_trace
-                );
-            }
-
-            if base < 0.0 && !exp.fract().is_normal() {
-                let expr_trace = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .restore_symbols_traced(args[0].clone())
-                    .expression_trace();
-
-                panic!(
-                    "\nError: negative base with non-integer exponent. The base \
-                    was {} because of runtime values: \n\n{}\n",
-                    base,
-                    expr_trace
-                );
-            }
-
-            Ok(TracedExprRec::Float(base.powf(exp)))
-        },
-    };
+                    Ok(TracedExprRec::Float(base.powf(exp)))
+                },
+            },
+        ),
+    ]);
 
     // Lookup table for the interpreter
     Context {
         debugger,
         expression_context: ExpressionContext {
             symbol_table,
-            polymorphic_functions: HashMap::from([
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_MAP_ID,
-                        arg_types: vec![ExprType::List(Box::new(
-                            ExprType::Any,
-                        ))],
-                    },
-                    MAP_LIST_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_MAP_ID,
-                        arg_types: vec![ExprType::Node(Box::new(
-                            ExprType::Any,
-                        ))],
-                    },
-                    MAP_NODE_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_FOLD_ID,
-                        arg_types: vec![ExprType::List(Box::new(
-                            ExprType::Any,
-                        ))],
-                    },
-                    FOLD_LIST_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_FOLD_ID,
-                        arg_types: vec![ExprType::Node(Box::new(
-                            ExprType::Any,
-                        ))],
-                    },
-                    FOLD_NODE_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_FILTER_ID,
-                        arg_types: vec![ExprType::List(Box::new(
-                            ExprType::Any,
-                        ))],
-                    },
-                    FILTER_LIST_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_FILTER_ID,
-                        arg_types: vec![ExprType::Node(Box::new(
-                            ExprType::Any,
-                        ))],
-                    },
-                    FILTER_NODE_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_FIRST_ID,
-                        arg_types: vec![ExprType::List(Box::new(
-                            ExprType::Any,
-                        ))],
-                    },
-                    FIRST_LIST_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_FIRST_ID,
-                        arg_types: vec![ExprType::Pair(
-                            Box::new(ExprType::Any),
-                            Box::new(ExprType::Any),
-                        )],
-                    },
-                    PAIR_FIRST_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_ADD,
-                        arg_types: vec![ExprType::String, ExprType::String],
-                    },
-                    APPEND_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_ADD,
-                        arg_types: vec![
-                            ExprType::List(Box::new(ExprType::Any)),
-                            ExprType::List(Box::new(ExprType::Any)),
-                        ],
-                    },
-                    APPEND_LISTS_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_ADD,
-                        arg_types: vec![ExprType::Int, ExprType::Int],
-                    },
-                    INT_ADD_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_ADD,
-                        arg_types: vec![ExprType::Float, ExprType::Float],
-                    },
-                    FLOAT_ADD_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_MUL,
-                        arg_types: vec![ExprType::Int, ExprType::Int],
-                    },
-                    INT_MUL_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_MUL,
-                        arg_types: vec![ExprType::Float, ExprType::Float],
-                    },
-                    FLOAT_MUL_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_DIV,
-                        arg_types: vec![ExprType::Int, ExprType::Int],
-                    },
-                    INT_DIV_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_DIV,
-                        arg_types: vec![ExprType::Float, ExprType::Float],
-                    },
-                    FLOAT_DIV_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_SUB,
-                        arg_types: vec![ExprType::Int, ExprType::Int],
-                    },
-                    INT_SUB_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_SUB,
-                        arg_types: vec![ExprType::Float, ExprType::Float],
-                    },
-                    FLOAT_SUB_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_LENGTH_ID,
-                        arg_types: vec![ExprType::String],
-                    },
-                    STRING_LENGTH_ID,
-                ),
-                (
-                    PolymorphicIndex {
-                        id: POLYMORPHIC_LENGTH_ID,
-                        arg_types: vec![ExprType::List(Box::new(
-                            ExprType::Any,
-                        ))],
-                    },
-                    LIST_LENGTH_ID,
-                ),
-            ]),
-            functions: HashMap::from([
-                (INT_MUL_ID, int_mul),
-                (INT_ADD_ID, int_add),
-                (INT_DIV_ID, int_div),
-                (INT_SUB_ID, int_sub),
-                (FLOAT_MUL_ID, float_mul),
-                (FLOAT_ADD_ID, float_add),
-                (FLOAT_DIV_ID, float_div),
-                (FLOAT_SUB_ID, float_sub),
-                (APPEND_ID, append),
-                (UPPERCASE_ID, uppercase),
-                (PAIR_FIRST_ID, pair_first_fn),
-                (PAIR_SECOND_ID, pair_second_fn),
-                (PRINT_ID, print_fn),
-                (READLN_ID, readln_fn),
-                (NEW_NODE_ID, new_node_fn),
-                (UPDATE_NODE_ID, update_node_fn),
-                (NODE_CURRENT_VALUE, node_current_value_fn),
-                (LAUNCH, launch_fn),
-                (PAIR_ID, pair_fn),
-                (TYPE_OF_ID, type_of_fn),
-                (AND_ID, and),
-                (OR_ID, or),
-                (NOT_ID, not),
-                (ASSERT_ID, assert),
-                (MAP_NODE_ID, map_node_fn),
-                (FILTER_NODE_ID, filter_node_fn),
-                (FOLD_NODE_ID, fold_node_fn),
-                (DEBUG_TRACE_FULL_ID, dbg_trace_full_fn),
-                (LOWERCASE_ID, lowercase),
-                (DROP_LIST_ID, drop_list_fn),
-                (DROP_LAST_LIST_ID, drop_last_list_fn),
-                (LENGTH_LIST_ID, length_list_fn),
-                (APPEND_LISTS_ID, append_lists_fn),
-                (MAP_LIST_ID, map_list_fn),
-                (FILTER_LIST_ID, filter_list_fn),
-                (FOLD_LIST_ID, fold_list_fn),
-                (FIRST_LIST_ID, first_list_fn),
-                (LAST_LIST_ID, last_list_fn),
-                (LIST_ID, list_fn),
-                (LIST_LENGTH_ID, list_length_fn),
-                (STRING_LENGTH_ID, string_length_fn),
-                (STRING_SPLIT_ID, string_split_fn),
-                (INTERSPERSE_ID, intersperse_fn),
-                (INT_MODULO, int_modulo),
-                (EQUALS_ID, equals_fn),
-                (DEBUG_TRACE_ID, dbg_trace_fn),
-                (LOG_ID, log_fn),
-                (ARCSIN_FN_ID, arcsin_fn),
-                (ACOS_FN_ID, acos_fn),
-                (TAN_FN_ID, tan_fn),
-                (COT_FN_ID, cot_fn),
-                (TANH_FN_ID, tanh_fn),
-                (COSH_FN_ID, cosh_fn),
-                (ACOSH_FN_ID, acosh_fn),
-                (ATANH_FN_ID, atanh_fn),
-                (POW_FN_ID, pow_fn),
-            ]),
+            polymorphic_functions: build_polymorphic_index(&functions).unwrap(),
+            functions,
             variables: HashMap::new(),
         },
         graph: Dag::new(),
     }
+}
+
+fn build_polymorphic_index<T: Debugger + 'static>(
+    functions: &HashMap<u32, FunctionDefinition<T>>,
+) -> Result<HashMap<PolymorphicIndex, u32>, String> {
+    // Needs to be stable, otherwise the IDs will be nondeterministic.
+    let mut name_buckets: BTreeMap<String, Vec<(u32, &FunctionDefinition<T>)>> =
+        BTreeMap::new();
+
+    for (id, func) in functions.iter() {
+        name_buckets
+            .entry(func.name.clone())
+            .or_default()
+            .push((*id, func));
+    }
+
+    let mut polymorphic_id = 0;
+    let mut result = HashMap::new();
+
+    for (name, funcs) in name_buckets.into_iter() {
+        // Skip functions with only 1 implementation
+        if funcs.len() <= 1 {
+            continue;
+        }
+
+        for (id, func) in funcs {
+            let index = PolymorphicIndex {
+                id: polymorphic_id,
+                arg_types: func.argument_types.clone(),
+            };
+
+            if result.insert(index.clone(), id).is_some() {
+                return Err(format!(
+                    "Multiple functions named \"{}\" with signature {:?}",
+                    name, index.arg_types
+                ));
+            }
+        }
+
+        polymorphic_id += 1;
+    }
+
+    Ok(result)
 }
 
 pub fn get_stdlib_functions<'a, T: Debugger + 'static>(
