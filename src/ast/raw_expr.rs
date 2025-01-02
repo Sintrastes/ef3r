@@ -185,13 +185,31 @@ impl<V: Display> Display for RawExpr<V> {
                 body.as_ref().fmt(f)
             }
             RawExprRec::Apply(fun, args) => {
-                f.write_str("(")?;
-                fun.as_ref().fmt(f)?;
-                for arg in args {
-                    f.write_str(" ")?;
-                    arg.fmt(f)?;
+                // Case split on whether fun is a symbol (for infix notation)
+                let fun_str = fun.to_string();
+                if fun_str.chars().all(|c| c.is_alphanumeric()) {
+                    // Use function application syntax for normal functions
+                    fun.as_ref().fmt(f)?;
+                    f.write_str("(")?;
+                    for arg in args {
+                        f.write_str(", ")?;
+                        arg.fmt(f)?;
+                    }
+                    f.write_str(")")
+                } else {
+                    // Use infix notation for operators
+                    f.write_str("(")?;
+                    if let Some((first, rest)) = args.split_first() {
+                        first.fmt(f)?;
+                        for arg in rest {
+                            f.write_str(" ")?;
+                            fun.fmt(f)?;
+                            f.write_str(" ")?;
+                            arg.fmt(f)?;
+                        }
+                    }
+                    f.write_str(")")
                 }
-                f.write_str(")")
             }
             RawExprRec::Var(x) => x.fmt(f),
             RawExprRec::Node(idx) => {

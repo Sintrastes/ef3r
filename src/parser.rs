@@ -238,6 +238,10 @@ fn non_arrow_type(input: Span) -> IResult<Span, ExprType> {
 pub static ALLOWABLE_SYMBOLS: [char; 10] =
     ['=', '+', '-', '*', '/', '.', '&', '|', '!', '%'];
 
+pub fn is_symbol(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| ALLOWABLE_SYMBOLS.contains(&c))
+}
+
 pub fn char_in<const N: usize>(
     c: [char; N],
 ) -> impl Fn(Span) -> IResult<Span, char> {
