@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use bimap::BiMap;
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};

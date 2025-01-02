@@ -25,7 +25,7 @@ pub fn load_efrs_or_ef3r<'a, T: Debugger + 'static>(
     file_path: String,
 ) -> Result<(Context<'a, T>, Vec<Statement<u32>>), String> {
     if file_path.ends_with(".efrs") {
-        load_efrs_file(debugger, file_path)
+        load_efrs_file(debugger, file_path.as_str())
     } else {
         let executable: Executable =
             bincode::deserialize_from(File::open(file_path).unwrap()).unwrap();
@@ -39,7 +39,7 @@ pub fn load_efrs_or_ef3r<'a, T: Debugger + 'static>(
 
 pub fn load_efrs_file<'a, T: Debugger + 'static>(
     debugger: T,
-    file_path: String,
+    file_path: &str,
 ) -> Result<(Context<'a, T>, Vec<Statement<u32>>), String> {
     let source = read_to_string(file_path).unwrap();
     load_efrs_source(debugger, source)

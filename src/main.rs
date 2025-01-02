@@ -1,4 +1,5 @@
 use bimap::BiMap;
+use clap::{command, Parser, Subcommand};
 use ef3r::ast::raw_expr::{RawExpr, RawExprRec};
 use ef3r::debugging::{GrpcDebugger, NoOpDebugger, StepDebugger};
 use ef3r::executable::{load_efrs_file, load_efrs_or_ef3r, Executable};
@@ -6,81 +7,118 @@ use ef3r::interpreter::{self};
 use ef3r::node_visualization::node_visualizer_server::NodeVisualizerServer;
 use ef3r::node_visualization::{node_visualization, NodeVisualizerState};
 use std::sync::{Arc, Mutex, RwLock};
-use std::{env, fs::File, io::Write};
+use std::{fs::File, io::Write};
 use tonic::transport::Server;
 
-const UNKNOWN_COMMAND: &str = "Unknown sub-command";
+#[derive(Parser)]
+#[command(name = "ef3r")]
+#[command(about = "ef3r interpreter and tools")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    #[command(about = "Execute an ef3r bytecode or source file")]
+    Execute {
+        #[arg(help = "Path to the ef3r bytecode or source file")]
+        file: String,
+    },
+    #[command(about = "Debug an ef3r program")]
+    Debug {
+        #[arg(
+            long,
+            help = "Run the visual debugger alongside the running program"
+        )]
+        visual: bool,
+        #[arg(
+            long,
+            default_value = Some("http://localhost:50051"),
+            help = "Run the debugger in \"remote\" mode, to be attached to a running \n\
+            ef3r program on another process (or potentially another machine)"
+        )]
+        remote: Option<String>,
+        #[arg(
+            help = "Path to the ef3r source or bytecode file. Not required for remote debugging."
+        )]
+        file: Option<String>,
+    },
+    #[command(about = "Compile ef3r source into bytecode")]
+    Pack {
+        #[arg(default_value = "--debug", help = "Optimizaton mode.")]
+        mode: String,
+        #[arg(help = "Path to the ef3r source file")]
+        file: String,
+        #[arg(help = "Output path")]
+        out_path: Option<String>,
+    },
+}
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    let args: Vec<String> = env::args().collect();
-    let args = Arc::new(args);
+    let cli = Cli::parse();
 
-    let sub_command = args.get(1).ok_or(UNKNOWN_COMMAND)?.as_str();
-
-    match sub_command {
-        "execute" => {
-            // Executes an ef3r bytecode file.
-            let file_path =
-                args.get(2).ok_or("File not specified")?.to_string();
-
+    match cli.command {
+        Commands::Execute { file } => {
             let (context, program) =
-                load_efrs_or_ef3r(NoOpDebugger::new(), file_path)?;
+                load_efrs_or_ef3r(NoOpDebugger::new(), file)?;
 
             interpreter::interpret(Arc::new(Mutex::new(context)), &program)
                 .unwrap();
         }
-        // Launch the node visualizer that can be connected to a debugging
-        // interpreter via gRPC.
-        "standalone-viz" => {
-            let state = start_visualizer_server().await;
-            start_visualizer(state);
-        }
-        // Run a simple command-line debugger.
-        "debug" => {
-            // Executes an ef3r bytecode file.
-            let file_path =
-                args.get(2).ok_or("File not specified")?.to_string();
+        Commands::Debug {
+            visual,
+            remote,
+            file,
+        } => {
+            if visual && remote.is_some() {
+                let debug_address = remote.unwrap();
+                let state = start_visualizer_server(debug_address).await;
+                start_visualizer(state);
+            } else if visual {
+                let state = start_visualizer_server(
+                    "http://localhost:50051".to_string(),
+                )
+                .await;
 
-            let (context, program) =
-                load_efrs_or_ef3r(StepDebugger::new(), file_path)?;
+                let debugger = GrpcDebugger::new().await;
 
-            interpreter::interpret(Arc::new(Mutex::new(context)), &program)
-                .unwrap();
-        }
-        // Debug an ef3r program with a visual debugger.
-        "debug-viz" => {
-            let state = start_visualizer_server().await;
+                let (context, program) = load_efrs_or_ef3r(
+                    debugger,
+                    file.unwrap_or(Err("File must be specified for a non-remote debugging session")?)
+                )?;
 
-            let debugger = GrpcDebugger::new().await;
+                tokio::spawn(async move {
+                    interpreter::interpret(
+                        Arc::new(Mutex::new(context)),
+                        &program,
+                    )
+                    .unwrap();
+                });
 
-            let file_path =
-                args.get(2).ok_or("File not specified")?.to_string();
+                start_visualizer(state);
+            } else {
+                let (context, program) =
+                    load_efrs_or_ef3r(
+                        StepDebugger::new(),
+                        file.unwrap_or(Err("File must be specified for a non-remote debugging session")?)
+                    )?;
 
-            let (context, program) = load_efrs_or_ef3r(debugger, file_path)?;
-
-            tokio::spawn(async move {
                 interpreter::interpret(Arc::new(Mutex::new(context)), &program)
                     .unwrap();
-            });
-
-            start_visualizer(state);
+            }
         }
-        "pack" => {
-            // Parses ef3r source code and converts it into a ef3r bytecode file.
-
-            let mode =
-                args.get(2).unwrap_or(&"--debug".to_string()).to_string();
-
-            let file_path =
-                args.get(3).ok_or("Source file not specified")?.to_string();
-
-            let default_out_path = &file_path.replace(".efrs", ".ef3r");
-
-            let out_path = args.get(4).unwrap_or(default_out_path).as_str();
-
+        Commands::Pack {
+            mode,
+            file,
+            out_path,
+        } => {
             let (context, parsed_program) =
-                load_efrs_file(NoOpDebugger::new(), file_path)?;
+                load_efrs_file(NoOpDebugger::new(), &file)?;
+
+            let default_out_path = file.replace(".efrs", ".ef3r");
+            let out_path = out_path.unwrap_or(default_out_path);
 
             let executable = Executable {
                 symbol_table: if mode == "--debug" {
@@ -102,13 +140,14 @@ async fn main() -> Result<(), String> {
             let encoded: Vec<u8> = bincode::serialize(&executable).unwrap();
             out_file.write(&encoded).unwrap();
         }
-        _ => Err(UNKNOWN_COMMAND)?,
     }
 
     Ok(())
 }
 
-async fn start_visualizer_server() -> NodeVisualizerState {
+async fn start_visualizer_server(
+    debug_process_addr: String,
+) -> NodeVisualizerState {
     let state = NodeVisualizerState {
         vertices: Arc::new(RwLock::new(vec![])),
         nodes_added: Arc::new(RwLock::new(0)),
@@ -116,8 +155,10 @@ async fn start_visualizer_server() -> NodeVisualizerState {
 
     let state_clone = state.clone();
 
-    tokio::spawn(async {
-        let addr = "[::1]:50051".parse().unwrap();
+    let debug_process_addr = Arc::new(debug_process_addr);
+
+    tokio::spawn(async move {
+        let addr = debug_process_addr.parse().unwrap();
 
         Server::builder()
             .add_service(NodeVisualizerServer::new(state_clone))

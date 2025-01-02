@@ -1,4 +1,4 @@
-use std::{fmt::Display, sync::RwLock};
+use std::fmt::Display;
 
 use bimap::BiMap;
 use serde::{Deserialize, Serialize};

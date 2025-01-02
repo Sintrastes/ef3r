@@ -6,7 +6,7 @@ use bimap::BiMap;
 use quickcheck::{Arbitrary, Gen};
 use raw_expr::RawExpr;
 use serde::{Deserialize, Serialize};
-use traced_expr::{TracedExpr, TracedExprRec};
+use traced_expr::TracedExprRec;
 
 use crate::{
     debugging::NoOpDebugger, parser::CodeLocation, stdlib::ef3r_stdlib,
