@@ -27,5 +27,3 @@ dbg_trace_full(z);
 let w = z + 3;
 
 dbg_trace_full(w);
-
-let bad = 10 / (w - 8);

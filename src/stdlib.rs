@@ -176,12 +176,40 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
             Ok(x + y)
         });
 
-    let float_div =
-        build_function!(T, "/", ExprType::Float, |_cx, x: f32, y: f32| {
-            if (y == 0.0) {}
+    let float_div = FunctionDefinition {
+        name: "/".to_string(),
+        argument_types: vec![ExprType::Float, ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+            let y = match args[1].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
 
-            Ok(x / y)
-        });
+            // Check for division by zero
+            if y == 0.0 {
+                // Get full expression trace
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[1].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: division by zero. The denominator \
+                    was 0 because of the runtime values: \n\n{}\n",
+                    expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Float(x / y))
+        },
+    };
 
     let float_sub =
         build_function!(T, "-", ExprType::Float, |_cx, x: f32, y: f32| {
@@ -201,11 +229,34 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
     let not =
         build_function!(T, "not", ExprType::Bool, |_cx, x: bool| { Ok(!x) });
 
-    let assert =
-        build_function!(T, "assert", ExprType::Unit, |_cx, x: bool| {
-            assert!(x);
-            Ok(())
-        });
+    let assert = FunctionDefinition {
+        name: "assert".to_string(),
+        argument_types: vec![ExprType::Bool],
+        result_type: ExprType::Unit,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let condition = match args[0].evaluated {
+                TracedExprRec::Bool(b) => b,
+                _ => unreachable!(),
+            };
+
+            if !condition {
+                // Get full expression trace
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[0].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nAssertion failed. The condition evaluated to false because of the runtime values: \n\n{}\n",
+                    expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Unit)
+        },
+    };
 
     let append = build_function!(
         T,
