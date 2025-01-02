@@ -99,6 +99,17 @@ pub const INTERSPERSE_ID: u32 = 42;
 pub const INT_MODULO: u32 = 43;
 pub const EQUALS_ID: u32 = 44;
 pub const DEBUG_TRACE_ID: u32 = 45;
+pub const LOG_ID: u32 = 46;
+pub const SQRT_FN_ID: u32 = 47;
+pub const ARCSIN_FN_ID: u32 = 48;
+pub const ACOS_FN_ID: u32 = 49;
+pub const TAN_FN_ID: u32 = 50;
+pub const COT_FN_ID: u32 = 51;
+pub const TANH_FN_ID: u32 = 52;
+pub const COSH_FN_ID: u32 = 53;
+pub const ACOSH_FN_ID: u32 = 54;
+pub const ATANH_FN_ID: u32 = 55;
+pub const POW_FN_ID: u32 = 56;
 
 pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
     debugger: T,
@@ -210,6 +221,57 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
             Ok(TracedExprRec::Float(x / y))
         },
     };
+
+    let log_fn = build_function!(
+        T,
+        "log",
+        ExprType::Float,
+        vec![ExprType::Int, ExprType::Float],
+        |ctx, base, number| {
+            match (&base.evaluated, &number.evaluated) {
+                (
+                    TracedExprRec::Int(base_value),
+                    TracedExprRec::Float(num_value),
+                ) => {
+                    if *base_value <= 0 {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(base.clone())
+                            .expression_trace();
+
+                        panic!(
+                                "\nError: logarithm base must be positive. The base \
+                                was {} because of runtime values: \n\n{}\n",
+                                base_value,
+                                expr_trace
+                            );
+                    }
+                    if *num_value <= 0.0 {
+                        let expr_trace = ctx
+                            .lock()
+                            .unwrap()
+                            .expression_context
+                            .restore_symbols_traced(number.clone())
+                            .expression_trace();
+
+                        panic!(
+                                "\nError: logarithm argument must be positive. The number \
+                                was {} because of runtime values: \n\n{}\n",
+                                num_value,
+                                expr_trace
+                            );
+                    }
+
+                    Ok(TracedExprRec::Float(
+                        num_value.ln() / (*base_value as f32).ln(),
+                    ))
+                }
+                _ => unreachable!(),
+            }
+        }
+    );
 
     let float_sub =
         build_function!(T, "-", ExprType::Float, |_cx, x: f32, y: f32| {
@@ -982,6 +1044,261 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         }
     );
 
+    let arcsin_fn = FunctionDefinition {
+        name: "asin".to_string(),
+        argument_types: vec![ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+
+            if x < -1.0 || x > 1.0 {
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[0].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: arcsin input must be between -1 and 1. The input \
+                    was {} because of runtime values: \n\n{}\n",
+                    x,
+                    expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Float(x.asin()))
+        },
+    };
+
+    let acos_fn = FunctionDefinition {
+        name: "acos".to_string(),
+        argument_types: vec![ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+
+            if x < -1.0 || x > 1.0 {
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[0].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: arccos input must be between -1 and 1. The input \
+                    was {} because of runtime values: \n\n{}\n",
+                    x,
+                    expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Float(x.acos()))
+        },
+    };
+
+    let tan_fn = FunctionDefinition {
+        name: "tan".to_string(),
+        argument_types: vec![ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+
+            let cos = x.cos();
+            if cos.abs() < f32::EPSILON {
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[0].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: tangent undefined at π/2 + nπ. The input \
+                    was {} because of runtime values: \n\n{}\n",
+                    x, expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Float(x.tan()))
+        },
+    };
+
+    let cot_fn = FunctionDefinition {
+        name: "cot".to_string(),
+        argument_types: vec![ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+
+            let sin = x.sin();
+            if sin.abs() < f32::EPSILON {
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[0].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: cotangent undefined at nπ. The input \
+                    was {} because of runtime values: \n\n{}\n",
+                    x, expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Float(1.0 / x.tan()))
+        },
+    };
+
+    let tanh_fn = FunctionDefinition {
+        name: "tanh".to_string(),
+        argument_types: vec![ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |_ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+
+            Ok(TracedExprRec::Float(x.tanh()))
+        },
+    };
+
+    let cosh_fn = FunctionDefinition {
+        name: "cosh".to_string(),
+        argument_types: vec![ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |_ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+
+            Ok(TracedExprRec::Float(x.cosh()))
+        },
+    };
+
+    let acosh_fn = FunctionDefinition {
+        name: "acosh".to_string(),
+        argument_types: vec![ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+
+            if x < 1.0 {
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[0].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: acosh undefined for values < 1. The input \
+                    was {} because of runtime values: \n\n{}\n",
+                    x, expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Float(x.acosh()))
+        },
+    };
+
+    let atanh_fn = FunctionDefinition {
+        name: "atanh".to_string(),
+        argument_types: vec![ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let x = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+
+            if x <= -1.0 || x >= 1.0 {
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[0].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: atanh undefined outside (-1, 1). The input \
+                    was {} because of runtime values: \n\n{}\n",
+                    x, expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Float(x.atanh()))
+        },
+    };
+
+    let pow_fn = FunctionDefinition {
+        name: "pow".to_string(),
+        argument_types: vec![ExprType::Float, ExprType::Float],
+        result_type: ExprType::Float,
+        definition: |ctx, args: &[TracedExpr<u32>]| {
+            let base = match args[0].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+            let exp = match args[1].evaluated {
+                TracedExprRec::Float(i) => i,
+                _ => unreachable!(),
+            };
+
+            if base == 0.0 && exp < 0.0 {
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[0].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: zero base with negative exponent. The base \
+                    was {} because of runtime values: \n\n{}\n",
+                    base, expr_trace
+                );
+            }
+
+            if base < 0.0 && !exp.fract().is_normal() {
+                let expr_trace = ctx
+                    .lock()
+                    .unwrap()
+                    .expression_context
+                    .restore_symbols_traced(args[0].clone())
+                    .expression_trace();
+
+                panic!(
+                    "\nError: negative base with non-integer exponent. The base \
+                    was {} because of runtime values: \n\n{}\n",
+                    base,
+                    expr_trace
+                );
+            }
+
+            Ok(TracedExprRec::Float(base.powf(exp)))
+        },
+    };
+
     // Lookup table for the interpreter
     Context {
         debugger,
@@ -1198,6 +1515,16 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                 (INT_MODULO, int_modulo),
                 (EQUALS_ID, equals_fn),
                 (DEBUG_TRACE_ID, dbg_trace_fn),
+                (LOG_ID, log_fn),
+                (ARCSIN_FN_ID, arcsin_fn),
+                (ACOS_FN_ID, acos_fn),
+                (TAN_FN_ID, tan_fn),
+                (COT_FN_ID, cot_fn),
+                (TANH_FN_ID, tanh_fn),
+                (COSH_FN_ID, cosh_fn),
+                (ACOSH_FN_ID, acosh_fn),
+                (ATANH_FN_ID, atanh_fn),
+                (POW_FN_ID, pow_fn),
             ]),
             variables: HashMap::new(),
         },
