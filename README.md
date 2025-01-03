@@ -49,10 +49,53 @@ In this case, it's trivial to see what's wrong here -- `z` is always `5`, so of 
 Again, this is all well and good, and as professional software developers we're all used to this song and dance. But what if we add asynchronous code or multi-threading to the mix?
 
 ```kotlin
-...
+fun main() {
+    val scope = CoroutineScope(Dispatchers.Default)
+
+    val eventFlow = MutableSharedFlow<Int>()
+
+    val job1 = scope.launch {
+        var value = 0
+        while(value <= 8) {
+            eventFlow.emit(value)
+            value += 1
+            delay(1000)
+        }
+    }
+
+    val job2 = scope.launch {
+        eventFlow.collect { event ->
+            println("Computed value is: ${20 / (8 - event)}")
+        }
+    }
+
+    runBlocking {
+        joinAll(
+            job1,
+            job2
+        )
+    }
+}
 ```
 
-Yeaaaah... That's not so nice at all anymore. If you work with a lot of asynchronous, reactive, or functional code, you end up getting used to disapointment with stack traces. Many use this as an argument that we should avoid using some of these features and paradigms.
+Running this, our code appears to work until after 8 seconds `eventFlow` emits the value `8`, and we get a divide by zero exception:
+
+```
+Exception in thread "DefaultDispatcher-worker-3" java.lang.ArithmeticException: / by zero
+	at org.example.AppKt$main$job2$1$1.emit(App.kt:22)
+	at org.example.AppKt$main$job2$1$1.emit(App.kt:21)
+	at kotlinx.coroutines.flow.SharedFlowImpl.collect$suspendImpl(SharedFlow.kt:392)
+	at kotlinx.coroutines.flow.SharedFlowImpl$collect$1.invokeSuspend(SharedFlow.kt)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:585)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:802)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:706)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:693)
+	Suppressed: kotlinx.coroutines.internal.DiagnosticCoroutineContextException: [StandaloneCoroutine{Cancelling}@1a701674, Dispatchers.Default]
+```
+
+That's not so nice at all anymore. In this case there's some useful information still, and obviously in this contrived example it's very easy to figure out what's going on, but if you work with a lot of asynchronous, reactive, or functional code, you end up getting used to disapointment with stack traces. Many use this as an argument that we should avoid using some of these features and paradigms entirely.
 
 But while the frustration with mixing stack traces with these paradigms is understandable, I think that trying to use this as a reason for ditching these paradigms entirely is a mistake. The entire concept of a stack trace was designed by and for imperative programmers. We shouldn't expect imperative tools to work with non-imperative paradigms and techniques. We should work towards building new debugging and diagnostic tools that work better with these paradigms. That's where ef3r comes in.
 
