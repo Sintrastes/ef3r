@@ -54,7 +54,7 @@ fun main() {
 
     val eventFlow = MutableSharedFlow<Int>()
 
-    val job1 = scope.launch {
+    val job = scope.launch {
         var value = 0
         while(value <= 8) {
             eventFlow.emit(value)
@@ -63,17 +63,14 @@ fun main() {
         }
     }
 
-    val job2 = scope.launch {
+    scope.launch {
         eventFlow.collect { event ->
             println("Computed value is: ${20 / (8 - event)}")
         }
     }
 
     runBlocking {
-        joinAll(
-            job1,
-            job2
-        )
+	job.join()
     }
 }
 ```
@@ -150,8 +147,25 @@ To elaborate on the asynchronous Kotlin example from before: What is it that mak
 Expression traces solve both of these problems. Let's look at the ef3r version of the Kotlin example from earlier:
 
 ```
-...
+events = new_node(Int, None)
+
+job = launch {
+    value = var(0)
+    while value <= 8 {
+        events.emit(value)
+        value.set(value.get() + 1)
+        delay(1000)
+    }
+}
+
+events.on_update { event ->
+    println("Computed value is: " + display(20 / (8 - event)))
+}
+
+job.await()
 ```
+
+
 
 # Philosophy
 
