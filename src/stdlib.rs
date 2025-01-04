@@ -344,6 +344,42 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         ),
         build_function!(
             T,
+            "delay",
+            ExprType::Unit,
+            vec![ExprType::Int],
+            |_ctx, first| {
+                match first.evaluated {
+                    TracedExprRec::Int(ms) => {
+                        thread::sleep(std::time::Duration::from_millis(
+                            ms as u64,
+                        ));
+                        Ok(TracedExprRec::Unit)
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        ),
+        build_function!(
+            T,
+            "loop",
+            ExprType::Unit,
+            vec![ExprType::Func(vec![], Box::new(ExprType::Unit))],
+            |ctx, first| {
+                loop {
+                    evaluate_function_application(
+                        ctx.clone(),
+                        &TracedExprRec::Apply(
+                            Box::new(first.clone()),
+                            Box::new([]),
+                        ),
+                    )
+                    .unwrap()
+                    .evaluated;
+                }
+            }
+        ),
+        build_function!(
+            T,
             "pair",
             ExprType::Pair(Box::new(ExprType::Any), Box::new(ExprType::Any)),
             vec![ExprType::Any, ExprType::Any],

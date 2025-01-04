@@ -27,3 +27,5 @@ dbg_trace_full(z);
 w = z + 3;
 
 dbg_trace_full(w);
+
+print(2 / (w - 8));
