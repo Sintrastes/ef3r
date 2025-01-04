@@ -112,16 +112,16 @@ impl TracedExpr<usize> {
         context: &Context<T>,
         name: &str,
     ) -> TracedExpr<usize> {
-        let fun_id = context.expression_context.resolve_function(name);
-        if let Some(id) = fun_id {
-            return TracedExpr::new(TracedExprRec::BuiltinFunction(id));
-        }
-
         let poly_id = context
             .expression_context
             .resolve_polymorphic_function(name);
         if let Some(id) = poly_id {
             return TracedExpr::new(TracedExprRec::PolymorphicFunction(id));
+        }
+
+        let fun_id = context.expression_context.resolve_function(name);
+        if let Some(id) = fun_id {
+            return TracedExpr::new(TracedExprRec::BuiltinFunction(id));
         }
 
         panic!("Could not resolve function {}", name);

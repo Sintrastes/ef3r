@@ -123,16 +123,16 @@ impl RawExpr<usize> {
         context: &Context<T>,
         name: &str,
     ) -> RawExpr<usize> {
-        let fun_id = context.expression_context.resolve_function(name);
-        if let Some(id) = fun_id {
-            return RawExpr::builtin_function(id);
-        }
-
         let poly_id = context
             .expression_context
             .resolve_polymorphic_function(name);
         if let Some(id) = poly_id {
             return RawExpr::polymorphic_function(id);
+        }
+
+        let fun_id = context.expression_context.resolve_function(name);
+        if let Some(id) = fun_id {
+            return RawExpr::builtin_function(id);
         }
 
         panic!("Could not resolve function {}", name);

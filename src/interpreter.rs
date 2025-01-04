@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use bimap::BiMap;
+use bimap::{BiHashMap, BiMap};
 use daggy::Dag;
 use thiserror::Error;
 
@@ -16,6 +16,7 @@ use crate::{
     },
     debugging::Debugger,
     frp::{with_lock, Node},
+    modules::Module,
     typechecking::type_of,
     types::ExprType,
 };
@@ -32,6 +33,29 @@ where
     pub expression_context: ExpressionContext<T>,
     pub graph: Dag<Node<'a, T>, (), u32>,
     pub debugger: T,
+}
+
+impl<'a, T: Debugger> Context<'a, T> {
+    pub fn load_module<const N: usize>(&mut self, module: Module<N, T>) {
+        module.load_into(self);
+    }
+
+    ///
+    /// Initialize a new context with no modules
+    ///  (builtin or otherwise) loaded.
+    ///
+    pub fn init(debugger: T) -> Context<'a, T> {
+        Context {
+            debugger,
+            graph: Dag::new(),
+            expression_context: ExpressionContext {
+                symbol_table: BiHashMap::new(),
+                functions: vec![],
+                polymorphic_functions: HashMap::new(),
+                variables: HashMap::new(),
+            },
+        }
+    }
 }
 
 unsafe impl<'a, T: Debugger> Send for Context<'a, T> {}
@@ -83,7 +107,7 @@ pub struct PolymorphicIndex {
 #[derive(Clone)]
 pub struct ExpressionContext<T: Debugger + 'static> {
     pub symbol_table: BiMap<usize, String>,
-    pub functions: Box<[FunctionDefinition<T>]>,
+    pub functions: Vec<FunctionDefinition<T>>,
     pub polymorphic_functions: HashMap<PolymorphicIndex, FunctionID>,
     pub variables: HashMap<usize, TracedExpr<usize>>,
 }
@@ -114,9 +138,10 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                 func_name == name
             })
             .unwrap()
-            .1;
+            .0
+            .id;
 
-        return Some(*index);
+        return Some(index);
     }
 
     /// Strip the symbols from the expression, adding any new symbols to

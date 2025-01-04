@@ -1,6 +1,6 @@
 print("Hello, world!");
 
-node = new_node(Int, 2);
+node = reactive(Int, 2);
 
 response = readln();
 
