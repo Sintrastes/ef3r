@@ -17,7 +17,7 @@ use crate::{
     debugging::Debugger,
     frp::{with_lock, Node},
     modules::Module,
-    typechecking::type_of,
+    typechecking::{type_of, RuntimeLookup},
     types::ExprType,
 };
 
@@ -774,7 +774,10 @@ fn function_from_expression<T: Debugger + 'static>(
                 .iter()
                 .map(|arg| {
                     with_lock(ctx.as_ref(), |lock| {
-                        type_of(&lock.expression_context, &arg.evaluated)
+                        type_of::<_, _, RuntimeLookup>(
+                            &lock.expression_context,
+                            &arg.evaluated,
+                        )
                     })
                 })
                 .collect();

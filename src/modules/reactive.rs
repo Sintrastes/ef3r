@@ -10,7 +10,7 @@ use crate::{
     interpreter::{
         evaluate_function_application, EvaluationError, FunctionDefinition,
     },
-    typechecking::type_of,
+    typechecking::{type_of, RuntimeLookup},
     types::ExprType,
 };
 
@@ -29,7 +29,7 @@ pub fn reactive_module<T: Debugger>() -> Module<6, T> {
                 |ctx, first, second| {
                     match first.evaluated {
                         TracedExprRec::Type(x) => {
-                            if type_of(
+                            if type_of::<_, _, RuntimeLookup>(
                                 &ctx.lock().unwrap().expression_context,
                                 &second.evaluated,
                             ) == Some(x.clone())
@@ -56,7 +56,7 @@ pub fn reactive_module<T: Debugger>() -> Module<6, T> {
                             } else {
                                 Err(EvaluationError::TypeError {
                                     expected: x,
-                                    actual: type_of(
+                                    actual: type_of::<_, _, RuntimeLookup>(
                                         &ctx.lock().unwrap().expression_context,
                                         &second.evaluated,
                                     )
@@ -67,7 +67,7 @@ pub fn reactive_module<T: Debugger>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Type,
-                            actual: type_of(
+                            actual: type_of::<_, _, RuntimeLookup>(
                                 &ctx.lock().unwrap().expression_context,
                                 &actual,
                             )
@@ -96,7 +96,7 @@ pub fn reactive_module<T: Debugger>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
-                            actual: type_of(
+                            actual: type_of::<_, _, RuntimeLookup>(
                                 &ctx.lock().unwrap().expression_context,
                                 &actual,
                             )
@@ -126,7 +126,7 @@ pub fn reactive_module<T: Debugger>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
-                            actual: type_of(
+                            actual: type_of::<_, _, RuntimeLookup>(
                                 &ctx.lock().unwrap().expression_context,
                                 &actual,
                             )
@@ -189,7 +189,7 @@ pub fn reactive_module<T: Debugger>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
-                            actual: type_of(
+                            actual: type_of::<_, _, RuntimeLookup>(
                                 &ctx.lock().unwrap().expression_context,
                                 &actual,
                             )
@@ -253,8 +253,11 @@ pub fn reactive_module<T: Debugger>() -> Module<6, T> {
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: with_lock(ctx.as_ref(), |lock| {
-                                type_of(&lock.expression_context, &actual)
-                                    .unwrap()
+                                type_of::<_, _, RuntimeLookup>(
+                                    &lock.expression_context,
+                                    &actual,
+                                )
+                                .unwrap()
                             }),
                             at_loc: "filter_node".to_string(),
                         }),
@@ -312,8 +315,11 @@ pub fn reactive_module<T: Debugger>() -> Module<6, T> {
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: with_lock(ctx.as_ref(), |lock| {
-                                type_of(&lock.expression_context, &actual)
-                                    .unwrap()
+                                type_of::<_, _, RuntimeLookup>(
+                                    &lock.expression_context,
+                                    &actual,
+                                )
+                                .unwrap()
                             }),
                             at_loc: "fold_node".to_string(),
                         }),

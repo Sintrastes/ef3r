@@ -1,5 +1,6 @@
 use std::io::{self, BufRead};
 
+use crate::typechecking::RuntimeLookup;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,

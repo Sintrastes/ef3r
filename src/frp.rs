@@ -9,8 +9,11 @@ use daggy::{
 };
 
 use crate::{
-    ast::traced_expr::TracedExpr, debugging::Debugger, interpreter::Context,
-    typechecking::type_of, types::ExprType,
+    ast::traced_expr::TracedExpr,
+    debugging::Debugger,
+    interpreter::Context,
+    typechecking::{type_of, RuntimeLookup},
+    types::ExprType,
 };
 
 ///
@@ -357,7 +360,10 @@ pub fn fold_node<'a, T: Debugger + 'static>(
 
     let new_node = Node {
         expr_type: with_lock(ctx.as_ref(), |lock| {
-            type_of(&lock.expression_context, &initial_clone.evaluated)
+            type_of::<_, _, RuntimeLookup>(
+                &lock.expression_context,
+                &initial_clone.evaluated,
+            )
         })
         .unwrap(),
         value: value.clone(),

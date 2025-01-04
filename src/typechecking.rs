@@ -4,9 +4,9 @@ use crate::{
 };
 
 /// Attempts to infer the type of expressions.
-pub fn type_of<T: Debugger + 'static>(
+pub fn type_of<T: Debugger + 'static, V, Lookup: TypingLookup<T, V>>(
     ctx: &ExpressionContext<T>,
-    term: &TracedExprRec<usize>,
+    term: &TracedExprRec<V>,
 ) -> Option<ExprType> {
     match term {
         TracedExprRec::None => Some(ExprType::Any),
@@ -19,7 +19,10 @@ pub fn type_of<T: Debugger + 'static>(
         TracedExprRec::List(xs) => {
             let element_types = xs
                 .iter()
-                .map(|x| type_of(ctx, &x.evaluated).unwrap_or(ExprType::Any))
+                .map(|x| {
+                    type_of::<T, V, Lookup>(ctx, &x.evaluated)
+                        .unwrap_or(ExprType::Any)
+                })
                 .collect::<Vec<_>>();
             let unified_type = element_types
                 .into_iter()
@@ -27,8 +30,8 @@ pub fn type_of<T: Debugger + 'static>(
             Some(ExprType::List(Box::new(unified_type)))
         }
         TracedExprRec::Pair(traced_expr, traced_expr1) => Some(ExprType::Pair(
-            Box::new(type_of(ctx, &traced_expr.evaluated)?),
-            Box::new(type_of(ctx, &traced_expr1.evaluated)?),
+            Box::new(type_of::<T, V, Lookup>(ctx, &traced_expr.evaluated)?),
+            Box::new(type_of::<T, V, Lookup>(ctx, &traced_expr1.evaluated)?),
         )),
         TracedExprRec::BuiltinFunction(fn_id) => Some(ExprType::Func(
             ctx.functions[*fn_id].argument_types.to_vec(),
@@ -45,27 +48,59 @@ pub fn type_of<T: Debugger + 'static>(
                 .iter()
                 .map(|_| ExprType::Any) // All args are assumed to be any type
                 .collect();
-            let return_type = type_of(ctx, &traced_expr.evaluated)?;
+            let return_type =
+                type_of::<T, V, Lookup>(ctx, &traced_expr.evaluated)?;
 
             Some(ExprType::Func(arg_types, Box::new(return_type)))
         }
         // Note: This may need to be refined if we ever add implicit partial application.
         TracedExprRec::Apply(f, _) => {
-            type_of(ctx, &f.evaluated).and_then(|f_type| match f_type {
-                ExprType::Func(_, return_type) => Some(*return_type),
-                _ => None,
+            type_of::<T, V, Lookup>(ctx, &f.evaluated).and_then(|f_type| {
+                match f_type {
+                    ExprType::Func(_, return_type) => Some(*return_type),
+                    _ => None,
+                }
             })
         }
         // Note: In the future we might want to memoize results and store them in a
         //  "typing_context" for efficency reasons.
-        TracedExprRec::Var(var) => ctx
-            .variables
-            .get(var)
-            .and_then(|expr| type_of(ctx, &expr.evaluated)),
+        TracedExprRec::Var(var) => Lookup::lookup_var_type(ctx, var),
         // We do not currently assign a type to polymorphic functions.
         // But maybe we could assign something like Any -> Any based on
         // the arity of the function?
         TracedExprRec::PolymorphicFunction(_) => None,
+    }
+}
+
+///
+/// Trait for different techniques for looking up type information.
+///
+trait TypingLookup<T: Debugger + 'static, V> {
+    fn lookup_var_type(ctx: &ExpressionContext<T>, var: &V)
+        -> Option<ExprType>;
+}
+
+pub struct RuntimeLookup;
+
+impl<T: Debugger + 'static> TypingLookup<T, usize> for RuntimeLookup {
+    fn lookup_var_type(
+        ctx: &ExpressionContext<T>,
+        var: &usize,
+    ) -> Option<ExprType> {
+        ctx.variables
+            .get(&var)
+            .and_then(|expr| type_of::<T, usize, Self>(ctx, &expr.evaluated))
+    }
+}
+
+pub struct NoLookup;
+
+impl<T: Debugger + 'static, V> TypingLookup<T, V> for NoLookup {
+    fn lookup_var_type(
+        _ctx: &ExpressionContext<T>,
+        _var: &V,
+    ) -> Option<ExprType> {
+        None
     }
 }
 

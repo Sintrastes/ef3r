@@ -141,7 +141,10 @@ macro_rules! build_function {
                     EvaluationError::TypeError {
                         expected: <$type>::expr_type(),
                         actual: with_lock($ctx.as_ref(), |lock| {
-                            type_of(&lock.expression_context, &expr.evaluated)
+                            type_of::<_, _, RuntimeLookup>(
+                                &lock.expression_context,
+                                &expr.evaluated,
+                            )
                         })
                         .unwrap_or(ExprType::Any),
                         at_loc: $name.to_string(),
@@ -180,7 +183,10 @@ macro_rules! build_function {
                     EvaluationError::TypeError {
                         expected: <$type1>::expr_type(),
                         actual: with_lock($ctx.as_ref(), |lock| {
-                            type_of(&lock.expression_context, &expr1.evaluated)
+                            type_of::<_, _, RuntimeLookup>(
+                                &lock.expression_context,
+                                &expr1.evaluated,
+                            )
                         })
                         .unwrap_or(ExprType::Any),
                         at_loc: $name.to_string(),
@@ -191,7 +197,10 @@ macro_rules! build_function {
                     EvaluationError::TypeError {
                         expected: <$type2>::expr_type(),
                         actual: with_lock($ctx.as_ref(), |lock| {
-                            type_of(&lock.expression_context, &expr2.evaluated)
+                            type_of::<_, _, RuntimeLookup>(
+                                &lock.expression_context,
+                                &expr2.evaluated,
+                            )
                         })
                         .unwrap_or(ExprType::Any),
                         at_loc: $name.to_string(),

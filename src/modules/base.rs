@@ -1,3 +1,4 @@
+use crate::typechecking::RuntimeLookup;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
@@ -33,7 +34,7 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                                 Box::new(ExprType::Any),
                                 Box::new(ExprType::Any),
                             ),
-                            actual: type_of(
+                            actual: type_of::<_, _, RuntimeLookup>(
                                 &ctx.lock().unwrap().expression_context,
                                 &actual,
                             )
@@ -59,7 +60,7 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                                 Box::new(ExprType::Any),
                                 Box::new(ExprType::Any),
                             ),
-                            actual: type_of(
+                            actual: type_of::<_, _, RuntimeLookup>(
                                 &ctx.lock().unwrap().expression_context,
                                 &actual,
                             )
@@ -107,7 +108,7 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                 vec![ExprType::Any],
                 |ctx, first| {
                     Ok(
-                        match type_of(
+                        match type_of::<_, _, RuntimeLookup>(
                             &ctx.lock().unwrap().expression_context,
                             &first.evaluated,
                         ) {

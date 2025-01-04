@@ -8,6 +8,7 @@ pub mod executable;
 pub mod extern_utils;
 pub mod frp;
 pub mod interpreter;
+pub mod lsp;
 pub mod modules;
 pub mod node_visualization;
 pub mod parser;
