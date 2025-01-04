@@ -90,7 +90,7 @@ fn execute_example_program() {
 
         y = f("test");
 
-        node = new_node(Int, 0);
+        node = reactive(Int, 0);
 
         current_value = node.current_value();
 
@@ -102,13 +102,13 @@ fn execute_example_program() {
 
         print(pair(1,2));
 
-        // Test executing new nodes.
-        new_node(Bool, true);
-        new_node(String, "test");
-        new_node(Type, Int);
-        new_node(Float, 4.2);
-        new_node(Unit, ());
-        new_node(Pair(Int, Int), pair(2, 3));
+        // Test executing new reactive variables.
+        reactive(Bool, true);
+        reactive(String, "test");
+        reactive(Type, Int);
+        reactive(Float, 4.2);
+        reactive(Unit, ());
+        reactive(Pair(Int, Int), pair(2, 3));
 
         // Test list processing
         xs = list(1, 2, 3);

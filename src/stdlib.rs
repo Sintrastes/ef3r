@@ -214,7 +214,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
         },
         build_function!(
             T,
-            "new_node",
+            "reactive",
             ExprType::Node(Box::new(ExprType::Any)),
             vec![ExprType::Type, ExprType::Any],
             |ctx, first, second| {
@@ -250,7 +250,7 @@ pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
                                     &second.evaluated,
                                 )
                                 .unwrap(),
-                                at_loc: "new_node".to_string(),
+                                at_loc: "reactive".to_string(),
                             })
                         }
                     }
