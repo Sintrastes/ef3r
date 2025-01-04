@@ -1,6 +1,7 @@
 use crate::ast::raw_expr::{RawExpr, RawExprRec};
 use crate::ast::Statement;
 use crate::types::ExprType;
+use color_eyre::eyre::{eyre, Result};
 use nom::bytes::streaming::take_while;
 use nom::character::complete::satisfy;
 use nom::error::Error;
@@ -447,19 +448,19 @@ pub fn parse_program(input: Span) -> IResult<Span, Vec<Statement<String>>> {
     lambda_body(input)
 }
 
-pub fn parse(input: &str) -> Result<Vec<Statement<String>>, String> {
+pub fn parse(input: &str) -> Result<Vec<Statement<String>>> {
     match parse_program(Span::new(input)) {
         Ok((remaining, program)) => {
             if remaining.trim().is_empty() {
                 Ok(program)
             } else {
-                Err(format!(
+                Err(eyre!(
                     "Parser did not consume all input. Remaining: {}",
                     remaining
                 ))
             }
         }
-        Err(e) => Err(format!("Parse error: {}", e)),
+        Err(e) => Err(eyre!("Parse error: {}", e)),
     }
 }
 #[test]

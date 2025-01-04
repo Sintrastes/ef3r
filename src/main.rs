@@ -1,5 +1,6 @@
 use bimap::BiMap;
 use clap::{command, Parser, Subcommand};
+use color_eyre::eyre::eyre;
 use ef3r::ast::raw_expr::{RawExpr, RawExprRec};
 use ef3r::debugging::{GrpcDebugger, NoOpDebugger, StepDebugger};
 use ef3r::executable::{load_efrs_file, load_efrs_or_ef3r, Executable};
@@ -56,7 +57,9 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), String> {
+async fn main() -> color_eyre::eyre::Result<()> {
+    color_eyre::install()?;
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -64,8 +67,7 @@ async fn main() -> Result<(), String> {
             let (context, program) =
                 load_efrs_or_ef3r(NoOpDebugger::new(), file)?;
 
-            interpreter::interpret(Arc::new(Mutex::new(context)), &program)
-                .unwrap();
+            interpreter::interpret(Arc::new(Mutex::new(context)), &program)?;
         }
         Commands::Debug {
             visual,
@@ -86,7 +88,7 @@ async fn main() -> Result<(), String> {
 
                 let (context, program) = load_efrs_or_ef3r(
                     debugger,
-                    file.unwrap_or(Err("File must be specified for a non-remote debugging session")?)
+                    file.unwrap_or(Err(eyre!("File must be specified for a non-remote debugging session"))?)
                 )?;
 
                 tokio::spawn(async move {
@@ -102,7 +104,7 @@ async fn main() -> Result<(), String> {
                 let (context, program) =
                     load_efrs_or_ef3r(
                         StepDebugger::new(),
-                        file.unwrap_or(Err("File must be specified for a non-remote debugging session")?)
+                        file.unwrap_or(Err(eyre!("File must be specified for a non-remote debugging session"))?)
                     )?;
 
                 interpreter::interpret(Arc::new(Mutex::new(context)), &program)
@@ -174,8 +176,8 @@ fn start_visualizer(state: NodeVisualizerState) {
 }
 
 fn strip_line_numbers(
-    statement: ef3r::ast::Statement<u32>,
-) -> ef3r::ast::Statement<u32> {
+    statement: ef3r::ast::Statement<usize>,
+) -> ef3r::ast::Statement<usize> {
     ef3r::ast::Statement {
         location: None,
         var: statement.var,
@@ -183,7 +185,7 @@ fn strip_line_numbers(
     }
 }
 
-fn strip_line_numbers_raw_expr(expr: RawExpr<u32>) -> RawExpr<u32> {
+fn strip_line_numbers_raw_expr(expr: RawExpr<usize>) -> RawExpr<usize> {
     RawExpr {
         location: expr.location,
         expr: match expr.expr {

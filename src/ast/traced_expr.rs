@@ -103,8 +103,33 @@ impl<V: Clone> TracedExpr<V> {
     }
 }
 
-impl Expr for TracedExpr<u32> {
-    fn evaluated(self) -> RawExpr<u32> {
+impl TracedExpr<usize> {
+    ///
+    /// Utility to help build an expression for a function
+    ///  resolving it by name.
+    ///
+    pub fn resolve<T: Debugger + 'static>(
+        context: &Context<T>,
+        name: &str,
+    ) -> TracedExpr<usize> {
+        let fun_id = context.expression_context.resolve_function(name);
+        if let Some(id) = fun_id {
+            return TracedExpr::new(TracedExprRec::BuiltinFunction(id));
+        }
+
+        let poly_id = context
+            .expression_context
+            .resolve_polymorphic_function(name);
+        if let Some(id) = poly_id {
+            return TracedExpr::new(TracedExprRec::PolymorphicFunction(id));
+        }
+
+        panic!("Could not resolve function {}", name);
+    }
+}
+
+impl Expr for TracedExpr<usize> {
+    fn evaluated(self) -> RawExpr<usize> {
         self.untraced()
     }
 
@@ -156,7 +181,11 @@ impl Expr for TracedExpr<u32> {
         TracedExpr::new(TracedExprRec::PolymorphicFunction(value))
     }
 
-    fn lambda(vars: Vec<u32>, stmts: Vec<Statement<u32>>, body: Self) -> Self {
+    fn lambda(
+        vars: Vec<usize>,
+        stmts: Vec<Statement<usize>>,
+        body: Self,
+    ) -> Self {
         TracedExpr::new(TracedExprRec::Lambda(vars, stmts, Box::new(body)))
     }
 
@@ -164,7 +193,7 @@ impl Expr for TracedExpr<u32> {
         TracedExpr::new(TracedExprRec::Apply(Box::new(fun), Box::new(args)))
     }
 
-    fn var(value: u32) -> Self {
+    fn var(value: usize) -> Self {
         TracedExpr::new(TracedExprRec::Var(value))
     }
 }
@@ -301,9 +330,12 @@ impl TracedExprRec<String> {
                 }
             },
             4 => {
-                let keys: Vec<&u32> =
-                    context.expression_context.functions.keys().collect();
-                let key = **g.choose(&keys).unwrap();
+                let keys: usize = context.expression_context.functions.len();
+                let key = if keys == 0 {
+                    0
+                } else {
+                    usize::arbitrary(g) % keys
+                };
                 TracedExprRec::BuiltinFunction(key)
             }
             5 => TracedExprRec::Lambda(

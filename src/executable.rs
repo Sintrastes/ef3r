@@ -1,6 +1,7 @@
 use std::fs::{read_to_string, File};
 
 use bimap::BiMap;
+use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -16,14 +17,14 @@ use crate::{
 
 #[derive(Serialize, Deserialize)]
 pub struct Executable {
-    pub symbol_table: BiMap<u32, String>,
-    pub instructions: Vec<Statement<u32>>,
+    pub symbol_table: BiMap<usize, String>,
+    pub instructions: Vec<Statement<usize>>,
 }
 
 pub fn load_efrs_or_ef3r<'a, T: Debugger + 'static>(
     debugger: T,
     file_path: String,
-) -> Result<(Context<'a, T>, Vec<Statement<u32>>), String> {
+) -> Result<(Context<'a, T>, Vec<Statement<usize>>)> {
     if file_path.ends_with(".efrs") {
         load_efrs_file(debugger, file_path.as_str())
     } else {
@@ -40,7 +41,7 @@ pub fn load_efrs_or_ef3r<'a, T: Debugger + 'static>(
 pub fn load_efrs_file<'a, T: Debugger + 'static>(
     debugger: T,
     file_path: &str,
-) -> Result<(Context<'a, T>, Vec<Statement<u32>>), String> {
+) -> Result<(Context<'a, T>, Vec<Statement<usize>>)> {
     let source = read_to_string(file_path).unwrap();
     load_efrs_source(debugger, source)
 }
@@ -48,7 +49,7 @@ pub fn load_efrs_file<'a, T: Debugger + 'static>(
 pub fn load_efrs_source<'a, T: Debugger + 'static>(
     debugger: T,
     source: String,
-) -> Result<(Context<'a, T>, Vec<Statement<u32>>), String> {
+) -> Result<(Context<'a, T>, Vec<Statement<usize>>)> {
     let parsed_program = parse(&source)?;
 
     let mut stdlib = ef3r_stdlib(debugger, BiMap::new());

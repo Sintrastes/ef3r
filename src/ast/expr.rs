@@ -2,7 +2,7 @@ use crate::{interpreter::PolymorphicFunctionID, types::ExprType};
 
 use super::{raw_expr::RawExpr, Statement};
 
-pub type FunctionID = u32;
+pub type FunctionID = usize;
 
 pub type VariableID = String;
 
@@ -11,7 +11,7 @@ pub type VariableID = String;
 ///  type. For instance, RawExpr or TracedExpr.
 ///
 pub trait Expr: Sized {
-    fn evaluated(self) -> RawExpr<u32>;
+    fn evaluated(self) -> RawExpr<usize>;
 
     fn none() -> Self;
 
@@ -37,9 +37,13 @@ pub trait Expr: Sized {
 
     fn polymorphic_function(value: PolymorphicFunctionID) -> Self;
 
-    fn lambda(vars: Vec<u32>, stmts: Vec<Statement<u32>>, body: Self) -> Self;
+    fn lambda(
+        vars: Vec<usize>,
+        stmts: Vec<Statement<usize>>,
+        body: Self,
+    ) -> Self;
 
     fn apply<const N: usize>(fun: Self, args: [Self; N]) -> Self;
 
-    fn var(value: u32) -> Self;
+    fn var(value: usize) -> Self;
 }

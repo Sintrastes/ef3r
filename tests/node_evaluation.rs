@@ -9,7 +9,7 @@ use ef3r::{
         with_lock, Node,
     },
     interpreter::apply_traced,
-    stdlib::{ef3r_stdlib, INT_MUL_ID},
+    stdlib::ef3r_stdlib,
     types::ExprType,
 };
 
@@ -49,7 +49,9 @@ fn test_map_node() {
         Arc::new(Mutex::new(move |x| {
             apply_traced(
                 context_cloned.clone(),
-                TracedExprRec::BuiltinFunction(INT_MUL_ID).traced(),
+                with_lock(context_cloned.as_ref(), |context| {
+                    TracedExpr::resolve(context, "*")
+                }),
                 &[TracedExprRec::Int(2).traced(), x],
             )
             .unwrap()
@@ -217,7 +219,9 @@ fn test_combined_node() {
         Box::new(move |x, y| {
             apply_traced(
                 cloned_ctx.clone(),
-                TracedExprRec::BuiltinFunction(INT_MUL_ID).traced(),
+                with_lock(cloned_ctx.as_ref(), |context| {
+                    TracedExpr::resolve(context, "*")
+                }),
                 &[x, y],
             )
             .unwrap()
@@ -280,7 +284,7 @@ fn test_fold_node() {
         is_traced,
         event_node_index,
         TracedExprRec::Int(2).traced(),
-        Box::new(|acc: TracedExpr<u32>, event: TracedExpr<u32>| {
+        Box::new(|acc: TracedExpr<usize>, event: TracedExpr<usize>| {
             match (acc.evaluated, event.evaluated) {
                 (TracedExprRec::Int(a), TracedExprRec::Int(b)) => {
                     TracedExprRec::Int(a + b).traced()

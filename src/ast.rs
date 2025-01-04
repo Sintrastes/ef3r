@@ -53,79 +53,75 @@ mod tests {
             traced_expr::{TracedExpr, TracedExprRec},
         },
         debugging::NoOpDebugger,
+        frp::with_lock,
         interpreter::evaluate_traced,
-        stdlib::{ef3r_stdlib, INT_ADD_ID, INT_MUL_ID},
+        stdlib::ef3r_stdlib,
     };
 
     #[test]
     fn evaluation_keeps_trace() {
-        let context = Arc::new(Mutex::new(ef3r_stdlib(
-            NoOpDebugger::new(),
-            BiMap::new(),
-        )));
+        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
         // Example expression.
-        let expression = TracedExprRec::Apply(
-            Box::new(TracedExprRec::BuiltinFunction(INT_MUL_ID).traced()),
-            Box::new([
-                TracedExprRec::Int(2).traced(),
-                TracedExprRec::Apply(
-                    Box::new(
-                        TracedExprRec::BuiltinFunction(INT_ADD_ID).traced(),
-                    ),
-                    Box::new([
-                        TracedExprRec::Int(1).traced(),
-                        TracedExprRec::Int(2).traced(),
-                    ]),
-                )
-                .traced(),
-            ]),
+        let expression = TracedExpr::apply(
+            TracedExpr::resolve(&context, "*"),
+            [
+                TracedExpr::int(2),
+                TracedExpr::apply(
+                    TracedExpr::resolve(&context, "+"),
+                    [TracedExpr::int(1), TracedExpr::int(2)],
+                ),
+            ],
         );
 
-        let evaluated =
-            evaluate_traced(context, expression.clone().traced()).unwrap();
+        let context = Arc::new(Mutex::new(context));
+
+        let evaluated = evaluate_traced(context, expression.clone()).unwrap();
 
         assert_eq!(evaluated.evaluated, TracedExprRec::Int(6));
 
-        assert_eq!(evaluated.stored_trace, Some(expression));
+        assert_eq!(evaluated.get_trace(), expression);
     }
 
     #[test]
     fn evaluating_twice_keeps_entire_trace() {
-        let context = Arc::new(Mutex::new(ef3r_stdlib(
-            NoOpDebugger::new(),
-            BiMap::new(),
-        )));
+        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
         // Example expression. 2 * (1 + 2)
         let expression = RawExpr::apply(
-            RawExpr::builtin_function(INT_MUL_ID),
+            RawExpr::resolve(&context, "*"),
             [
                 RawExpr::int(2),
                 RawExpr::apply(
-                    RawExpr::builtin_function(INT_ADD_ID),
+                    RawExpr::resolve(&context, "+"),
                     [RawExpr::int(1), RawExpr::int(2)],
                 ),
             ],
         );
+
+        let context = Arc::new(Mutex::new(context));
 
         let evaluated =
             evaluate_traced(context.clone(), expression.from_raw().clone())
                 .unwrap();
 
         // 2 * (2 * (1 + 2))
-        let second_expression = TracedExpr::apply(
-            TracedExpr::builtin_function(INT_MUL_ID),
-            [TracedExpr::int(2), evaluated],
-        );
+        let second_expression = with_lock(context.as_ref(), |context| {
+            TracedExpr::apply(
+                TracedExpr::resolve(&context, "*"),
+                [TracedExpr::int(2), evaluated],
+            )
+        });
+
+        let expected = with_lock(context.as_ref(), |context| {
+            RawExpr::apply(
+                RawExpr::resolve(&context, "*"),
+                [RawExpr::int(2), expression],
+            )
+        });
 
         let second_evaluated =
             evaluate_traced(context, second_expression.clone()).unwrap();
-
-        let expected = RawExpr::apply(
-            RawExpr::builtin_function(INT_MUL_ID),
-            [RawExpr::int(2), expression],
-        );
 
         assert_eq!(second_evaluated.full_trace(), expected);
     }

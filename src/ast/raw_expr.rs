@@ -4,8 +4,11 @@ use bimap::BiMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    debugging::NoOpDebugger, interpreter::PolymorphicFunctionID,
-    parser::CodeLocation, stdlib::ef3r_stdlib, types::ExprType,
+    debugging::{Debugger, NoOpDebugger},
+    interpreter::{Context, PolymorphicFunctionID},
+    parser::CodeLocation,
+    stdlib::ef3r_stdlib,
+    types::ExprType,
 };
 
 use super::{
@@ -111,6 +114,31 @@ impl<V: Clone> RawExpr<V> {
     }
 }
 
+impl RawExpr<usize> {
+    ///
+    /// Utility to help build an expression for a function
+    ///  resolving it by name.
+    ///
+    pub fn resolve<T: Debugger + 'static>(
+        context: &Context<T>,
+        name: &str,
+    ) -> RawExpr<usize> {
+        let fun_id = context.expression_context.resolve_function(name);
+        if let Some(id) = fun_id {
+            return RawExpr::builtin_function(id);
+        }
+
+        let poly_id = context
+            .expression_context
+            .resolve_polymorphic_function(name);
+        if let Some(id) = poly_id {
+            return RawExpr::polymorphic_function(id);
+        }
+
+        panic!("Could not resolve function {}", name);
+    }
+}
+
 impl<V: Display> Display for RawExpr<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
@@ -140,7 +168,7 @@ impl<V: Display> Display for RawExpr<V> {
                 let name = context
                     .expression_context
                     .functions
-                    .get(&x)
+                    .get(*x)
                     .unwrap()
                     .name
                     .clone();
@@ -159,7 +187,7 @@ impl<V: Display> Display for RawExpr<V> {
                 let name = context
                     .expression_context
                     .functions
-                    .get(&index)
+                    .get(*index)
                     .unwrap()
                     .name
                     .clone();
@@ -282,8 +310,8 @@ pub fn substitute_statement<V: Clone + PartialEq + Eq>(
     }
 }
 
-impl Expr for RawExpr<u32> {
-    fn evaluated(self) -> RawExpr<u32> {
+impl Expr for RawExpr<usize> {
+    fn evaluated(self) -> RawExpr<usize> {
         self
     }
 
@@ -371,7 +399,11 @@ impl Expr for RawExpr<u32> {
         }
     }
 
-    fn lambda(vars: Vec<u32>, stmts: Vec<Statement<u32>>, body: Self) -> Self {
+    fn lambda(
+        vars: Vec<usize>,
+        stmts: Vec<Statement<usize>>,
+        body: Self,
+    ) -> Self {
         RawExpr {
             location: None,
             expr: RawExprRec::Lambda(vars, stmts, Box::new(body)),
@@ -385,7 +417,7 @@ impl Expr for RawExpr<u32> {
         }
     }
 
-    fn var(value: u32) -> Self {
+    fn var(value: usize) -> Self {
         RawExpr {
             location: None,
             expr: RawExprRec::Var(value),

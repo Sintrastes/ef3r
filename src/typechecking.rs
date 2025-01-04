@@ -6,7 +6,7 @@ use crate::{
 /// Attempts to infer the type of expressions.
 pub fn type_of<T: Debugger + 'static>(
     ctx: &ExpressionContext<T>,
-    term: &TracedExprRec<u32>,
+    term: &TracedExprRec<usize>,
 ) -> Option<ExprType> {
     match term {
         TracedExprRec::None => Some(ExprType::Any),
@@ -31,13 +31,10 @@ pub fn type_of<T: Debugger + 'static>(
             Box::new(type_of(ctx, &traced_expr1.evaluated)?),
         )),
         TracedExprRec::BuiltinFunction(fn_id) => Some(ExprType::Func(
-            ctx.functions
-                .get(fn_id)
-                .map(|f| f.argument_types.to_vec())
-                .unwrap_or(vec![]),
+            ctx.functions[*fn_id].argument_types.to_vec(),
             Box::new(
                 ctx.functions
-                    .get(fn_id)
+                    .get(*fn_id)
                     .map(|f| f.result_type.clone())
                     .unwrap_or(ExprType::Any),
             ),
