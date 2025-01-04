@@ -26,7 +26,6 @@ impl<'a, const N: usize, T: Debugger> Module<N, T> {
     pub fn load_into(self, context: &mut Context<'a, T>) {
         // Add the polymorphic index and function definitions from the module
         // to the context.
-        let old_len = context.expression_context.functions.len();
         context
             .expression_context
             .functions
