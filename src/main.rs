@@ -54,6 +54,8 @@ enum Commands {
         #[arg(help = "Output path")]
         out_path: Option<String>,
     },
+    #[command(about = "Launch the language server")]
+    LSP {},
 }
 
 #[tokio::main]
@@ -141,6 +143,9 @@ async fn main() -> color_eyre::eyre::Result<()> {
             let mut out_file = File::create(out_path).unwrap();
             let encoded: Vec<u8> = bincode::serialize(&executable).unwrap();
             out_file.write(&encoded).unwrap();
+        }
+        Commands::LSP {} => {
+            ef3r::lsp::start_lsp().await;
         }
     }
 
