@@ -225,6 +225,8 @@ pub enum TracedExprRec<V> {
     /// Reference to a node that has been created and stored in the
     ///  interpreter context.
     Node(usize),
+    /// Reference to a JoinHandle for a thread.
+    JoinHandle(usize),
     /// Reference to a built-in monomorphic function in the interpreter.
     BuiltinFunction(FunctionID),
     /// Reference to a polymorphic function defined in the interpreter.
@@ -259,6 +261,7 @@ impl<V: Clone> TracedExprRec<V> {
             TracedExprRec::List(xs) => {
                 RawExprRec::List(xs.iter().map(|x| x.untraced()).collect())
             }
+            TracedExprRec::JoinHandle(x) => RawExprRec::JoinHandle(*x),
             TracedExprRec::Node(x) => RawExprRec::Node(*x),
             TracedExprRec::BuiltinFunction(x) => {
                 RawExprRec::BuiltinFunction(*x)

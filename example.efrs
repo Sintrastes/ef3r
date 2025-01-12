@@ -17,6 +17,14 @@ mapped = node
     .map { x -> x + 3 }
     .map { x -> x * 7 };
 
+// Note: This only currently works for the original node, not mapped nodes.
+mapped.on_update { value ->
+    print("Got updated node value:");
+    print(value);
+};
+
+node.update_node(3);
+
 x = 2;
 y = 3;
 
@@ -28,4 +36,4 @@ w = z + 3;
 
 dbg_trace_full(w);
 
-print(2 / (w - 8));
+// print(2 / (w - 8));

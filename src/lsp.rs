@@ -1,6 +1,6 @@
 pub mod autocomplete;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LspService, Server};
 
@@ -11,14 +11,14 @@ use crate::{
 
 pub struct LspBackend {
     client: Client,
-    context: Arc<Mutex<Context<'static, NoOpDebugger>>>,
+    context: Arc<RwLock<Context<NoOpDebugger>>>,
 }
 
 impl LspBackend {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            context: Arc::new(Mutex::new(ef3r_stdlib(
+            context: Arc::new(RwLock::new(ef3r_stdlib(
                 NoOpDebugger::new(),
                 bimap::BiMap::new(),
             ))),
@@ -71,9 +71,8 @@ impl tower_lsp::LanguageServer for LspBackend {
             .unwrap_or("");
 
         // Get completions
-        let completions = with_lock(self.context.as_ref(), |context| {
-            autocomplete::autocomplete(context, current_line)
-        });
+        let context = &self.context.read().unwrap();
+        let completions = autocomplete::autocomplete(context, current_line);
 
         Ok(Some(CompletionResponse::Array(
             completions

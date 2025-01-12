@@ -22,8 +22,8 @@ pub struct Module<const N: usize, T: Debugger + 'static> {
     pub definitions: [FunctionDefinition<T>; N],
 }
 
-impl<'a, const N: usize, T: Debugger> Module<N, T> {
-    pub fn load_into(self, context: &mut Context<'a, T>) {
+impl<const N: usize, T: Debugger> Module<N, T> {
+    pub fn load_into(self, context: &mut Context<T>) {
         // Add the polymorphic index and function definitions from the module
         // to the context.
         context

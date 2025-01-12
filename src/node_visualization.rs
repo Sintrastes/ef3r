@@ -1,11 +1,7 @@
 use macroquad::prelude::*;
-use std::{
-    future::Future,
-    pin::Pin,
-    sync::{Arc, RwLock},
-};
-
 use node_visualizer_server::NodeVisualizer;
+use parking_lot::RwLock;
+use std::{future::Future, pin::Pin, sync::Arc};
 use tonic::{Request, Response, Status};
 
 tonic::include_proto!("debugger");
@@ -34,10 +30,10 @@ impl NodeVisualizer for NodeVisualizerState {
         Box::pin(async move {
             let nodes = request.get_ref().nodes.iter();
 
-            let nodes_added = self.nodes_added.read().unwrap().clone() as f32;
+            let nodes_added = self.nodes_added.read().clone() as f32;
 
             for node in nodes {
-                let mut vertex_writer = self.vertices.write().unwrap();
+                let mut vertex_writer = self.vertices.write();
 
                 vertex_writer.push(VisualNode {
                     id: node.id,
@@ -46,7 +42,7 @@ impl NodeVisualizer for NodeVisualizerState {
                     position: (200.0 * nodes_added, 200.0 * nodes_added),
                 });
 
-                *self.nodes_added.write().unwrap() += 1;
+                *self.nodes_added.write() += 1;
             }
 
             Ok(Response::new(AddNodesResponse {}))
@@ -92,7 +88,6 @@ impl NodeVisualizer for NodeVisualizerState {
                 if let Some(vertex) = self
                     .vertices
                     .write()
-                    .unwrap()
                     .iter_mut()
                     .find(|v| v.id == update.node_id)
                 {
@@ -177,7 +172,7 @@ pub async fn node_visualization(state: NodeVisualizerState) {
 
         // For debugging purposes, we can place vertices by right-clicking.
         if is_mouse_button_released(MouseButton::Right) {
-            let mut writer = state.vertices.write().unwrap();
+            let mut writer = state.vertices.write();
             let vertices_mut: &mut Vec<VisualNode> = writer.as_mut();
 
             let position = camera.screen_to_world(mouse_position().into());
@@ -195,7 +190,7 @@ pub async fn node_visualization(state: NodeVisualizerState) {
 
         set_camera(&camera);
 
-        let vertices = state.vertices.read().unwrap();
+        let vertices = state.vertices.read();
 
         for vertex in vertices.iter() {
             draw_node(&vertex.label, vertex.position);

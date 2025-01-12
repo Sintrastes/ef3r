@@ -15,10 +15,10 @@ use crate::{
 ///  with (optionally) a symbol table loaded to be used for
 ///  debugging purposes.
 ///
-pub fn ef3r_stdlib<'a, T: Debugger + 'static>(
+pub fn ef3r_stdlib<T: Debugger + Send + Sync + 'static>(
     debugger: T,
     symbol_table: BiMap<usize, String>,
-) -> Context<'a, T> {
+) -> Context<T> {
     // Lookup table for the interpreter
     let mut context = Context::init(debugger);
 

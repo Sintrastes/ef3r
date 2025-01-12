@@ -1,10 +1,8 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc, thread::JoinHandle};
 
 use bimap::{BiHashMap, BiMap};
 use daggy::Dag;
+use parking_lot::RwLock;
 use thiserror::Error;
 
 use crate::{
@@ -25,17 +23,14 @@ use crate::{
 /// Local state needed to evaluate expressions and
 ///  update the FRP event loop.
 ///
-#[derive(Clone)]
-pub struct Context<'a, T: Debugger + 'static>
-where
-    'a: 'static,
-{
+pub struct Context<T: Debugger + 'static> {
     pub expression_context: ExpressionContext<T>,
-    pub graph: Dag<Node<'a, T>, (), u32>,
+    pub graph: Dag<Node<T>, (), u32>,
+    pub join_handles: Vec<JoinHandle<Result<(), EvaluationError>>>,
     pub debugger: T,
 }
 
-impl<'a, T: Debugger> Context<'a, T> {
+impl<'a, T: Debugger> Context<T> {
     pub fn load_module<const N: usize>(&mut self, module: Module<N, T>) {
         module.load_into(self);
     }
@@ -44,9 +39,10 @@ impl<'a, T: Debugger> Context<'a, T> {
     /// Initialize a new context with no modules
     ///  (builtin or otherwise) loaded.
     ///
-    pub fn init(debugger: T) -> Context<'a, T> {
+    pub fn init(debugger: T) -> Context<T> {
         Context {
             debugger,
+            join_handles: vec![],
             graph: Dag::new(),
             expression_context: ExpressionContext {
                 symbol_table: BiHashMap::new(),
@@ -58,7 +54,7 @@ impl<'a, T: Debugger> Context<'a, T> {
     }
 }
 
-unsafe impl<'a, T: Debugger> Send for Context<'a, T> {}
+unsafe impl<T: Debugger> Send for Context<T> {}
 
 #[derive(Error, PartialEq, Debug)]
 pub enum EvaluationError {
@@ -70,6 +66,8 @@ pub enum EvaluationError {
     },
     #[error("Attempted to apply {}, but was not a function.", _0.untraced())]
     NotAFunction(TracedExpr<String>),
+    #[error("Thread panicked")]
+    ThreadError,
     #[error("Could not find variable \"{variable}\" in the current context.")]
     VariableNotFound { variable: String },
     #[error("Function {for_function} takes {expected} arguments, but was passed {actual}.")]
@@ -90,7 +88,8 @@ pub struct FunctionDefinition<T: Debugger + 'static> {
     pub argument_types: Vec<ExprType>,
     pub result_type: ExprType,
     pub definition: fn(
-        Arc<Mutex<Context<T>>>,
+        &mut Context<T>,
+        Arc<RwLock<Context<T>>>,
         &[TracedExpr<usize>],
     ) -> Result<TracedExprRec<usize>, EvaluationError>,
     pub name: String,
@@ -158,6 +157,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
             TracedExprRec::Float(x) => TracedExprRec::Float(x),
             TracedExprRec::Bool(x) => TracedExprRec::Bool(x),
             TracedExprRec::Type(x) => TracedExprRec::Type(x),
+            TracedExprRec::JoinHandle(x) => TracedExprRec::JoinHandle(x),
             TracedExprRec::Pair(x, y) => TracedExprRec::Pair(
                 Box::new(self.strip_symbols_traced(*x)),
                 Box::new(self.strip_symbols_traced(*y)),
@@ -273,6 +273,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                 RawExprRec::List(xs) => RawExprRec::List(
                     xs.into_iter().map(|x| self.strip_symbols_raw(x)).collect(),
                 ),
+                RawExprRec::JoinHandle(x) => RawExprRec::JoinHandle(x),
                 RawExprRec::Node(x) => RawExprRec::Node(x),
                 RawExprRec::BuiltinFunction(x) => {
                     RawExprRec::BuiltinFunction(x)
@@ -347,6 +348,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                     .map(|x| self.restore_symbols_traced(x))
                     .collect(),
             ),
+            TracedExprRec::JoinHandle(x) => TracedExprRec::JoinHandle(x),
             TracedExprRec::Node(x) => TracedExprRec::Node(x),
             TracedExprRec::BuiltinFunction(x) => {
                 TracedExprRec::BuiltinFunction(x)
@@ -444,6 +446,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                         .map(|x| self.restore_symbols_raw(x))
                         .collect(),
                 ),
+                RawExprRec::JoinHandle(x) => RawExprRec::JoinHandle(x),
                 RawExprRec::Node(x) => RawExprRec::Node(x),
                 RawExprRec::BuiltinFunction(x) => {
                     RawExprRec::BuiltinFunction(x)
@@ -513,12 +516,14 @@ mod tests_for_symbols {
 
 /// Apply an expression to a list of arguments in a traced manner.
 pub fn apply_traced<T: Debugger + 'static>(
-    ctx: Arc<Mutex<Context<T>>>,
+    ctx: &mut Context<T>,
+    ctx_ref: Arc<RwLock<Context<T>>>,
     expr: TracedExpr<usize>,
     args: &[TracedExpr<usize>],
 ) -> Result<TracedExpr<usize>, EvaluationError> {
     let evaluated = evaluate::<T>(
-        ctx.clone(),
+        ctx,
+        ctx_ref.clone(),
         TracedExprRec::Apply(
             Box::new(expr.evaluated.clone().traced()),
             args.iter().map(|x| x.evaluated.clone().traced()).collect(),
@@ -530,12 +535,8 @@ pub fn apply_traced<T: Debugger + 'static>(
         .iter()
         .map(|arg| match &arg.evaluated {
             TracedExprRec::Var(var_name) => {
-                if let Some(value) = ctx
-                    .lock()
-                    .unwrap()
-                    .expression_context
-                    .variables
-                    .get(var_name)
+                if let Some(value) =
+                    ctx.expression_context.variables.get(var_name)
                 {
                     value.clone()
                 } else {
@@ -559,17 +560,20 @@ pub fn apply_traced<T: Debugger + 'static>(
 }
 
 pub fn evaluate_traced<T: Debugger + 'static>(
-    ctx: Arc<Mutex<Context<T>>>,
+    ctx: &mut Context<T>,
+    ctx_ref: Arc<RwLock<Context<T>>>,
     expr: TracedExpr<usize>,
 ) -> Result<TracedExpr<usize>, EvaluationError> {
-    evaluate_traced_rec::<T>(ctx, expr.evaluated.clone())
+    evaluate_traced_rec::<T>(ctx, ctx_ref, expr.evaluated.clone())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     use bimap::BiMap;
+
+    use parking_lot::RwLock;
 
     use crate::{
         ast::traced_expr::TracedExprRec, debugging::NoOpDebugger,
@@ -582,26 +586,32 @@ mod tests {
 
             let expr = context.expression_context.strip_symbols(expr);
 
-            let context = Arc::new(Mutex::new(context));
+            let context_ref = Arc::new(RwLock::new(context));
 
-            let evaluated = evaluate(context.clone(), expr);
+            let context_ref_clone = context_ref.clone();
+
+            let mut context = context_ref_clone.write();
+
+            let evaluated = evaluate(&mut context, context_ref.clone(), expr);
             match evaluated {
                 Err(_) => true, // Property does not apply if expression is malformed.
-                Ok(inner) => Ok(inner.clone()) == evaluate(context, inner.evaluated),
+                Ok(inner) => Ok(inner.clone()) == evaluate(&mut context, context_ref, inner.evaluated),
             }
         }
     }
 }
 
 pub fn evaluate<T: Debugger + 'static>(
-    ctx: Arc<Mutex<Context<T>>>,
+    ctx: &mut Context<T>,
+    ctx_ref: Arc<RwLock<Context<T>>>,
     expr: TracedExprRec<usize>,
 ) -> Result<TracedExpr<usize>, EvaluationError> {
-    evaluate_traced_rec::<T>(ctx, expr)
+    evaluate_traced_rec::<T>(ctx, ctx_ref, expr)
 }
 
 fn evaluate_traced_rec<T: Debugger + 'static>(
-    ctx: Arc<Mutex<Context<T>>>,
+    ctx: &mut Context<T>,
+    ctx_ref: Arc<RwLock<Context<T>>>,
     expr: TracedExprRec<usize>,
 ) -> Result<TracedExpr<usize>, EvaluationError> {
     match expr {
@@ -617,24 +627,23 @@ fn evaluate_traced_rec<T: Debugger + 'static>(
         TracedExprRec::Lambda(_, _, _) => Ok(expr.traced()),
         TracedExprRec::BuiltinFunction(_) => Ok(expr.traced()),
         TracedExprRec::PolymorphicFunction(_) => Ok(expr.traced()),
+        TracedExprRec::JoinHandle(_) => Ok(expr.traced()),
         TracedExprRec::Node(_) => Ok(expr.traced()),
         TracedExprRec::List(_) => Ok(expr.traced()),
         // Function applications need to be reduced.
         TracedExprRec::Apply(_, _) => {
-            evaluate_function_application::<T>(ctx, &(expr.clone()))
+            evaluate_function_application::<T>(ctx, ctx_ref, &(expr.clone()))
         }
         // Variables are looked up in the current context.
         TracedExprRec::Var(x) => {
-            let lock = ctx.lock().unwrap();
-
-            let var_name = lock
+            let var_name = ctx
                 .expression_context
                 .symbol_table
                 .get_by_left(&x)
                 .unwrap_or(&format!("var_{}", x))
                 .to_string();
 
-            Ok(lock
+            Ok(ctx
                 .expression_context
                 .variables
                 .get(&x)
@@ -649,24 +658,24 @@ fn evaluate_traced_rec<T: Debugger + 'static>(
 /// Entrypoint for the ef3r interpreter. Takes a list of a statements
 ///  and executes them.
 pub fn interpret<T>(
-    ctx: Arc<Mutex<Context<T>>>,
+    ctx: &mut Context<T>,
+    ctx_ref: Arc<RwLock<Context<T>>>,
     statements: &[Statement<usize>],
 ) -> Result<(), EvaluationError>
 where
     T: Debugger + 'static,
 {
     for statement in statements {
-        with_lock(ctx.as_ref(), |locked| {
-            T::suspend(statement.location, locked)
-        });
+        T::suspend(statement.location, ctx);
 
-        let evaluated =
-            evaluate_traced::<T>(ctx.clone(), statement.expr.from_raw())?;
+        let evaluated = evaluate_traced::<T>(
+            ctx,
+            ctx_ref.clone(),
+            statement.expr.from_raw(),
+        )?;
 
         if let Some(var) = &statement.var {
-            ctx.lock()
-                .unwrap()
-                .expression_context
+            ctx.expression_context
                 .variables
                 .insert(var.clone(), evaluated);
         };
@@ -676,20 +685,23 @@ where
 }
 
 pub fn evaluate_function_application<T: Debugger + 'static>(
-    ctx: Arc<Mutex<Context<T>>>,
+    ctx: &mut Context<T>,
+    ctx_ref: Arc<RwLock<Context<T>>>,
     action_expr: &TracedExprRec<usize>,
 ) -> Result<TracedExpr<usize>, EvaluationError> {
     match &action_expr {
         TracedExprRec::Apply(action, args) => {
             let evaluated_args: Result<Vec<TracedExpr<usize>>, _> = args
                 .into_iter()
-                .map(|arg| evaluate_traced::<T>(ctx.clone(), arg.clone()))
+                .map(|arg| {
+                    evaluate_traced::<T>(ctx, ctx_ref.clone(), arg.clone())
+                })
                 .collect();
 
             let mut evaluated_args = evaluated_args?;
 
             let evaluated_fn =
-                evaluate::<T>(ctx.clone(), action.clone().evaluated)?
+                evaluate::<T>(ctx, ctx_ref.clone(), action.clone().evaluated)?
                     .evaluated
                     .clone();
 
@@ -697,12 +709,8 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
                 .into_iter()
                 .map(|arg| {
                     if let TracedExprRec::Var(var_name) = &arg.evaluated {
-                        if let Some(value) = ctx
-                            .lock()
-                            .unwrap()
-                            .expression_context
-                            .variables
-                            .get(var_name)
+                        if let Some(value) =
+                            ctx.expression_context.variables.get(var_name)
                         {
                             value.clone()
                         } else {
@@ -715,13 +723,18 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
                 .collect();
 
             let action_fn = function_from_expression::<T>(
-                ctx.clone(),
+                ctx,
+                ctx_ref.clone(),
                 &evaluated_args,
                 evaluated_fn,
             )?;
 
             Ok(TracedExpr::build(
-                (action_fn)(ctx, &evaluated_args.as_mut_slice())?,
+                (action_fn)(
+                    ctx,
+                    ctx_ref.clone(),
+                    &evaluated_args.as_mut_slice(),
+                )?,
                 Some(TracedExprRec::Apply(
                     action.clone(),
                     expanded_args.into(),
@@ -729,9 +742,8 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
             ))
         }
         _ => {
-            let reinterpreted = with_lock(ctx.as_ref(), |ctx| {
-                ctx.expression_context.restore_symbols(action_expr.clone())
-            });
+            let reinterpreted =
+                ctx.expression_context.restore_symbols(action_expr.clone());
 
             Err(EvaluationError::NotAFunction(reinterpreted.traced()))
         }
@@ -739,13 +751,15 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
 }
 
 fn function_from_expression<T: Debugger + 'static>(
-    ctx: Arc<Mutex<Context<T>>>,
+    ctx: &mut Context<T>,
+    ctx_ref: Arc<RwLock<Context<T>>>,
     evaluated_args: &Vec<TracedExpr<usize>>,
     resolved: TracedExprRec<usize>,
 ) -> Result<
     Box<
         dyn Fn(
-            Arc<Mutex<Context<T>>>,
+            &mut Context<T>,
+            Arc<RwLock<Context<T>>>,
             &[TracedExpr<usize>],
         ) -> Result<TracedExprRec<usize>, EvaluationError>,
     >,
@@ -753,14 +767,11 @@ fn function_from_expression<T: Debugger + 'static>(
 > {
     return Ok(match &resolved {
         TracedExprRec::BuiltinFunction(action_id) => {
-            let reinterpreted = with_lock(ctx.as_ref(), |ctx| {
-                ctx.expression_context.restore_symbols(resolved.clone())
-            });
+            let reinterpreted =
+                ctx.expression_context.restore_symbols(resolved.clone());
 
             Box::new(
-                ctx.lock()
-                    .unwrap()
-                    .expression_context
+                ctx.expression_context
                     .functions
                     .get(*action_id)
                     .ok_or(EvaluationError::NotAFunction(
@@ -773,12 +784,10 @@ fn function_from_expression<T: Debugger + 'static>(
             let arg_types: Vec<_> = evaluated_args
                 .iter()
                 .map(|arg| {
-                    with_lock(ctx.as_ref(), |lock| {
-                        type_of::<_, _, RuntimeLookup>(
-                            &lock.expression_context,
-                            &arg.evaluated,
-                        )
-                    })
+                    type_of::<_, _, RuntimeLookup>(
+                        &ctx.expression_context,
+                        &arg.evaluated,
+                    )
                 })
                 .collect();
 
@@ -786,8 +795,6 @@ fn function_from_expression<T: Debugger + 'static>(
                 id: *polymorphic_id,
                 arg_types: arg_types.clone().into_iter().flatten().collect(),
             };
-
-            let ctx = ctx.lock().unwrap();
 
             // First, check to see if there are any polymorphic functions we
             // can resolve via multiple dispatch.
@@ -844,7 +851,8 @@ fn function_from_expression<T: Debugger + 'static>(
             let statements = statements.clone();
             let result = result.clone();
             Box::new(
-                move |ctx: Arc<Mutex<Context<T>>>,
+                move |ctx,
+                      ctx_ref: Arc<RwLock<Context<T>>>,
                       var_values: &[TracedExpr<usize>]| {
                     if vars.len() != var_values.len() {
                         return Err(EvaluationError::WrongNumberOfArguments {
@@ -883,7 +891,11 @@ fn function_from_expression<T: Debugger + 'static>(
                             .collect();
 
                     // Run the substituted statements
-                    interpret::<T>(ctx.clone(), &substituted_statements)?;
+                    interpret::<T>(
+                        ctx,
+                        ctx_ref.clone(),
+                        &substituted_statements,
+                    )?;
 
                     // Substitute variables in result expression
                     let substituted_result_expr = vars
@@ -899,17 +911,20 @@ fn function_from_expression<T: Debugger + 'static>(
 
                     // Run the result to get the return value
                     let result: Result<TracedExprRec<usize>, EvaluationError> =
-                        evaluate_traced::<T>(ctx, substituted_result_expr)
-                            .map(|x| x.evaluated);
+                        evaluate_traced::<T>(
+                            ctx,
+                            ctx_ref,
+                            substituted_result_expr,
+                        )
+                        .map(|x| x.evaluated);
 
                     result
                 },
             )
         }
         _ => {
-            let reinterpreted = with_lock(ctx.as_ref(), |ctx| {
-                ctx.expression_context.restore_symbols(resolved.clone())
-            });
+            let reinterpreted =
+                ctx.expression_context.restore_symbols(resolved.clone());
             return Err(EvaluationError::NotAFunction(reinterpreted.traced()));
         }
     });

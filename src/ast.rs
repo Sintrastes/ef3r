@@ -42,9 +42,10 @@ impl Statement<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     use bimap::BiMap;
+    use parking_lot::RwLock;
 
     use crate::{
         ast::{
@@ -53,14 +54,18 @@ mod tests {
             traced_expr::{TracedExpr, TracedExprRec},
         },
         debugging::NoOpDebugger,
-        frp::with_lock,
         interpreter::evaluate_traced,
         stdlib::ef3r_stdlib,
     };
 
     #[test]
     fn evaluation_keeps_trace() {
-        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+        let context_ref = Arc::new(RwLock::new(ef3r_stdlib(
+            NoOpDebugger::new(),
+            BiMap::new(),
+        )));
+
+        let mut context = context_ref.write();
 
         // Example expression.
         let expression = TracedExpr::apply(
@@ -74,9 +79,12 @@ mod tests {
             ],
         );
 
-        let context = Arc::new(Mutex::new(context));
-
-        let evaluated = evaluate_traced(context, expression.clone()).unwrap();
+        let evaluated = evaluate_traced(
+            &mut context,
+            context_ref.clone(),
+            expression.clone(),
+        )
+        .unwrap();
 
         assert_eq!(evaluated.evaluated, TracedExprRec::Int(6));
 
@@ -85,7 +93,12 @@ mod tests {
 
     #[test]
     fn evaluating_twice_keeps_entire_trace() {
-        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+        let context_ref = Arc::new(RwLock::new(ef3r_stdlib(
+            NoOpDebugger::new(),
+            BiMap::new(),
+        )));
+
+        let mut context = context_ref.write();
 
         // Example expression. 2 * (1 + 2)
         let expression = RawExpr::apply(
@@ -99,29 +112,30 @@ mod tests {
             ],
         );
 
-        let context = Arc::new(Mutex::new(context));
-
-        let evaluated =
-            evaluate_traced(context.clone(), expression.from_raw().clone())
-                .unwrap();
+        let evaluated = evaluate_traced(
+            &mut context,
+            context_ref.clone(),
+            expression.from_raw().clone(),
+        )
+        .unwrap();
 
         // 2 * (2 * (1 + 2))
-        let second_expression = with_lock(context.as_ref(), |context| {
-            TracedExpr::apply(
-                TracedExpr::resolve(&context, "*"),
-                [TracedExpr::int(2), evaluated],
-            )
-        });
+        let second_expression = TracedExpr::apply(
+            TracedExpr::resolve(&context, "*"),
+            [TracedExpr::int(2), evaluated],
+        );
 
-        let expected = with_lock(context.as_ref(), |context| {
-            RawExpr::apply(
-                RawExpr::resolve(&context, "*"),
-                [RawExpr::int(2), expression],
-            )
-        });
+        let expected = RawExpr::apply(
+            RawExpr::resolve(&context, "*"),
+            [RawExpr::int(2), expression],
+        );
 
-        let second_evaluated =
-            evaluate_traced(context, second_expression.clone()).unwrap();
+        let second_evaluated = evaluate_traced(
+            &mut context,
+            context_ref.clone(),
+            second_expression.clone(),
+        )
+        .unwrap();
 
         assert_eq!(second_evaluated.full_trace(), expected);
     }

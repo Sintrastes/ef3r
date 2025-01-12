@@ -1,6 +1,8 @@
 use crate::{
-    ast::traced_expr::TracedExprRec, debugging::Debugger,
-    interpreter::ExpressionContext, types::ExprType,
+    ast::traced_expr::{TracedExpr, TracedExprRec},
+    debugging::Debugger,
+    interpreter::ExpressionContext,
+    types::ExprType,
 };
 
 /// Attempts to infer the type of expressions.
@@ -42,6 +44,7 @@ pub fn type_of<T: Debugger + 'static, V, Lookup: TypingLookup<T, V>>(
                     .unwrap_or(ExprType::Any),
             ),
         )),
+        TracedExprRec::JoinHandle(_) => None,
         TracedExprRec::Node(_) => Some(ExprType::Node(Box::new(ExprType::Any))),
         TracedExprRec::Lambda(args, _, traced_expr) => {
             let arg_types: Vec<ExprType> = args

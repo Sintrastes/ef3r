@@ -20,20 +20,20 @@ pub fn strings_module<T: Debugger>() -> Module<4, T> {
                 T,
                 "uppercase",
                 ExprType::String,
-                |_cx, x: String| { Ok(x.to_uppercase()) }
+                |_cx, _ref, x: String| { Ok(x.to_uppercase()) }
             ),
             build_function!(
                 T,
                 "lowercase",
                 ExprType::String,
-                |_cx, x: String| { Ok(x.to_lowercase()) }
+                |_cx, _ref, x: String| { Ok(x.to_lowercase()) }
             ),
             build_function!(
                 T,
                 "length",
                 ExprType::Int,
                 vec![ExprType::String],
-                |_ctx, first| {
+                |_ctx, _ref, first| {
                     match first.evaluated {
                         TracedExprRec::String(s) => {
                             Ok(TracedExprRec::Int(s.len() as i32))
@@ -47,7 +47,7 @@ pub fn strings_module<T: Debugger>() -> Module<4, T> {
                 "split",
                 ExprType::List(Box::new(ExprType::String)),
                 vec![ExprType::String, ExprType::String],
-                |_ctx, first, second| {
+                |_ctx, _ref, first, second| {
                     match (first.evaluated, second.evaluated) {
                         (
                             TracedExprRec::String(s),

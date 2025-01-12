@@ -22,7 +22,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 T,
                 "drop",
                 ExprType::List(Box::new(ExprType::Any)),
-                |_cx, list: Vec<TracedExpr<usize>>, n: i32| {
+                |_cx, _ref, list: Vec<TracedExpr<usize>>, n: i32| {
                     Ok(if n <= 0 {
                         list
                     } else {
@@ -34,7 +34,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 T,
                 "drop_last",
                 ExprType::List(Box::new(ExprType::Any)),
-                |_cx, list: Vec<TracedExpr<usize>>, n: i32| {
+                |_cx, _ref, list: Vec<TracedExpr<usize>>, n: i32| {
                     Ok(if n <= 0 {
                         list
                     } else {
@@ -50,6 +50,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 "+",
                 ExprType::List(Box::new(ExprType::Any)),
                 |_cx,
+                 _ref,
                  list1: Vec<TracedExpr<usize>>,
                  list2: Vec<TracedExpr<usize>>| {
                     let mut result = list1;
@@ -70,14 +71,15 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                     //    Box::new(ExprType::Any)
                     //)
                 ],
-                |ctx, list, f| {
+                |ctx, _ref, list, f| {
                     match list.evaluated {
                         TracedExprRec::List(elements) => {
                             let mapped = elements
                                 .into_iter()
                                 .map(|e| {
                                     evaluate_function_application(
-                                        ctx.clone(),
+                                        ctx,
+                                        _ref.clone(),
                                         &TracedExprRec::Apply(
                                             Box::new(f.clone()),
                                             Box::new([e]),
@@ -103,14 +105,15 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                         Box::new(ExprType::Bool)
                     )
                 ],
-                |ctx, list, pred| {
+                |ctx, _ref, list, pred| {
                     match list.evaluated {
                         TracedExprRec::List(elements) => {
                             let filtered = elements
                                 .into_iter()
                                 .filter(
                                     |e| match evaluate_function_application(
-                                        ctx.clone(),
+                                        ctx,
+                                        _ref.clone(),
                                         &TracedExprRec::Apply(
                                             Box::new(pred.clone()),
                                             Box::new([e.clone()]),
@@ -142,13 +145,14 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                     //     Box::new(ExprType::Any)
                     // )
                 ],
-                |ctx, list, init, f| {
+                |ctx, _ref, list, init, f| {
                     match list.evaluated {
                         TracedExprRec::List(elements) => {
                             let result =
                                 elements.into_iter().fold(init, |acc, e| {
                                     evaluate_function_application(
-                                        ctx.clone(),
+                                        ctx,
+                                        _ref.clone(),
                                         &TracedExprRec::Apply(
                                             Box::new(f.clone()),
                                             Box::new([e, acc]),
@@ -163,6 +167,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 }
             ),
             build_function!(T, "first", ExprType::Any, |_cx,
+                                                        _ref,
                                                         list: Vec<
                 TracedExpr<usize>,
             >| {
@@ -172,6 +177,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                     .unwrap_or(TracedExprRec::None))
             }),
             build_function!(T, "last", ExprType::Any, |_cx,
+                                                       _ref,
                                                        list: Vec<
                 TracedExpr<usize>,
             >| {
@@ -184,7 +190,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 name: "list".to_string(),
                 argument_types: vec![], // Vararg function
                 result_type: ExprType::List(Box::new(ExprType::Any)),
-                definition: |_, xs: &[TracedExpr<usize>]| {
+                definition: |_, _ref, xs: &[TracedExpr<usize>]| {
                     Ok(TracedExprRec::List(xs.to_vec()))
                 },
             },
@@ -193,12 +199,16 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 "length",
                 ExprType::Int,
                 vec![ExprType::List(Box::new(ExprType::Any))],
-                |_ctx, first| {
+                |_ctx, _ref, first| {
                     match first.evaluated {
                         TracedExprRec::List(xs) => {
                             Ok(TracedExprRec::Int(xs.len() as i32))
                         }
-                        _ => unreachable!(),
+                        _ => Err(EvaluationError::TypeError {
+                            expected: ExprType::List(Box::new(ExprType::Any)),
+                            actual: ExprType::Any,
+                            at_loc: "length".to_string(),
+                        }),
                     }
                 }
             ),
@@ -207,6 +217,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 "intersperse",
                 ExprType::List(Box::new(ExprType::Any)),
                 |_cx,
+                 _ref,
                  list: Vec<TracedExpr<usize>>,
                  separator: TracedExprRec<usize>| {
                     if list.is_empty() {

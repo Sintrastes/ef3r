@@ -9,11 +9,14 @@ use ef3r::debugging::NoOpDebugger;
 use ef3r::executable::load_efrs_source;
 use ef3r::interpreter::interpret;
 use ef3r::stdlib::ef3r_stdlib;
+use parking_lot::RwLock;
 
 #[test]
 fn variable_assignment() {
     let context =
-        Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
+        Arc::new(RwLock::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
+
+    let mut lock = context.write();
 
     let cloned_ctx = context.clone();
 
@@ -24,17 +27,10 @@ fn variable_assignment() {
         expr: expression.clone(),
     };
 
-    interpret(context, &vec![statement.clone()]).unwrap();
+    interpret(&mut lock, context.clone(), &vec![statement.clone()]).unwrap();
 
     assert_eq!(
-        cloned_ctx
-            .lock()
-            .unwrap()
-            .expression_context
-            .variables
-            .get(&0)
-            .unwrap()
-            .evaluated,
+        lock.expression_context.variables.get(&0).unwrap().evaluated,
         expression.from_raw().evaluated
     );
 }
@@ -42,9 +38,9 @@ fn variable_assignment() {
 #[test]
 fn reassignment_of_statement() {
     let context =
-        Arc::new(Mutex::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
+        Arc::new(RwLock::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
 
-    let cloned_ctx = context.clone();
+    let mut lock = context.write();
 
     let statement1 = Statement {
         location: None,
@@ -57,17 +53,11 @@ fn reassignment_of_statement() {
         expr: RawExpr::int(3),
     };
 
-    interpret(context, &vec![statement1, statement2]).unwrap();
+    interpret(&mut lock, context.clone(), &vec![statement1, statement2])
+        .unwrap();
 
     assert_eq!(
-        cloned_ctx
-            .lock()
-            .unwrap()
-            .expression_context
-            .variables
-            .get(&0)
-            .unwrap()
-            .evaluated,
+        lock.expression_context.variables.get(&0).unwrap().evaluated,
         TracedExprRec::Int(3)
     );
 }
@@ -117,15 +107,21 @@ fn execute_example_program() {
             .map { x -> x + 2 }
             .filter { x -> x % 2 == 0 };
 
+        print(ys);
+
         // Test floating point arithmetic
 
         foo = 3.2 * 5.6 + 0.2 - 0.01;
+
+        print(foo);
 
         // Test infix function syntax.
 
         op = { x, y -> 2 * x + y };
 
         applied = 2 `op` 3;
+
+        print(applied);
 
         /* Test launcing a thread. */
         launch {
@@ -141,12 +137,19 @@ fn execute_example_program() {
 
             print(y);
         };
+
+        print("after launch");
     "#
     .to_string();
 
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
-    let result = interpret(Arc::new(Mutex::new(context)), program.as_slice());
+
+    let ctx_ref = Arc::new(RwLock::new(context));
+
+    let mut context = ctx_ref.write();
+
+    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
 
     dbg!(&result);
 
@@ -163,7 +166,12 @@ fn pair_accessors_fail_on_nonpair() {
 
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
-    let result = interpret(Arc::new(Mutex::new(context)), program.as_slice());
+
+    let ctx_ref = Arc::new(RwLock::new(context));
+
+    let mut context = ctx_ref.write();
+
+    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
 
     assert!(result.is_err());
 
@@ -172,10 +180,15 @@ fn pair_accessors_fail_on_nonpair() {
     "#
     .to_string();
 
-    let (context, program2) =
+    let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program2).unwrap();
-    let result2 = interpret(Arc::new(Mutex::new(context)), program2.as_slice());
-    assert!(result2.is_err());
+
+    let ctx_ref = Arc::new(RwLock::new(context));
+
+    let mut context = ctx_ref.write();
+
+    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
+    assert!(result.is_err());
 }
 
 #[test]
@@ -187,7 +200,12 @@ fn arithmetic_operators_wrong_args() {
 
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
-    let result = interpret(Arc::new(Mutex::new(context)), program.as_slice());
+
+    let ctx_ref = Arc::new(RwLock::new(context));
+
+    let mut context = ctx_ref.write();
+
+    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
     assert!(result.is_err());
 
     let program = r#"
@@ -197,7 +215,12 @@ fn arithmetic_operators_wrong_args() {
 
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
-    let result = interpret(Arc::new(Mutex::new(context)), program.as_slice());
+
+    let ctx_ref = Arc::new(RwLock::new(context));
+
+    let mut context = ctx_ref.write();
+
+    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
     assert!(result.is_err());
 
     let program = r#"
@@ -207,6 +230,11 @@ fn arithmetic_operators_wrong_args() {
 
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
-    let result = interpret(Arc::new(Mutex::new(context)), program.as_slice());
+
+    let ctx_ref = Arc::new(RwLock::new(context));
+
+    let mut context = ctx_ref.write();
+
+    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
     assert!(result.is_err());
 }

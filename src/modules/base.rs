@@ -26,7 +26,7 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                     Box::new(ExprType::Any),
                     Box::new(ExprType::Any)
                 )],
-                |ctx, pair| {
+                |ctx, _ref, pair| {
                     match pair.evaluated {
                         TracedExprRec::Pair(x, _) => Ok(x.evaluated),
                         actual => Err(EvaluationError::TypeError {
@@ -35,7 +35,7 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                                 Box::new(ExprType::Any),
                             ),
                             actual: type_of::<_, _, RuntimeLookup>(
-                                &ctx.lock().unwrap().expression_context,
+                                &ctx.expression_context,
                                 &actual,
                             )
                             .unwrap(),
@@ -52,7 +52,7 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                     Box::new(ExprType::Any),
                     Box::new(ExprType::Any)
                 )],
-                |ctx, pair| {
+                |ctx, _ref, pair| {
                     match pair.evaluated {
                         TracedExprRec::Pair(_, y) => Ok(y.evaluated),
                         actual => Err(EvaluationError::TypeError {
@@ -61,7 +61,7 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                                 Box::new(ExprType::Any),
                             ),
                             actual: type_of::<_, _, RuntimeLookup>(
-                                &ctx.lock().unwrap().expression_context,
+                                &ctx.expression_context,
                                 &actual,
                             )
                             .unwrap(),
@@ -75,10 +75,11 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                 "loop",
                 ExprType::Unit,
                 vec![ExprType::Func(vec![], Box::new(ExprType::Unit))],
-                |ctx, first| {
+                |ctx, _ref, first| {
                     loop {
                         evaluate_function_application(
-                            ctx.clone(),
+                            ctx,
+                            _ref.clone(),
                             &TracedExprRec::Apply(
                                 Box::new(first.clone()),
                                 Box::new([]),
@@ -97,7 +98,7 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                     Box::new(ExprType::Any)
                 ),
                 vec![ExprType::Any, ExprType::Any],
-                |_cx, first, second| {
+                |_cx, _ref, first, second| {
                     Ok(TracedExprRec::Pair(Box::new(first), Box::new(second)))
                 }
             ),
@@ -106,10 +107,10 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                 "type_of",
                 ExprType::Type,
                 vec![ExprType::Any],
-                |ctx, first| {
+                |ctx, _ref, first| {
                     Ok(
                         match type_of::<_, _, RuntimeLookup>(
-                            &ctx.lock().unwrap().expression_context,
+                            &ctx.expression_context,
                             &first.evaluated,
                         ) {
                             Some(x) => TracedExprRec::Type(x),
@@ -122,7 +123,7 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                 name: "assert".to_string(),
                 argument_types: vec![ExprType::Bool],
                 result_type: ExprType::Unit,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let condition = match args[0].evaluated {
                         TracedExprRec::Bool(b) => b,
                         _ => unreachable!(),
@@ -131,8 +132,6 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                     if !condition {
                         // Get full expression trace
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[0].clone())
                             .expression_trace();
@@ -152,11 +151,10 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                 "dbg_trace_full",
                 ExprType::Unit,
                 vec![ExprType::Any],
-                |ctx, first| {
-                    let resolved = with_lock(ctx.as_ref(), |lock| {
-                        lock.expression_context
-                            .restore_symbols_traced(first.clone())
-                    });
+                |ctx, _ref, first| {
+                    let resolved = ctx
+                        .expression_context
+                        .restore_symbols_traced(first.clone());
                     println!(
                         "{} = {}",
                         resolved.untraced(),
@@ -165,19 +163,21 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                     Ok(TracedExprRec::Unit)
                 }
             ),
-            build_function!(T, "%", ExprType::Int, |_cx, x: i32, y: i32| {
-                Ok(x % y)
-            }),
+            build_function!(
+                T,
+                "%",
+                ExprType::Int,
+                |_cx, _ref, x: i32, y: i32| { Ok(x % y) }
+            ),
             build_function!(
                 T,
                 "dbg_trace",
                 ExprType::Unit,
                 vec![ExprType::Any],
-                |ctx, first| {
-                    let resolved = with_lock(ctx.as_ref(), |lock| {
-                        lock.expression_context
-                            .restore_symbols_traced(first.clone())
-                    });
+                |ctx, _ref, first| {
+                    let resolved = ctx
+                        .expression_context
+                        .restore_symbols_traced(first.clone());
                     println!(
                         "{} = {}",
                         resolved.untraced(),

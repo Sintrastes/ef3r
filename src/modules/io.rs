@@ -1,6 +1,5 @@
 use std::io::{self, BufRead};
 
-use crate::typechecking::RuntimeLookup;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
@@ -22,7 +21,7 @@ pub fn io_module<T: Debugger>() -> Module<2, T> {
                 "print",
                 ExprType::Unit,
                 vec![ExprType::Any],
-                |ctx, first| {
+                |ctx, _ref, first| {
                     match first.evaluated {
                         TracedExprRec::String(string) => {
                             println!("{}", string);
@@ -30,11 +29,10 @@ pub fn io_module<T: Debugger>() -> Module<2, T> {
                         _ => {
                             println!(
                                 "{}",
-                                with_lock(ctx.as_ref(), |ctx| ctx
-                                    .expression_context
-                                    .restore_symbols(first.evaluated))
-                                .untraced()
-                                .as_expr()
+                                ctx.expression_context
+                                    .restore_symbols(first.evaluated)
+                                    .untraced()
+                                    .as_expr()
                             );
                         }
                     }
@@ -45,7 +43,7 @@ pub fn io_module<T: Debugger>() -> Module<2, T> {
                 name: "readln".to_string(),
                 argument_types: vec![],
                 result_type: ExprType::String,
-                definition: |_, _: &[TracedExpr<usize>]| {
+                definition: |_, _, _: &[TracedExpr<usize>]| {
                     let stdin = io::stdin();
                     let result = stdin.lock().lines().next().unwrap().unwrap();
 

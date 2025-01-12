@@ -32,6 +32,7 @@ pub enum RawExprRec<V> {
     Type(ExprType),
     Pair(Box<RawExpr<V>>, Box<RawExpr<V>>),
     List(Vec<RawExpr<V>>),
+    JoinHandle(usize),
     Node(usize),
     BuiltinFunction(FunctionID),
     PolymorphicFunction(PolymorphicFunctionID),
@@ -89,6 +90,7 @@ impl<V: Clone> RawExpr<V> {
                 RawExprRec::List(xs) => TracedExprRec::List(
                     xs.iter().map(|x| x.from_raw()).collect(),
                 ),
+                RawExprRec::JoinHandle(x) => TracedExprRec::JoinHandle(*x),
                 RawExprRec::Node(x) => TracedExprRec::Node(*x),
                 RawExprRec::BuiltinFunction(x) => {
                     TracedExprRec::BuiltinFunction(*x)
@@ -162,6 +164,10 @@ impl<V: Display> Display for RawExpr<V> {
                     .join("")
                     .fmt(f)?;
                 f.write_str("\"")
+            }
+            RawExprRec::JoinHandle(x) => {
+                f.write_str("#joinHandle")?;
+                f.write_str(x.to_string().as_str())
             }
             RawExprRec::Float(x) => x.fmt(f),
             RawExprRec::BuiltinFunction(x) => {

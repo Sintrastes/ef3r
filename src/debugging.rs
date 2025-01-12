@@ -14,7 +14,7 @@ use crate::{
 ///
 /// Interface for an ef3r debugger.
 ///
-pub trait Debugger: Sized {
+pub trait Debugger: Sized + Send + Sync {
     /// Suspend execution of the interpreter and
     ///  inject the debugging environment.
     fn suspend(location: Option<CodeLocation>, ctx: &mut Context<Self>);
@@ -166,7 +166,7 @@ impl Debugger for GrpcDebugger {
         let mut client = self.client.clone();
 
         let node_type = node.expr_type.to_string();
-        let label = node.value.read().unwrap().untraced().to_string();
+        let label = node.value.read().untraced().to_string();
         let id: u64 = node_id.try_into().unwrap();
 
         std::thread::spawn(move || {

@@ -7,7 +7,8 @@ use ef3r::executable::{load_efrs_file, load_efrs_or_ef3r, Executable};
 use ef3r::interpreter::{self};
 use ef3r::node_visualization::node_visualizer_server::NodeVisualizerServer;
 use ef3r::node_visualization::{node_visualization, NodeVisualizerState};
-use std::sync::{Arc, Mutex, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 use std::{fs::File, io::Write};
 use tonic::transport::Server;
 
@@ -62,6 +63,28 @@ enum Commands {
 async fn main() -> color_eyre::eyre::Result<()> {
     color_eyre::install()?;
 
+    use parking_lot::deadlock;
+    use std::thread;
+    use std::time::Duration;
+
+    // Create a background thread which checks for deadlocks every 10s
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(10));
+        let deadlocks = deadlock::check_deadlock();
+        if deadlocks.is_empty() {
+            continue;
+        }
+
+        println!("{} deadlocks detected", deadlocks.len());
+        for (i, threads) in deadlocks.iter().enumerate() {
+            println!("Deadlock #{}", i);
+            for t in threads {
+                println!("Thread Id {:#?}", t.thread_id());
+                println!("{:#?}", t.backtrace());
+            }
+        }
+    });
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -69,7 +92,15 @@ async fn main() -> color_eyre::eyre::Result<()> {
             let (context, program) =
                 load_efrs_or_ef3r(NoOpDebugger::new(), file)?;
 
-            interpreter::interpret(Arc::new(Mutex::new(context)), &program)?;
+            let context_ref = Arc::new(RwLock::new(context));
+
+            let mut context = context_ref.write();
+
+            interpreter::interpret(
+                &mut context,
+                context_ref.clone(),
+                &program,
+            )?;
         }
         Commands::Debug {
             visual,
@@ -93,9 +124,13 @@ async fn main() -> color_eyre::eyre::Result<()> {
                     file.unwrap_or(Err(eyre!("File must be specified for a non-remote debugging session"))?)
                 )?;
 
+                let context_ref = Arc::new(RwLock::new(context));
+
                 tokio::spawn(async move {
+                    let mut context = context_ref.write();
                     interpreter::interpret(
-                        Arc::new(Mutex::new(context)),
+                        &mut context,
+                        context_ref.clone(),
                         &program,
                     )
                     .unwrap();
@@ -109,8 +144,16 @@ async fn main() -> color_eyre::eyre::Result<()> {
                         file.unwrap_or(Err(eyre!("File must be specified for a non-remote debugging session"))?)
                     )?;
 
-                interpreter::interpret(Arc::new(Mutex::new(context)), &program)
-                    .unwrap();
+                let context_ref = Arc::new(RwLock::new(context));
+
+                let mut context = context_ref.write();
+
+                interpreter::interpret(
+                    &mut context,
+                    context_ref.clone(),
+                    &program,
+                )
+                .unwrap();
             }
         }
         Commands::Pack {

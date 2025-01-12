@@ -16,17 +16,23 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
         package: "stdlib".to_string(),
         file_name: "math.rs".to_string(),
         definitions: [
-            build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
-                Ok(x * y)
-            }),
-            build_function!(T, "+", ExprType::Int, |_cx, x: i32, y: i32| {
-                Ok(x + y)
-            }),
+            build_function!(
+                T,
+                "*",
+                ExprType::Int,
+                |_cx, _ref, x: i32, y: i32| { Ok(x * y) }
+            ),
+            build_function!(
+                T,
+                "+",
+                ExprType::Int,
+                |_cx, _ref, x: i32, y: i32| { Ok(x + y) }
+            ),
             FunctionDefinition {
                 name: "/".to_string(),
                 argument_types: vec![ExprType::Int, ExprType::Int],
                 result_type: ExprType::Int,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Int(i) => i,
                         _ => unreachable!(),
@@ -40,8 +46,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                     if y == 0 {
                         // Get full expression trace
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[1].clone())
                             .expression_trace();
@@ -56,20 +60,29 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                     Ok(TracedExprRec::Int(x / y))
                 },
             },
-            build_function!(T, "-", ExprType::Int, |_cx, x: i32, y: i32| {
-                Ok(x - y)
-            }),
-            build_function!(T, "*", ExprType::Float, |_cx, x: f32, y: f32| {
-                Ok(x * y)
-            }),
-            build_function!(T, "+", ExprType::Float, |_cx, x: f32, y: f32| {
-                Ok(x + y)
-            }),
+            build_function!(
+                T,
+                "-",
+                ExprType::Int,
+                |_cx, _ref, x: i32, y: i32| { Ok(x - y) }
+            ),
+            build_function!(
+                T,
+                "*",
+                ExprType::Float,
+                |_cx, _ref, x: f32, y: f32| { Ok(x * y) }
+            ),
+            build_function!(
+                T,
+                "+",
+                ExprType::Float,
+                |_cx, _ref, x: f32, y: f32| { Ok(x + y) }
+            ),
             FunctionDefinition {
                 name: "/".to_string(),
                 argument_types: vec![ExprType::Float, ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -83,8 +96,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                     if y == 0.0 {
                         // Get full expression trace
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[1].clone())
                             .expression_trace();
@@ -99,21 +110,26 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                     Ok(TracedExprRec::Float(x / y))
                 },
             },
-            build_function!(T, "-", ExprType::Float, |_cx, x: f32, y: f32| {
-                Ok(x - y)
-            }),
+            build_function!(
+                T,
+                "-",
+                ExprType::Float,
+                |_cx, _ref, x: f32, y: f32| { Ok(x - y) }
+            ),
             build_function!(
                 T,
                 "+",
                 ExprType::String,
-                |_cx, x: String, y: String| { Ok(x.to_owned() + y.as_ref()) }
+                |_cx, _ref, x: String, y: String| {
+                    Ok(x.to_owned() + y.as_ref())
+                }
             ),
             build_function!(
                 T,
                 "log",
                 ExprType::Float,
                 vec![ExprType::Int, ExprType::Float],
-                |ctx, base, number| {
+                |ctx, _ref, base, number| {
                     match (&base.evaluated, &number.evaluated) {
                         (
                             TracedExprRec::Int(base_value),
@@ -121,8 +137,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                         ) => {
                             if *base_value <= 0 {
                                 let expr_trace = ctx
-                                    .lock()
-                                    .unwrap()
                                     .expression_context
                                     .restore_symbols_traced(base.clone())
                                     .expression_trace();
@@ -136,8 +150,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                             }
                             if *num_value <= 0.0 {
                                 let expr_trace = ctx
-                                    .lock()
-                                    .unwrap()
                                     .expression_context
                                     .restore_symbols_traced(number.clone())
                                     .expression_trace();
@@ -162,7 +174,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "asin".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -170,8 +182,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
 
                     if x < -1.0 || x > 1.0 {
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[0].clone())
                             .expression_trace();
@@ -191,7 +201,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "acos".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -199,8 +209,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
 
                     if x < -1.0 || x > 1.0 {
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[0].clone())
                             .expression_trace();
@@ -220,7 +228,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "tan".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -229,8 +237,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                     let cos = x.cos();
                     if cos.abs() < f32::EPSILON {
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[0].clone())
                             .expression_trace();
@@ -249,7 +255,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "cot".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -258,8 +264,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                     let sin = x.sin();
                     if sin.abs() < f32::EPSILON {
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[0].clone())
                             .expression_trace();
@@ -278,7 +282,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "tanh".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |_ctx, args: &[TracedExpr<usize>]| {
+                definition: |_ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -291,7 +295,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "cosh".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |_ctx, args: &[TracedExpr<usize>]| {
+                definition: |_ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -304,7 +308,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "acosh".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -312,8 +316,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
 
                     if x < 1.0 {
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[0].clone())
                             .expression_trace();
@@ -332,7 +334,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "atanh".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -340,8 +342,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
 
                     if x <= -1.0 || x >= 1.0 {
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[0].clone())
                             .expression_trace();
@@ -360,7 +360,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "pow".to_string(),
                 argument_types: vec![ExprType::Float, ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, _ref, args: &[TracedExpr<usize>]| {
                     let base = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -372,8 +372,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
 
                     if base == 0.0 && exp < 0.0 {
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[0].clone())
                             .expression_trace();
@@ -387,8 +385,6 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
 
                     if base < 0.0 && !exp.fract().is_normal() {
                         let expr_trace = ctx
-                            .lock()
-                            .unwrap()
                             .expression_context
                             .restore_symbols_traced(args[0].clone())
                             .expression_trace();
