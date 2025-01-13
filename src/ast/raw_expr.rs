@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use bimap::BiMap;
+use color_eyre::owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -127,12 +128,13 @@ impl RawExpr<usize> {
     ) -> RawExpr<usize> {
         let poly_id = context
             .expression_context
+            .read()
             .resolve_polymorphic_function(name);
         if let Some(id) = poly_id {
             return RawExpr::polymorphic_function(id);
         }
 
-        let fun_id = context.expression_context.resolve_function(name);
+        let fun_id = context.expression_context.read().resolve_function(name);
         if let Some(id) = fun_id {
             return RawExpr::builtin_function(id);
         }
@@ -173,6 +175,7 @@ impl<V: Display> Display for RawExpr<V> {
             RawExprRec::BuiltinFunction(x) => {
                 let name = context
                     .expression_context
+                    .read()
                     .functions
                     .get(*x)
                     .unwrap()
@@ -182,8 +185,9 @@ impl<V: Display> Display for RawExpr<V> {
                 f.write_str(name.as_str())
             }
             RawExprRec::PolymorphicFunction(id) => {
-                let index = context
+                let index = *context
                     .expression_context
+                    .read()
                     .polymorphic_functions
                     .iter()
                     .find(|(x, _)| x.id == *id)
@@ -192,8 +196,9 @@ impl<V: Display> Display for RawExpr<V> {
 
                 let name = context
                     .expression_context
+                    .read()
                     .functions
-                    .get(*index)
+                    .get(index)
                     .unwrap()
                     .name
                     .clone();

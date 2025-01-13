@@ -1,6 +1,17 @@
 print("Hello, world!");
 
-node = reactive(Int, 2);
+time = {
+    value = reactive(Int, 0);
+    launch {
+        loop {
+            delay(1000);
+            value.update_node(value.current_value() + 1);
+        };
+    };
+    value
+};
+
+node = time();
 
 response = readln();
 
@@ -18,12 +29,10 @@ mapped = node
     .map { x -> x * 7 };
 
 // Note: This only currently works for the original node, not mapped nodes.
-mapped.on_update { value ->
+node.on_update { value ->
     print("Got updated node value:");
     print(value);
 };
-
-node.update_node(3);
 
 x = 2;
 y = 3;
@@ -36,4 +45,6 @@ w = z + 3;
 
 dbg_trace_full(w);
 
-// print(2 / (w - 8));
+print(2 / (w - node.current_value()));
+
+delay(10000);

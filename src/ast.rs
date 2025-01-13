@@ -79,12 +79,7 @@ mod tests {
             ],
         );
 
-        let evaluated = evaluate_traced(
-            &mut context,
-            context_ref.clone(),
-            expression.clone(),
-        )
-        .unwrap();
+        let evaluated = evaluate_traced(&context, expression.clone()).unwrap();
 
         assert_eq!(evaluated.evaluated, TracedExprRec::Int(6));
 
@@ -112,12 +107,8 @@ mod tests {
             ],
         );
 
-        let evaluated = evaluate_traced(
-            &mut context,
-            context_ref.clone(),
-            expression.from_raw().clone(),
-        )
-        .unwrap();
+        let evaluated =
+            evaluate_traced(&context, expression.from_raw().clone()).unwrap();
 
         // 2 * (2 * (1 + 2))
         let second_expression = TracedExpr::apply(
@@ -130,12 +121,8 @@ mod tests {
             [RawExpr::int(2), expression],
         );
 
-        let second_evaluated = evaluate_traced(
-            &mut context,
-            context_ref.clone(),
-            second_expression.clone(),
-        )
-        .unwrap();
+        let second_evaluated =
+            evaluate_traced(&context, second_expression.clone()).unwrap();
 
         assert_eq!(second_evaluated.full_trace(), expected);
     }

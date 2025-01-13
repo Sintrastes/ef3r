@@ -29,7 +29,7 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
 
     let expr = statements[0].expr.clone();
     let expr_type = type_of::<_, _, NoLookup>(
-        &context.expression_context,
+        &context.expression_context.read(),
         &expr.from_raw().evaluated,
     );
 
@@ -41,6 +41,7 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
 
     context
         .expression_context
+        .read()
         .functions
         // In most applications there will be a large amount of functions
         //  to sift through, so parallelize.

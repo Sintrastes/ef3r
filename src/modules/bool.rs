@@ -17,7 +17,7 @@ pub fn bool_module<T: Debugger>() -> Module<4, T> {
         file_name: "bool.rs".to_string(),
         definitions: [
             build_function!(T, "==", ExprType::Bool, |_cx,
-                                                      _ref,
+
                                                       x: TracedExprRec<
                 usize,
             >,
@@ -30,15 +30,15 @@ pub fn bool_module<T: Debugger>() -> Module<4, T> {
                 T,
                 "&&",
                 ExprType::Bool,
-                |_cx, _ref, x: bool, y: bool| { Ok(x && y) }
+                |_cx, x: bool, y: bool| { Ok(x && y) }
             ),
             build_function!(
                 T,
                 "||",
                 ExprType::Bool,
-                |_cx, _ref, x: bool, y: bool| { Ok(x || y) }
+                |_cx, x: bool, y: bool| { Ok(x || y) }
             ),
-            build_function!(T, "not", ExprType::Bool, |_cx, _ref, x: bool| {
+            build_function!(T, "not", ExprType::Bool, |_cx, x: bool| {
                 Ok(!x)
             }),
         ],

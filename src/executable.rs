@@ -13,7 +13,7 @@ use crate::{
         Statement,
     },
     debugging::Debugger,
-    interpreter::Context,
+    interpreter::{Context, ExpressionContext},
     parser::parse,
     stdlib::ef3r_stdlib,
 };
@@ -68,7 +68,12 @@ pub fn load_efrs_source<T: Debugger + Send + Sync + 'static>(
 
     let parsed_program = parsed_program
         .into_iter()
-        .map(|stmt| stdlib.expression_context.strip_symbols_statement(stmt))
+        .map(|stmt| {
+            stdlib
+                .expression_context
+                .write()
+                .strip_symbols_statement(stmt)
+        })
         .collect();
 
     let stdlib_functions = get_stdlib_functions(&stdlib);
@@ -88,16 +93,18 @@ fn get_stdlib_functions<'a, T: Debugger + 'static>(
 ) -> HashMap<usize, usize> {
     stdlib
         .expression_context
+        .read()
         .functions
         .iter()
         .enumerate()
         .flat_map(|(id, invokable)| {
-            let symbol_id = stdlib
+            let symbol_id = *stdlib
                 .expression_context
+                .read()
                 .symbol_table
                 .get_by_right(invokable.name.as_str())?;
 
-            Some((*symbol_id, id))
+            Some((symbol_id, id))
         })
         .collect()
 }
@@ -105,16 +112,16 @@ fn get_stdlib_functions<'a, T: Debugger + 'static>(
 fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
     stdlib: &'a Context<T>,
 ) -> HashMap<usize, usize> {
-    stdlib
-        .expression_context
+    let expression_context = stdlib.expression_context.read();
+
+    expression_context
         .polymorphic_functions
         .iter()
         .flat_map(|(id, func_id)| {
             let polymorhpic_fn_name =
-                stdlib.expression_context.functions[*func_id].name.as_str();
+                expression_context.functions[*func_id].name.as_str();
 
-            let symbol_id = stdlib
-                .expression_context
+            let symbol_id = expression_context
                 .symbol_table
                 .get_by_right(polymorhpic_fn_name)?;
 

@@ -3,10 +3,15 @@ use std::sync::{
     Arc,
 };
 
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{lock_api::MutexGuard, Mutex, RawMutex, RwLock};
 
 use daggy::{
-    petgraph::{algo::toposort, visit::IntoNeighbors},
+    petgraph::{
+        adj::Neighbors,
+        algo::toposort,
+        visit::{GraphBase, GraphRef, IntoNeighbors, IntoNeighborsDirected},
+        Direction,
+    },
     Dag, NodeIndex,
 };
 
@@ -58,14 +63,12 @@ pub struct Node<T: Debugger + Send + Sync + 'static> {
     ///  system. In other words, this should not be used to update the values of
     ///  other nodes in the node graph.
     ///
-    pub on_update: Arc<
-        Mutex<Arc<dyn Fn(&mut Context<T>, TracedExpr<usize>) + Send + Sync>>,
-    >,
+    pub on_update:
+        Arc<Mutex<Arc<dyn Fn(&Context<T>, TracedExpr<usize>) + Send + Sync>>>,
     /// Action to perform to update state of this node when one of its dependencies
     /// has updated one of its values.
-    on_dependency_update: Arc<
-        dyn Fn(&mut Context<T>, NodeIndex, TracedExpr<usize>) + Send + Sync,
-    >,
+    on_dependency_update:
+        Arc<dyn Fn(&Context<T>, NodeIndex, TracedExpr<usize>) + Send + Sync>,
 }
 
 impl<T: Debugger + Send + Sync + 'static> Node<T> {
@@ -80,9 +83,7 @@ impl<T: Debugger + Send + Sync + 'static> Node<T> {
     /// Builds a new mutable node whose value can manually be updated externally.
     ///
     pub fn new(
-        on_update: Arc<
-            dyn Fn(&mut Context<T>, TracedExpr<usize>) + Send + Sync,
-        >,
+        on_update: Arc<dyn Fn(&Context<T>, TracedExpr<usize>) + Send + Sync>,
         graph: &mut Dag<Node<T>, (), u32>,
         expr_type: ExprType,
         initial: TracedExpr<usize>,
@@ -111,10 +112,11 @@ impl<T: Debugger + Send + Sync + 'static> Node<T> {
     ///
     pub fn update(
         index: NodeIndex,
-        ctx: &mut Context<T>,
+        ctx: &Context<T>,
         new_value: TracedExpr<usize>,
     ) {
-        let node = ctx.graph.node_weight_mut(index).unwrap();
+        let mut graph = ctx.graph.lock();
+        let node = graph.node_weight_mut(index).unwrap();
 
         let on_update_clone = node.on_update.clone();
         let on_update = on_update_clone.lock();
@@ -125,6 +127,8 @@ impl<T: Debugger + Send + Sync + 'static> Node<T> {
         node.dirty.store(true, Ordering::SeqCst);
 
         drop(value);
+        drop(graph);
+
         (*on_update)(ctx, new_value);
     }
 }
@@ -133,22 +137,22 @@ impl<T: Debugger + Send + Sync + 'static> Node<T> {
 /// Build a variant of a node whose values are mapped.
 ///
 pub fn map_node<T: Debugger + Send + Sync + 'static>(
-    on_update: Arc<dyn Fn(&mut Context<T>, TracedExpr<usize>) + Send + Sync>,
-    context: &mut Context<T>,
+    on_update: Arc<dyn Fn(&Context<T>, TracedExpr<usize>) + Send + Sync>,
+    ctx: &Context<T>,
     parent_index: NodeIndex,
     result_type: ExprType,
     transform: Arc<
         Mutex<
-            dyn Fn(&mut Context<T>, TracedExpr<usize>) -> TracedExpr<usize>
+            dyn Fn(&Context<T>, TracedExpr<usize>) -> TracedExpr<usize>
                 + Send
                 + Sync,
         >,
     >,
 ) -> NodeIndex {
     let parent_value = {
-        let graph = &mut context.graph;
-
-        let value = graph
+        let value = ctx
+            .graph
+            .lock()
             .node_weight(parent_index)
             .unwrap()
             .value
@@ -161,7 +165,7 @@ pub fn map_node<T: Debugger + Send + Sync + 'static>(
 
     let transform_lock = transform.lock();
 
-    let initial = (transform_lock)(context, parent_value);
+    let initial = (transform_lock)(ctx, parent_value);
 
     let value = Arc::new(RwLock::new(initial));
 
@@ -170,7 +174,7 @@ pub fn map_node<T: Debugger + Send + Sync + 'static>(
     let cloned = value.clone();
 
     let on_dependency_update =
-        Arc::new(move |context: &mut Context<T>, id, new_value| {
+        Arc::new(move |context: &Context<T>, id, new_value| {
             if id == parent_index {
                 // Update the value to transform of new_value.
                 *cloned.write() = (transform.lock())(context, new_value);
@@ -185,7 +189,7 @@ pub fn map_node<T: Debugger + Send + Sync + 'static>(
         on_dependency_update,
     };
 
-    let graph = &mut context.graph;
+    let graph = &mut ctx.graph.lock();
 
     let new_node_index = graph.add_node(new_node);
 
@@ -198,11 +202,11 @@ pub fn map_node<T: Debugger + Send + Sync + 'static>(
 /// Build a variant of a node whose values are filtered by the given predicate.
 ///
 pub fn filter_node<T: Debugger + Send + Sync>(
-    on_update: Arc<dyn Fn(&mut Context<T>, TracedExpr<usize>) + Send + Sync>,
+    on_update: Arc<dyn Fn(&Context<T>, TracedExpr<usize>) + Send + Sync>,
     graph: &mut Dag<Node<T>, (), u32>,
     parent_index: NodeIndex,
     predicate: Box<
-        dyn Fn(&mut Context<T>, TracedExpr<usize>) -> bool + Send + Sync,
+        dyn Fn(&Context<T>, TracedExpr<usize>) -> bool + Send + Sync,
     >,
 ) -> NodeIndex {
     let parent = graph.node_weight(parent_index).unwrap();
@@ -215,13 +219,12 @@ pub fn filter_node<T: Debugger + Send + Sync>(
 
     let cloned = value.clone();
 
-    let on_dependency_update = Arc::new(
-        move |ctx: &mut Context<T>, id, new_value: TracedExpr<usize>| {
+    let on_dependency_update =
+        Arc::new(move |ctx: &Context<T>, id, new_value: TracedExpr<usize>| {
             if id == parent_index && predicate(ctx, new_value.clone()) {
                 *cloned.write() = new_value;
             }
-        },
-    );
+        });
 
     let new_node = Node {
         expr_type: parent.expr_type.clone(),
@@ -244,14 +247,14 @@ pub fn filter_node<T: Debugger + Send + Sync>(
 /// The resultant node will update whenever either of the input nodes updates.
 ///
 pub fn combined_node<T: Debugger + Send + Sync + 'static>(
-    on_update: Arc<dyn Fn(&mut Context<T>, TracedExpr<usize>) + Send + Sync>,
-    context: &mut Context<T>,
+    on_update: Arc<dyn Fn(&Context<T>, TracedExpr<usize>) + Send + Sync>,
+    context: &Context<T>,
     first_node_index: NodeIndex,
     second_node_index: NodeIndex,
     result_type: ExprType,
     transform: Box<
         dyn Fn(
-                &mut Context<T>,
+                &Context<T>,
                 TracedExpr<usize>,
                 TracedExpr<usize>,
             ) -> TracedExpr<usize>
@@ -259,7 +262,7 @@ pub fn combined_node<T: Debugger + Send + Sync + 'static>(
             + Sync,
     >,
 ) -> NodeIndex {
-    let graph = &mut context.graph;
+    let graph = context.graph.lock();
 
     let first_node = graph.node_weight(first_node_index).unwrap();
 
@@ -270,6 +273,8 @@ pub fn combined_node<T: Debugger + Send + Sync + 'static>(
         second_node.value.read().clone(),
     );
 
+    drop(graph);
+
     let initial = transform(context, first_value, second_value);
 
     let value = Arc::new(RwLock::new(initial));
@@ -279,22 +284,18 @@ pub fn combined_node<T: Debugger + Send + Sync + 'static>(
     let cloned = value.clone();
 
     let on_dependency_update = Arc::new(
-        move |context: &mut Context<T>, id, new_value: TracedExpr<usize>| {
+        move |context: &Context<T>, id, new_value: TracedExpr<usize>| {
             println!("Updating node {:?}", id);
 
-            let first_value_ref = context
-                .graph
-                .node_weight(first_node_index)
-                .unwrap()
-                .value
-                .clone();
+            let graph = context.graph.lock();
 
-            let second_value_ref = context
-                .graph
-                .node_weight(second_node_index)
-                .unwrap()
-                .value
-                .clone();
+            let first_value_ref =
+                graph.node_weight(first_node_index).unwrap().value.clone();
+
+            let second_value_ref =
+                graph.node_weight(second_node_index).unwrap().value.clone();
+
+            drop(graph);
 
             match id {
                 x if x == first_node_index => {
@@ -322,7 +323,7 @@ pub fn combined_node<T: Debugger + Send + Sync + 'static>(
         on_dependency_update,
     };
 
-    let graph = &mut context.graph;
+    let graph = &mut context.graph.lock();
 
     let new_node_index = graph.add_node(new_node);
 
@@ -338,13 +339,13 @@ pub fn combined_node<T: Debugger + Send + Sync + 'static>(
 }
 
 pub fn fold_node<'a, T: Debugger + Send + Sync + 'static>(
-    ctx: &mut Context<T>,
-    on_update: Arc<dyn Fn(&mut Context<T>, TracedExpr<usize>) + Send + Sync>,
+    ctx: &Context<T>,
+    on_update: Arc<dyn Fn(&Context<T>, TracedExpr<usize>) + Send + Sync>,
     event_index: NodeIndex,
     initial: TracedExpr<usize>,
     fold: Box<
         dyn Fn(
-                &mut Context<T>,
+                &Context<T>,
                 TracedExpr<usize>,
                 TracedExpr<usize>,
             ) -> TracedExpr<usize>
@@ -361,22 +362,21 @@ pub fn fold_node<'a, T: Debugger + Send + Sync + 'static>(
     let fold = Arc::new(fold);
     let fold2 = fold.clone();
 
-    let on_dependency_update =
-        Arc::new(move |ctx: &mut Context<T>, id, event| {
-            if id == event_index {
-                let current_value = {
-                    let lock = cloned.read();
-                    lock.clone()
-                };
+    let on_dependency_update = Arc::new(move |ctx: &Context<T>, id, event| {
+        if id == event_index {
+            let current_value = {
+                let lock = cloned.read();
+                lock.clone()
+            };
 
-                // Update the value to transform of new_value.
-                *cloned.write() = fold2(ctx, event, current_value);
-            }
-        });
+            // Update the value to transform of new_value.
+            *cloned.write() = fold2(ctx, event, current_value);
+        }
+    });
 
     let new_node = Node {
         expr_type: type_of::<_, _, RuntimeLookup>(
-            &ctx.expression_context,
+            &ctx.expression_context.read(),
             &initial_clone.evaluated,
         )
         .unwrap(),
@@ -386,7 +386,7 @@ pub fn fold_node<'a, T: Debugger + Send + Sync + 'static>(
         on_dependency_update,
     };
 
-    let graph = &mut ctx.graph;
+    let graph = &mut ctx.graph.lock();
 
     let new_node_index = graph.add_node(new_node);
 
@@ -426,8 +426,8 @@ pub fn event_loop<T: Debugger + 'static>(ctx: &mut Context<T>) {
 /// Runs a single iteration of the [event_loop], for testing purposes, or for integrating
 /// into a custom workflow.
 ///
-pub fn process_event_frame<T: Debugger + 'static>(ctx: &mut Context<T>) {
-    let nodes = toposort(&ctx.graph, None).unwrap();
+pub fn process_event_frame<T: Debugger + 'static>(ctx: &Context<T>) {
+    let nodes = toposort(&*ctx.graph.lock(), None).unwrap();
 
     for node_id in nodes {
         let derived_nodes: Vec<_>;
@@ -435,7 +435,7 @@ pub fn process_event_frame<T: Debugger + 'static>(ctx: &mut Context<T>) {
         let value;
 
         {
-            let graph = &ctx.graph;
+            let graph = &ctx.graph.lock();
 
             println!(
                 "Updating values for node {:?} with value {:?}",
@@ -459,7 +459,7 @@ pub fn process_event_frame<T: Debugger + 'static>(ctx: &mut Context<T>) {
             for dependent_id in derived_nodes {
                 println!("Checking dependent node: {:?}", dependent_id);
                 let dependent_node_update = {
-                    let graph = &ctx.graph;
+                    let graph = &ctx.graph.lock();
                     graph
                         .node_weight(dependent_id)
                         .unwrap()
@@ -472,7 +472,7 @@ pub fn process_event_frame<T: Debugger + 'static>(ctx: &mut Context<T>) {
                 dependent_node_update(ctx, node_id, value.clone());
             }
 
-            let graph = &ctx.graph;
+            let graph = &ctx.graph.lock();
             let node = graph.node_weight(node_id).unwrap();
             node.dirty.store(false, Ordering::SeqCst);
         }

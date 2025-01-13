@@ -23,21 +23,23 @@ pub struct Module<const N: usize, T: Debugger + 'static> {
 }
 
 impl<const N: usize, T: Debugger> Module<N, T> {
-    pub fn load_into(self, context: &mut Context<T>) {
+    pub fn load_into(self, context: &Context<T>) {
         // Add the polymorphic index and function definitions from the module
         // to the context.
         context
             .expression_context
+            .write()
             .functions
             .extend(self.definitions);
 
         // Update the polymorphic functions map
-        let new_index =
-            build_polymorphic_index(&context.expression_context.functions)
-                .unwrap();
+        let new_index = build_polymorphic_index(
+            &context.expression_context.write().functions,
+        )
+        .unwrap();
 
         // TODO: Should figure out an incremental way of doing this.
-        context.expression_context.polymorphic_functions = new_index
+        context.expression_context.write().polymorphic_functions = new_index
     }
 }
 

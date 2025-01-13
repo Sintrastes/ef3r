@@ -29,25 +29,27 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                 "reactive",
                 ExprType::Node(Box::new(ExprType::Any)),
                 vec![ExprType::Type, ExprType::Any],
-                |ctx, _ref, first, second| {
+                |ctx, first, second| {
                     match first.evaluated {
                         TracedExprRec::Type(x) => {
                             if type_of::<_, _, RuntimeLookup>(
-                                &ctx.expression_context,
+                                &ctx.expression_context.read(),
                                 &second.evaluated,
                             ) == Some(x.clone())
                             {
                                 let fresh_id = Node::new(
                                     Arc::new(|_, _| {}),
-                                    &mut ctx.graph,
+                                    &mut ctx.graph.lock(),
                                     x,
                                     second,
                                 );
 
-                                let node =
-                                    ctx.graph.node_weight(fresh_id).unwrap();
+                                let graph = ctx.graph.lock();
+
+                                let node = graph.node_weight(fresh_id).unwrap();
 
                                 ctx.debugger
+                                    .lock()
                                     .on_node_added(node, fresh_id.index());
 
                                 Ok(TracedExprRec::Node(fresh_id.index()))
@@ -55,7 +57,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                                 Err(EvaluationError::TypeError {
                                     expected: x,
                                     actual: type_of::<_, _, RuntimeLookup>(
-                                        &ctx.expression_context,
+                                        &ctx.expression_context.read(),
                                         &second.evaluated,
                                     )
                                     .unwrap(),
@@ -66,7 +68,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Type,
                             actual: type_of::<_, _, RuntimeLookup>(
-                                &ctx.expression_context,
+                                &ctx.expression_context.read(),
                                 &actual,
                             )
                             .unwrap(),
@@ -80,7 +82,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                 "update_node",
                 ExprType::Unit,
                 vec![ExprType::Node(Box::new(ExprType::Any)), ExprType::Any],
-                |ctx, _ref, first, second| {
+                |ctx, first, second| {
                     match first.evaluated {
                         TracedExprRec::Node(node_id) => {
                             Node::update(NodeIndex::new(node_id), ctx, second);
@@ -90,7 +92,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of::<_, _, RuntimeLookup>(
-                                &ctx.expression_context,
+                                &ctx.expression_context.read(),
                                 &actual,
                             )
                             .unwrap(),
@@ -104,11 +106,11 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                 "current_value",
                 ExprType::Any,
                 vec![ExprType::Node(Box::new(ExprType::Any))],
-                |ctx, _ref, first| {
+                |ctx, first| {
                     match first.evaluated {
                         TracedExprRec::Node(node_id) => {
-                            let node: &Node<T> = ctx
-                                .graph
+                            let graph = ctx.graph.lock();
+                            let node: &Node<T> = graph
                                 .node_weight(NodeIndex::new(node_id))
                                 .unwrap();
 
@@ -119,7 +121,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of::<_, _, RuntimeLookup>(
-                                &ctx.expression_context,
+                                &ctx.expression_context.read(),
                                 &actual,
                             )
                             .unwrap(),
@@ -141,15 +143,14 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                     //     Box::new(ExprType::Any)
                     // )
                 ],
-                |ctx, _ref, first, second| {
+                |ctx, first, second| {
                     match first.evaluated {
                         TracedExprRec::Node(node_id) => {
                             let second_clone = second.clone();
                             let transform = Arc::new(Mutex::new(
-                                move |ctx: &mut Context<T>, expr: TracedExpr<usize>| {
+                                move |ctx: &Context<T>, expr: TracedExpr<usize>| {
                                     evaluate_function_application(
                                         ctx,
-                                        _ref.clone(),
                                         &TracedExprRec::Apply(
                                             Box::new(second_clone.clone()),
                                             Box::new([expr]),
@@ -168,16 +169,20 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                                 transform,
                             );
 
-                            let node = ctx.graph.node_weight(fresh_id).unwrap();
+                            let graph = ctx.graph.lock();
 
-                            ctx.debugger.on_node_added(node, fresh_id.index());
+                            let node = graph.node_weight(fresh_id).unwrap();
+
+                            ctx.debugger
+                                .lock()
+                                .on_node_added(node, fresh_id.index());
 
                             Ok(TracedExprRec::Node(fresh_id.index()))
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of::<_, _, RuntimeLookup>(
-                                &ctx.expression_context,
+                                &ctx.expression_context.read(),
                                 &actual,
                             )
                             .unwrap(),
@@ -197,15 +202,14 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         Box::new(ExprType::Bool)
                     )
                 ],
-                |ctx, _ref, first, second| {
+                |ctx, first, second| {
                     match first.evaluated {
                         TracedExprRec::Node(node_id) => {
                             let second_clone = second.clone();
 
-                            let transform = move |ctx: &mut Context<T>, expr: TracedExpr<usize>| {
+                            let transform = move |ctx: &Context<T>, expr: TracedExpr<usize>| {
                                 let result = evaluate_function_application(
                                     ctx,
-                                    _ref.clone(),
                                     &TracedExprRec::Apply(
                                         Box::new(second_clone.clone()),
                                         Box::new([expr]),
@@ -222,21 +226,25 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
 
                             let fresh_id = filter_node::<T>(
                                 Arc::new(|_, _| {}),
-                                &mut ctx.graph,
+                                &mut ctx.graph.lock(),
                                 NodeIndex::new(node_id),
                                 Box::new(transform),
                             );
 
-                            let node = ctx.graph.node_weight(fresh_id).unwrap();
+                            let graph = ctx.graph.lock();
 
-                            ctx.debugger.on_node_added(node, fresh_id.index());
+                            let node = graph.node_weight(fresh_id).unwrap();
+
+                            ctx.debugger
+                                .lock()
+                                .on_node_added(node, fresh_id.index());
 
                             Ok(TracedExprRec::Node(fresh_id.index()))
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of::<_, _, RuntimeLookup>(
-                                &ctx.expression_context,
+                                &ctx.expression_context.read(),
                                 &actual,
                             )
                             .unwrap(),
@@ -256,15 +264,14 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                     //     Box::new(ExprType::Any)
                     // )
                 ],
-                |ctx, _ref, first, second| {
+                |ctx, first, second| {
                     match first.evaluated {
                         TracedExprRec::Node(node_id) => {
                             let second_clone = second.clone();
                             let transform = Box::new(
-                                    move |ctx: &mut Context<T>, expr: TracedExpr<usize>, acc: TracedExpr<usize>| {
+                                    move |ctx: &Context<T>, expr: TracedExpr<usize>, acc: TracedExpr<usize>| {
                                         evaluate_function_application(
-                                            ctx,
-                                            _ref.clone(),
+                                            &ctx.clone(),
                                             &TracedExprRec::Apply(
                                                 Box::new(second_clone.clone()),
                                                 Box::new([expr, acc]),
@@ -282,16 +289,20 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                                 transform,
                             );
 
-                            let node = ctx.graph.node_weight(fresh_id).unwrap();
+                            let graph = ctx.graph.lock();
 
-                            ctx.debugger.on_node_added(node, fresh_id.index());
+                            let node = graph.node_weight(fresh_id).unwrap();
+
+                            ctx.debugger
+                                .lock()
+                                .on_node_added(node, fresh_id.index());
 
                             Ok(TracedExprRec::Node(fresh_id.index()))
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of::<_, _, RuntimeLookup>(
-                                &ctx.expression_context,
+                                &ctx.expression_context.read(),
                                 &actual,
                             )
                             .unwrap(),

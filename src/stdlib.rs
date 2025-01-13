@@ -31,7 +31,7 @@ pub fn ef3r_stdlib<T: Debugger + Send + Sync + 'static>(
     context.load_module(strings_module());
     context.load_module(threading_module());
 
-    context.expression_context.symbol_table = symbol_table;
+    context.expression_context.write().symbol_table = symbol_table;
 
     context
 }

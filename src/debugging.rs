@@ -17,7 +17,7 @@ use crate::{
 pub trait Debugger: Sized + Send + Sync {
     /// Suspend execution of the interpreter and
     ///  inject the debugging environment.
-    fn suspend(location: Option<CodeLocation>, ctx: &mut Context<Self>);
+    fn suspend(location: Option<CodeLocation>, ctx: &Context<Self>);
 
     /// Handle for the debugger to perform an action when
     /// a node has been added.
@@ -39,7 +39,7 @@ impl NoOpDebugger {
 }
 
 impl Debugger for NoOpDebugger {
-    fn suspend(_location: Option<CodeLocation>, _ctx: &mut Context<Self>) {}
+    fn suspend(_location: Option<CodeLocation>, _ctx: &Context<Self>) {}
 
     fn on_node_added(&self, _node: &Node<Self>, _node_id: usize) {}
 
@@ -69,13 +69,14 @@ impl Debugger for StepDebugger {
 
     fn on_node_removed(&self, _node_id: usize) {}
 
-    fn suspend(location: Option<CodeLocation>, ctx: &mut Context<Self>) {
+    fn suspend(location: Option<CodeLocation>, ctx: &Context<Self>) {
         fn is_breakpoint(
-            ctx: &mut Context<StepDebugger>,
+            ctx: &Context<StepDebugger>,
             location: Option<CodeLocation>,
         ) -> bool {
             if let Some(location) = location {
                 ctx.debugger
+                    .lock()
                     .breakpoints
                     .contains(&(location.column, location.line))
             } else {
@@ -83,8 +84,8 @@ impl Debugger for StepDebugger {
             }
         }
 
-        if ctx.debugger.initial_suspend || is_breakpoint(ctx, location) {
-            ctx.debugger.initial_suspend = false;
+        if ctx.debugger.lock().initial_suspend || is_breakpoint(ctx, location) {
+            ctx.debugger.lock().initial_suspend = false;
 
             let line = location
                 .map(|loc| loc.line.to_string())
@@ -105,13 +106,14 @@ impl Debugger for StepDebugger {
                 } else if input.starts_with(":show ") {
                     let var_name = input.trim_start_matches(":show ").trim();
 
-                    let id = ctx
+                    let id = *ctx
                         .expression_context
+                        .read()
                         .symbol_table
                         .get_by_right(var_name)
                         .unwrap();
 
-                    match ctx.expression_context.variables.get(id) {
+                    match ctx.expression_context.read().variables.get(&id) {
                         Some(val) => println!("{} = {:?}", var_name, val),
                         None => {
                             println!(
@@ -129,7 +131,7 @@ impl Debugger for StepDebugger {
                         if let (Ok(line), Ok(col)) =
                             (line.parse::<u32>(), col.parse::<usize>())
                         {
-                            ctx.debugger.breakpoints.insert((col, line));
+                            ctx.debugger.lock().breakpoints.insert((col, line));
                             println!(
                                 "Added breakpoint at line {}, column {}",
                                 line, col
@@ -196,5 +198,5 @@ impl Debugger for GrpcDebugger {
 
     fn on_node_removed(&self, _node_id: usize) {}
 
-    fn suspend(_location: Option<CodeLocation>, _ctx: &mut Context<Self>) {}
+    fn suspend(_location: Option<CodeLocation>, _ctx: &Context<Self>) {}
 }

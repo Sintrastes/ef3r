@@ -21,7 +21,7 @@ pub fn io_module<T: Debugger>() -> Module<2, T> {
                 "print",
                 ExprType::Unit,
                 vec![ExprType::Any],
-                |ctx, _ref, first| {
+                |ctx, first| {
                     match first.evaluated {
                         TracedExprRec::String(string) => {
                             println!("{}", string);
@@ -30,6 +30,7 @@ pub fn io_module<T: Debugger>() -> Module<2, T> {
                             println!(
                                 "{}",
                                 ctx.expression_context
+                                    .read()
                                     .restore_symbols(first.evaluated)
                                     .untraced()
                                     .as_expr()
@@ -43,7 +44,7 @@ pub fn io_module<T: Debugger>() -> Module<2, T> {
                 name: "readln".to_string(),
                 argument_types: vec![],
                 result_type: ExprType::String,
-                definition: |_, _, _: &[TracedExpr<usize>]| {
+                definition: |_, _: &[TracedExpr<usize>]| {
                     let stdin = io::stdin();
                     let result = stdin.lock().lines().next().unwrap().unwrap();
 

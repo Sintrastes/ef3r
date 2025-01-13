@@ -13,10 +13,7 @@ use parking_lot::RwLock;
 
 #[test]
 fn variable_assignment() {
-    let context =
-        Arc::new(RwLock::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
-
-    let mut lock = context.write();
+    let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
     let cloned_ctx = context.clone();
 
@@ -27,20 +24,23 @@ fn variable_assignment() {
         expr: expression.clone(),
     };
 
-    interpret(&mut lock, context.clone(), &vec![statement.clone()]).unwrap();
+    interpret(&context, &vec![statement.clone()]).unwrap();
 
     assert_eq!(
-        lock.expression_context.variables.get(&0).unwrap().evaluated,
+        context
+            .expression_context
+            .read()
+            .variables
+            .get(&0)
+            .unwrap()
+            .evaluated,
         expression.from_raw().evaluated
     );
 }
 
 #[test]
 fn reassignment_of_statement() {
-    let context =
-        Arc::new(RwLock::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
-
-    let mut lock = context.write();
+    let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
     let statement1 = Statement {
         location: None,
@@ -53,11 +53,16 @@ fn reassignment_of_statement() {
         expr: RawExpr::int(3),
     };
 
-    interpret(&mut lock, context.clone(), &vec![statement1, statement2])
-        .unwrap();
+    interpret(&context, &vec![statement1, statement2]).unwrap();
 
     assert_eq!(
-        lock.expression_context.variables.get(&0).unwrap().evaluated,
+        context
+            .expression_context
+            .read()
+            .variables
+            .get(&0)
+            .unwrap()
+            .evaluated,
         TracedExprRec::Int(3)
     );
 }
@@ -145,11 +150,7 @@ fn execute_example_program() {
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
 
-    let ctx_ref = Arc::new(RwLock::new(context));
-
-    let mut context = ctx_ref.write();
-
-    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
+    let result = interpret(&context, program.as_slice());
 
     dbg!(&result);
 
@@ -167,11 +168,7 @@ fn pair_accessors_fail_on_nonpair() {
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
 
-    let ctx_ref = Arc::new(RwLock::new(context));
-
-    let mut context = ctx_ref.write();
-
-    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
+    let result = interpret(&context, program.as_slice());
 
     assert!(result.is_err());
 
@@ -183,11 +180,7 @@ fn pair_accessors_fail_on_nonpair() {
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program2).unwrap();
 
-    let ctx_ref = Arc::new(RwLock::new(context));
-
-    let mut context = ctx_ref.write();
-
-    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
+    let result = interpret(&context, program.as_slice());
     assert!(result.is_err());
 }
 
@@ -201,11 +194,7 @@ fn arithmetic_operators_wrong_args() {
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
 
-    let ctx_ref = Arc::new(RwLock::new(context));
-
-    let mut context = ctx_ref.write();
-
-    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
+    let result = interpret(&context, program.as_slice());
     assert!(result.is_err());
 
     let program = r#"
@@ -216,11 +205,7 @@ fn arithmetic_operators_wrong_args() {
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
 
-    let ctx_ref = Arc::new(RwLock::new(context));
-
-    let mut context = ctx_ref.write();
-
-    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
+    let result = interpret(&context, program.as_slice());
     assert!(result.is_err());
 
     let program = r#"
@@ -231,10 +216,6 @@ fn arithmetic_operators_wrong_args() {
     let (context, program) =
         load_efrs_source(NoOpDebugger::new(), program).unwrap();
 
-    let ctx_ref = Arc::new(RwLock::new(context));
-
-    let mut context = ctx_ref.write();
-
-    let result = interpret(&mut context, ctx_ref.clone(), program.as_slice());
+    let result = interpret(&context, program.as_slice());
     assert!(result.is_err());
 }

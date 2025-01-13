@@ -123,12 +123,12 @@ impl ExprTypeable for TracedExprRec<usize> {
 
 macro_rules! build_function {
     // Pattern for single argument function with type checking
-    ($debugger:ty, $name:expr, $res_type:expr, |$ctx:ident, $ctx_ref:ident, $param:ident: $type:ty| $body:expr) => {
+    ($debugger:ty, $name:expr, $res_type:expr, |$ctx:ident, $param:ident: $type:ty| $body:expr) => {
         FunctionDefinition::<$debugger> {
             argument_types: vec![<$type>::expr_type()],
             result_type: $res_type,
             name: $name.to_string(),
-            definition: |$ctx, $ctx_ref, xs: &[TracedExpr<usize>]| {
+            definition: |$ctx, xs: &[TracedExpr<usize>]| {
                 let expr = xs.get(0).ok_or(
                     EvaluationError::WrongNumberOfArguments {
                         expected: 1,
@@ -141,7 +141,7 @@ macro_rules! build_function {
                     EvaluationError::TypeError {
                         expected: <$type>::expr_type(),
                         actual: type_of::<_, _, RuntimeLookup>(
-                            &$ctx.expression_context,
+                            &$ctx.expression_context.read(),
                             &expr.evaluated,
                         )
                         .unwrap_or(ExprType::Any),
@@ -155,12 +155,12 @@ macro_rules! build_function {
     };
 
     // Pattern for two argument function with type checking
-    ($debugger:ty, $name:expr, $res_type:expr, |$ctx:ident, $ctx_ref:ident, $param1:ident: $type1:ty, $param2:ident: $type2:ty| $body:expr) => {
+    ($debugger:ty, $name:expr, $res_type:expr, |$ctx:ident, $param1:ident: $type1:ty, $param2:ident: $type2:ty| $body:expr) => {
         FunctionDefinition::<$debugger> {
             name: $name.to_string(),
             argument_types: vec![<$type1>::expr_type(), <$type2>::expr_type()],
             result_type: $res_type,
-            definition: |$ctx, $ctx_ref, xs: &[TracedExpr<usize>]| {
+            definition: |$ctx, xs: &[TracedExpr<usize>]| {
                 let expr1 = xs.get(0).ok_or(
                     EvaluationError::WrongNumberOfArguments {
                         expected: 2,
@@ -181,7 +181,7 @@ macro_rules! build_function {
                     EvaluationError::TypeError {
                         expected: <$type1>::expr_type(),
                         actual: type_of::<_, _, RuntimeLookup>(
-                            &$ctx.expression_context,
+                            &$ctx.expression_context.read(),
                             &expr1.evaluated,
                         )
                         .unwrap_or(ExprType::Any),
@@ -193,7 +193,7 @@ macro_rules! build_function {
                     EvaluationError::TypeError {
                         expected: <$type2>::expr_type(),
                         actual: type_of::<_, _, RuntimeLookup>(
-                            &$ctx.expression_context,
+                            &$ctx.expression_context.read(),
                             &expr2.evaluated,
                         )
                         .unwrap_or(ExprType::Any),
@@ -207,12 +207,12 @@ macro_rules! build_function {
     };
 
     // Pattern for single argument function without type checking
-    ($debugger:ty, $name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $ctx_ref:ident, $param:ident| $body:expr) => {
+    ($debugger:ty, $name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param:ident| $body:expr) => {
         FunctionDefinition::<$debugger> {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
-            definition: |$ctx, $ctx_ref, xs: &[TracedExpr<usize>]| {
+            definition: |$ctx, xs: &[TracedExpr<usize>]| {
                 let $param = xs
                     .get(0)
                     .ok_or(EvaluationError::WrongNumberOfArguments {
@@ -228,12 +228,12 @@ macro_rules! build_function {
     };
 
     // Pattern for two argument function without type checking.
-    ($debugger:ty, $name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $ctx_ref:ident, $param1:ident, $param2:ident| $body:expr) => {
+    ($debugger:ty, $name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident| $body:expr) => {
         FunctionDefinition::<$debugger> {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
-            definition: |$ctx, $ctx_ref, xs: &[TracedExpr<usize>]| {
+            definition: |$ctx, xs: &[TracedExpr<usize>]| {
                 let $param1 = xs
                     .get(0)
                     .ok_or(EvaluationError::WrongNumberOfArguments {
@@ -258,12 +258,12 @@ macro_rules! build_function {
     };
 
     // Pattern for three argument function without type checking.
-    ($debugger:ty, $name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $ref:ident, $param1:ident, $param2:ident, $param3:ident| $body:expr) => {
+    ($debugger:ty, $name:expr, $res_type:expr, $arg_types:expr, |$ctx:ident, $param1:ident, $param2:ident, $param3:ident| $body:expr) => {
         FunctionDefinition::<$debugger> {
             name: $name.to_string(),
             argument_types: $arg_types,
             result_type: $res_type,
-            definition: |$ctx, $ref, xs: &[TracedExpr<usize>]| {
+            definition: |$ctx, xs: &[TracedExpr<usize>]| {
                 let $param1 = xs
                     .get(0)
                     .ok_or(EvaluationError::WrongNumberOfArguments {

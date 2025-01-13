@@ -92,15 +92,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
             let (context, program) =
                 load_efrs_or_ef3r(NoOpDebugger::new(), file)?;
 
-            let context_ref = Arc::new(RwLock::new(context));
-
-            let mut context = context_ref.write();
-
-            interpreter::interpret(
-                &mut context,
-                context_ref.clone(),
-                &program,
-            )?;
+            interpreter::interpret(&context, &program)?;
         }
         Commands::Debug {
             visual,
@@ -124,16 +116,8 @@ async fn main() -> color_eyre::eyre::Result<()> {
                     file.unwrap_or(Err(eyre!("File must be specified for a non-remote debugging session"))?)
                 )?;
 
-                let context_ref = Arc::new(RwLock::new(context));
-
                 tokio::spawn(async move {
-                    let mut context = context_ref.write();
-                    interpreter::interpret(
-                        &mut context,
-                        context_ref.clone(),
-                        &program,
-                    )
-                    .unwrap();
+                    interpreter::interpret(&context, &program).unwrap();
                 });
 
                 start_visualizer(state);
@@ -148,12 +132,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
                 let mut context = context_ref.write();
 
-                interpreter::interpret(
-                    &mut context,
-                    context_ref.clone(),
-                    &program,
-                )
-                .unwrap();
+                interpreter::interpret(&context, &program).unwrap();
             }
         }
         Commands::Pack {
@@ -169,7 +148,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
             let executable = Executable {
                 symbol_table: if mode == "--debug" {
-                    context.expression_context.symbol_table
+                    context.expression_context.read().symbol_table.clone()
                 } else {
                     BiMap::new()
                 },

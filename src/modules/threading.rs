@@ -27,16 +27,12 @@ pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
                 "launch",
                 ExprType::Unit,
                 vec![ExprType::Func(vec![], Box::new(ExprType::Unit))],
-                |ctx, ctx_ref, first| {
+                |ctx, first| {
                     let handle = {
-                        let ctx_ref = ctx_ref.clone();
+                        let ctx = ctx.clone();
                         thread::spawn(move || {
-                            let ctx_ref = ctx_ref.clone();
-                            let mut ctx = ctx_ref.write();
-
                             evaluate_function_application(
-                                &mut ctx,
-                                ctx_ref.clone(),
+                                &ctx,
                                 &TracedExprRec::Apply(
                                     Box::new(first),
                                     Box::new([]),
@@ -46,9 +42,9 @@ pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
                         })
                     };
 
-                    ctx.join_handles.push(handle);
+                    ctx.join_handles.lock().push(handle);
 
-                    let new_id = ctx.join_handles.len();
+                    let new_id = ctx.join_handles.lock().len();
 
                     Ok(TracedExprRec::JoinHandle(new_id))
                 }
@@ -61,35 +57,35 @@ pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
                     ExprType::Any,
                     ExprType::Func(vec![], Box::new(ExprType::Unit))
                 ],
-                |ctx, ctx_ref, node, on_update_fn| {
+                |ctx, node, on_update_fn| {
                     match &node.evaluated {
                         TracedExprRec::Node(node_id) => {
-                            let node = ctx
-                                .graph
+                            let mut graph = ctx.graph.lock();
+
+                            let node = graph
                                 .node_weight_mut(NodeIndex::new(*node_id))
                                 .unwrap();
+
+                            println!("Value of node: {:?}", &node.current());
 
                             let mut on_update = node.on_update.lock();
 
                             let old_update = on_update.clone();
 
-                            *on_update = {
-                                Arc::new(
-                                    move |ctx: &mut Context<T>, value: TracedExpr<usize>| {
-                                        old_update(ctx, value.clone());
+                            *on_update = Arc::new(
+                                move |ctx: &Context<T>, value: TracedExpr<usize>| {
+                                    old_update(ctx, value.clone());
 
-                                        evaluate_function_application(
-                                            ctx,
-                                            ctx_ref.clone(),
-                                            &TracedExprRec::Apply(
-                                                Box::new(on_update_fn.clone()),
-                                                Box::new([value]),
-                                            ),
-                                        )
-                                        .unwrap();
-                                    },
-                                )
-                            };
+                                    evaluate_function_application(
+                                        ctx,
+                                        &TracedExprRec::Apply(
+                                            Box::new(on_update_fn.clone()),
+                                            Box::new([value]),
+                                        ),
+                                    )
+                                    .unwrap();
+                                },
+                            );
 
                             Ok(TracedExprRec::Unit)
                         }
@@ -106,10 +102,10 @@ pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
                 "await",
                 ExprType::Unit,
                 vec![ExprType::Any],
-                |ctx, _ref, handle| {
+                |ctx, handle| {
                     match handle.evaluated {
                         TracedExprRec::JoinHandle(id) => {
-                            let handle = ctx.join_handles.remove(id - 1);
+                            let handle = ctx.join_handles.lock().remove(id - 1);
                             match handle.join() {
                                 Ok(Ok(())) => Ok(TracedExprRec::Unit),
                                 Ok(Err(e)) => Err(e),
@@ -129,7 +125,7 @@ pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
                 "delay",
                 ExprType::Unit,
                 vec![ExprType::Int],
-                |ctx, _ref, first| {
+                |ctx, first| {
                     match first.evaluated {
                         TracedExprRec::Int(ms) => {
                             thread::sleep(std::time::Duration::from_millis(
@@ -140,7 +136,7 @@ pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
                         _ => Err(EvaluationError::TypeError {
                             expected: ExprType::Int,
                             actual: type_of::<_, _, RuntimeLookup>(
-                                &ctx.expression_context,
+                                &ctx.expression_context.read(),
                                 &first.evaluated,
                             )
                             .unwrap(),

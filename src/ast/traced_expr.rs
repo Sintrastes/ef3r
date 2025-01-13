@@ -112,14 +112,15 @@ impl TracedExpr<usize> {
         context: &Context<T>,
         name: &str,
     ) -> TracedExpr<usize> {
-        let poly_id = context
+        let poly_id = &context
             .expression_context
+            .read()
             .resolve_polymorphic_function(name);
         if let Some(id) = poly_id {
-            return TracedExpr::new(TracedExprRec::PolymorphicFunction(id));
+            return TracedExpr::new(TracedExprRec::PolymorphicFunction(*id));
         }
 
-        let fun_id = context.expression_context.resolve_function(name);
+        let fun_id = context.expression_context.read().resolve_function(name);
         if let Some(id) = fun_id {
             return TracedExpr::new(TracedExprRec::BuiltinFunction(id));
         }
@@ -333,7 +334,8 @@ impl TracedExprRec<String> {
                 }
             },
             4 => {
-                let keys: usize = context.expression_context.functions.len();
+                let keys: usize =
+                    context.expression_context.read().functions.len();
                 let key = if keys == 0 {
                     0
                 } else {
