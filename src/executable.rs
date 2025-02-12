@@ -13,14 +13,15 @@ use crate::{
         Statement,
     },
     debugging::Debugger,
-    interpreter::{Context, ExpressionContext},
+    interpreter::Context,
+    modules::{resolve_imports, QualifiedName},
     parser::parse,
     stdlib::ef3r_stdlib,
 };
 
 #[derive(Serialize, Deserialize)]
 pub struct Executable {
-    pub symbol_table: BiMap<usize, String>,
+    pub symbol_table: BiMap<usize, QualifiedName>,
     pub instructions: Vec<Statement<usize>>,
 }
 
@@ -38,10 +39,9 @@ pub fn load_efrs_or_ef3r<'a, T: Debugger + Send + Sync + 'static>(
         let executable: Executable =
             bincode::deserialize_from(File::open(file_path).unwrap()).unwrap();
 
-        Ok((
-            ef3r_stdlib(debugger, executable.symbol_table),
-            executable.instructions,
-        ))
+        let (_, context) = ef3r_stdlib(debugger, executable.symbol_table);
+
+        Ok((context, executable.instructions))
     }
 }
 
@@ -62,11 +62,25 @@ pub fn load_efrs_source<T: Debugger + Send + Sync + 'static>(
     debugger: T,
     source: String,
 ) -> Result<(Context<T>, Vec<Statement<usize>>)> {
-    let parsed_program = parse(&source)?;
+    let (imports, parsed_program) = parse(&source)?;
 
-    let mut stdlib = ef3r_stdlib(debugger, BiMap::new());
+    let (loaded_modules, stdlib) = ef3r_stdlib(debugger, BiMap::new());
 
-    let parsed_program = parsed_program
+    let imported_modules = loaded_modules
+        .iter()
+        // Use all builtin modules. Will need different logic for custom modules.
+        //.filter(|module| imports.iter().any(|import| *import == module.name))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let mut resolved_program = Vec::new();
+    for stmt in parsed_program {
+        let resolved =
+            stmt.map(|name| resolve_imports(&imported_modules, name));
+        resolved_program.push(resolved);
+    }
+
+    let resolved_program: Vec<Statement<usize>> = resolved_program
         .into_iter()
         .map(|stmt| {
             stdlib
@@ -80,7 +94,7 @@ pub fn load_efrs_source<T: Debugger + Send + Sync + 'static>(
     let polymorphic_functions = get_stdlib_polymorphic_functions(&stdlib);
 
     let instructions = resolve_builtin_functions(
-        parsed_program,
+        resolved_program,
         &polymorphic_functions,
         &stdlib_functions,
     );
@@ -98,11 +112,17 @@ fn get_stdlib_functions<'a, T: Debugger + 'static>(
         .iter()
         .enumerate()
         .flat_map(|(id, invokable)| {
+            let module = &invokable.0;
+            let name = &QualifiedName {
+                module: module.clone(),
+                name: invokable.1.name.clone(),
+            };
+
             let symbol_id = *stdlib
                 .expression_context
                 .read()
                 .symbol_table
-                .get_by_right(invokable.name.as_str())?;
+                .get_by_right(name)?;
 
             Some((symbol_id, id))
         })
@@ -118,12 +138,17 @@ fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
         .polymorphic_functions
         .iter()
         .flat_map(|(id, func_id)| {
+            let polymorphic_function = &expression_context.functions[*func_id];
+            let module = &polymorphic_function.0;
             let polymorhpic_fn_name =
-                expression_context.functions[*func_id].name.as_str();
+                &polymorphic_function.1.name.as_str().clone();
 
-            let symbol_id = expression_context
-                .symbol_table
-                .get_by_right(polymorhpic_fn_name)?;
+            let symbol_id = expression_context.symbol_table.get_by_right(
+                &QualifiedName {
+                    module: module.clone(),
+                    name: polymorhpic_fn_name.to_string(),
+                },
+            )?;
 
             Some((*symbol_id, id.id))
         })

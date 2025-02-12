@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     debugging::{Debugger, NoOpDebugger},
     interpreter::{Context, PolymorphicFunctionID},
+    modules::{ModuleName, QualifiedName},
     parser::CodeLocation,
     stdlib::ef3r_stdlib,
     types::ExprType,
@@ -287,15 +288,15 @@ impl<V: Clone> TracedExprRec<V> {
     }
 }
 
-impl Arbitrary for TracedExprRec<String> {
+impl Arbitrary for TracedExprRec<QualifiedName> {
     fn arbitrary(g: &mut Gen) -> Self {
-        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+        let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
         Self::arbitrary_with_depth(&context, g, 0)
     }
 }
 
-impl TracedExprRec<String> {
+impl TracedExprRec<QualifiedName> {
     pub fn arbitrary_with_depth<T: Debugger + 'static>(
         context: &Context<T>,
         g: &mut Gen,
@@ -378,7 +379,10 @@ impl TracedExprRec<String> {
                     args,
                 )
             }
-            7 => TracedExprRec::Var(String::arbitrary(g)),
+            7 => TracedExprRec::Var(QualifiedName {
+                module: ModuleName::new(String::arbitrary(g).as_str()),
+                name: String::arbitrary(g),
+            }),
             _ => unreachable!(),
         }
     }
@@ -402,7 +406,7 @@ pub fn to_rpn<V: Clone>(expr: &RawExpr<V>) -> Vec<RawExpr<V>> {
     }
 }
 
-impl TracedExpr<String> {
+impl TracedExpr<QualifiedName> {
     pub fn expression_trace(&self) -> String {
         let rpn = to_rpn(&self.full_trace());
         rpn.iter()

@@ -4,17 +4,16 @@ use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::*,
-    frp::with_lock,
     interpreter::{EvaluationError, FunctionDefinition},
     types::ExprType,
 };
 
-use super::Module;
+use super::{Module, ModuleName};
 
 pub fn io_module<T: Debugger>() -> Module<2, T> {
     Module {
         package: "stdlib".to_string(),
-        file_name: "io.rs".to_string(),
+        name: ModuleName::new("io"),
         definitions: [
             build_function!(
                 T,

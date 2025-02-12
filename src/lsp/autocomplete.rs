@@ -22,7 +22,7 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
         return vec![];
     }
 
-    let statements = parsed.unwrap();
+    let (imports, statements) = parsed.unwrap();
     if statements.len() != 1 {
         return vec![];
     }
@@ -47,12 +47,12 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
         //  to sift through, so parallelize.
         .par_iter()
         .filter(|f| {
-            if f.argument_types.is_empty() {
+            if f.1.argument_types.is_empty() {
                 return false;
             }
 
-            f.argument_types[0] == expr_type
+            f.1.argument_types[0] == expr_type
         })
-        .map(|f| f.name.clone())
+        .map(|f| f.1.name.clone())
         .collect()
 }

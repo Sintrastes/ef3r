@@ -13,8 +13,8 @@ use crate::{
         Statement,
     },
     debugging::Debugger,
-    frp::{with_lock, Node},
-    modules::Module,
+    frp::Node,
+    modules::{Module, ModuleData, ModuleName, QualifiedName},
     typechecking::{type_of, RuntimeLookup},
     types::ExprType,
 };
@@ -42,8 +42,20 @@ impl<T: Debugger> Clone for Context<T> {
 }
 
 impl<T: Debugger> Context<T> {
-    pub fn load_module<const N: usize>(&mut self, module: Module<N, T>) {
+    pub fn load_module<const N: usize>(
+        &mut self,
+        module: Module<N, T>,
+    ) -> ModuleData {
+        let name = module.name.clone();
+
+        let function_names = module.function_names();
+
         module.load_into(self);
+
+        ModuleData {
+            name: name.clone(),
+            symbols: function_names,
+        }
     }
 
     ///
@@ -76,7 +88,7 @@ pub enum EvaluationError {
         at_loc: String,
     },
     #[error("Attempted to apply {}, but was not a function.", _0.untraced())]
-    NotAFunction(TracedExpr<String>),
+    NotAFunction(TracedExpr<QualifiedName>),
     #[error("Thread panicked")]
     ThreadError,
     #[error("Could not find variable \"{variable}\" in the current context.")]
@@ -115,8 +127,8 @@ pub struct PolymorphicIndex {
 
 #[derive(Clone)]
 pub struct ExpressionContext<T: Debugger + 'static> {
-    pub symbol_table: BiMap<usize, String>,
-    pub functions: Vec<FunctionDefinition<T>>,
+    pub symbol_table: BiMap<usize, QualifiedName>,
+    pub functions: Vec<(ModuleName, FunctionDefinition<T>)>,
     pub polymorphic_functions: HashMap<PolymorphicIndex, FunctionID>,
     pub variables: HashMap<usize, TracedExpr<usize>>,
 }
@@ -127,7 +139,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     ///
     pub fn resolve_function(&self, name: &str) -> Option<usize> {
         for (index, function) in self.functions.iter().enumerate() {
-            if function.name == name {
+            if function.1.name == name {
                 return Some(index);
             }
         }
@@ -143,7 +155,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
             .polymorphic_functions
             .iter()
             .find(|(_, func)| {
-                let func_name = self.functions[**func].name.clone();
+                let func_name = self.functions[**func].1.name.clone();
                 func_name == name
             })
             .unwrap()
@@ -157,7 +169,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     /// the symbol table of the expression context.
     pub fn strip_symbols(
         &mut self,
-        expr: TracedExprRec<String>,
+        expr: TracedExprRec<QualifiedName>,
     ) -> TracedExprRec<usize> {
         match expr {
             TracedExprRec::None => TracedExprRec::None,
@@ -231,7 +243,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     /// the symbol table of the expression context.
     pub fn strip_symbols_traced(
         &mut self,
-        expr: TracedExpr<String>,
+        expr: TracedExpr<QualifiedName>,
     ) -> TracedExpr<usize> {
         TracedExpr {
             location: expr.location,
@@ -244,7 +256,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     /// the symbol table of the expression context.
     pub fn strip_symbols_statement(
         &mut self,
-        statement: Statement<String>,
+        statement: Statement<QualifiedName>,
     ) -> Statement<usize> {
         Statement {
             location: statement.location,
@@ -264,7 +276,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
 
     pub fn strip_symbols_raw(
         &mut self,
-        expr: RawExpr<String>,
+        expr: RawExpr<QualifiedName>,
     ) -> RawExpr<usize> {
         RawExpr {
             location: expr.location,
@@ -340,7 +352,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     pub fn restore_symbols(
         &self,
         expr: TracedExprRec<usize>,
-    ) -> TracedExprRec<String> {
+    ) -> TracedExprRec<QualifiedName> {
         match expr {
             TracedExprRec::None => TracedExprRec::None,
             TracedExprRec::Unit => TracedExprRec::Unit,
@@ -367,15 +379,17 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                 TracedExprRec::PolymorphicFunction(x)
             }
             TracedExprRec::Lambda(vars, stmts, body) => {
-                let restored_vars: Vec<_> = vars
-                    .into_iter()
-                    .map(|id| {
-                        self.symbol_table
-                            .get_by_left(&id)
-                            .unwrap_or(&format!("var_{}", id))
-                            .to_string()
-                    })
-                    .collect();
+                let restored_vars: Vec<_> =
+                    vars.into_iter()
+                        .map(|id| {
+                            self.symbol_table
+                                .get_by_left(&id)
+                                .unwrap_or(&QualifiedName::unqualified(
+                                    format!("var_{}", id),
+                                ))
+                                .clone()
+                        })
+                        .collect();
 
                 TracedExprRec::Lambda(
                     restored_vars,
@@ -397,8 +411,11 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
             TracedExprRec::Var(id) => TracedExprRec::Var(
                 self.symbol_table
                     .get_by_left(&id)
-                    .unwrap_or(&format!("var_{}", id))
-                    .to_string(),
+                    .unwrap_or(&QualifiedName::unqualified(format!(
+                        "var_{}",
+                        id
+                    )))
+                    .clone(),
             ),
         }
     }
@@ -408,7 +425,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     pub fn restore_symbols_traced(
         &self,
         expr: TracedExpr<usize>,
-    ) -> TracedExpr<String> {
+    ) -> TracedExpr<QualifiedName> {
         TracedExpr {
             location: expr.location,
             evaluated: self.restore_symbols(expr.evaluated),
@@ -421,14 +438,17 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     pub fn restore_symbols_statement(
         &self,
         statement: Statement<usize>,
-    ) -> Statement<String> {
+    ) -> Statement<QualifiedName> {
         Statement {
             location: statement.location,
             var: statement.var.map(|id| {
                 self.symbol_table
                     .get_by_left(&id)
-                    .unwrap_or(&format!("var_{}", id))
-                    .to_string()
+                    .unwrap_or(&QualifiedName::unqualified(format!(
+                        "var_{}",
+                        id
+                    )))
+                    .clone()
             }),
             expr: self.restore_symbols_raw(statement.expr),
         }
@@ -436,7 +456,10 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
 
     /// Restore the symbols to the raw expression by looking up variables
     /// in the symbol table.
-    pub fn restore_symbols_raw(&self, expr: RawExpr<usize>) -> RawExpr<String> {
+    pub fn restore_symbols_raw(
+        &self,
+        expr: RawExpr<usize>,
+    ) -> RawExpr<QualifiedName> {
         RawExpr {
             location: expr.location,
             expr: match expr.expr {
@@ -470,8 +493,10 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                         .map(|id| {
                             self.symbol_table
                                 .get_by_left(&id)
-                                .unwrap_or(&format!("var_{}", id))
-                                .to_string()
+                                .unwrap_or(&QualifiedName::unqualified(
+                                    format!("var_{}", id),
+                                ))
+                                .clone()
                         })
                         .collect();
 
@@ -495,8 +520,11 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                 RawExprRec::Var(id) => RawExprRec::Var(
                     self.symbol_table
                         .get_by_left(&id)
-                        .unwrap_or(&format!("var_{}", id))
-                        .to_string(),
+                        .unwrap_or(&QualifiedName::unqualified(format!(
+                            "var_{}",
+                            id
+                        )))
+                        .clone(),
                 ),
             },
         }
@@ -509,12 +537,12 @@ mod tests_for_symbols {
 
     use crate::{
         ast::traced_expr::TracedExprRec, debugging::NoOpDebugger,
-        stdlib::ef3r_stdlib,
+        modules::QualifiedName, stdlib::ef3r_stdlib,
     };
 
     quickcheck! {
-        fn strip_and_restore_yields_same_expression(expr: TracedExprRec<String>) -> bool {
-            let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+        fn strip_and_restore_yields_same_expression(expr: TracedExprRec<QualifiedName>) -> bool {
+            let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
             let mut expression_context = context.expression_context.write();
 
@@ -578,20 +606,16 @@ pub fn evaluate_traced<T: Debugger + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use bimap::BiMap;
-
-    use parking_lot::RwLock;
 
     use crate::{
         ast::traced_expr::TracedExprRec, debugging::NoOpDebugger,
-        interpreter::evaluate, stdlib::ef3r_stdlib,
+        interpreter::evaluate, modules::QualifiedName, stdlib::ef3r_stdlib,
     };
 
     quickcheck! {
-        fn evaluation_is_idempotent(expr: TracedExprRec<String>) -> bool {
-            let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+        fn evaluation_is_idempotent(expr: TracedExprRec<QualifiedName>) -> bool {
+            let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
             let expr = context.expression_context.write().strip_symbols(expr);
 
@@ -642,7 +666,7 @@ fn evaluate_traced_rec<T: Debugger + 'static>(
                 .read()
                 .symbol_table
                 .get_by_left(&x)
-                .unwrap_or(&format!("var_{}", x))
+                .unwrap_or(&QualifiedName::unqualified(format!("var_{}", x)))
                 .to_string();
 
             Ok(ctx
@@ -773,6 +797,7 @@ fn function_from_expression<T: Debugger + 'static>(
                     .ok_or(EvaluationError::NotAFunction(
                         reinterpreted.traced(),
                     ))?
+                    .1
                     .definition,
             )
         }
@@ -846,6 +871,7 @@ fn function_from_expression<T: Debugger + 'static>(
                     .ok_or(EvaluationError::NotAFunction(
                         reinterpreted.traced(),
                     ))?
+                    .1
                     .definition,
             )
         }

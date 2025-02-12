@@ -130,7 +130,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
                 let context_ref = Arc::new(RwLock::new(context));
 
-                let mut context = context_ref.write();
+                let context = context_ref.write();
 
                 interpreter::interpret(&context, &program).unwrap();
             }

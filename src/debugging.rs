@@ -5,6 +5,7 @@ use tonic::transport::Channel;
 use crate::{
     frp::Node,
     interpreter::Context,
+    modules::QualifiedName,
     node_visualization::{
         node_visualizer_client::NodeVisualizerClient, AddNodesRequest, NodeData,
     },
@@ -110,7 +111,9 @@ impl Debugger for StepDebugger {
                         .expression_context
                         .read()
                         .symbol_table
-                        .get_by_right(var_name)
+                        .get_by_right(&QualifiedName::unqualified(
+                            var_name.to_string(),
+                        ))
                         .unwrap();
 
                     match ctx.expression_context.read().variables.get(&id) {

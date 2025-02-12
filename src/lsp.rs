@@ -5,8 +5,7 @@ use std::sync::{Arc, RwLock};
 use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LspService, Server};
 
 use crate::{
-    debugging::NoOpDebugger, frp::with_lock, interpreter::Context,
-    stdlib::ef3r_stdlib,
+    debugging::NoOpDebugger, interpreter::Context, stdlib::ef3r_stdlib,
 };
 
 pub struct LspBackend {
@@ -18,10 +17,9 @@ impl LspBackend {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            context: Arc::new(RwLock::new(ef3r_stdlib(
-                NoOpDebugger::new(),
-                bimap::BiMap::new(),
-            ))),
+            context: Arc::new(RwLock::new(
+                ef3r_stdlib(NoOpDebugger::new(), bimap::BiMap::new()).1,
+            )),
         }
     }
 }

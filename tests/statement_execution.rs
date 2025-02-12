@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use bimap::BiMap;
 use ef3r::ast::expr::Expr;
 use ef3r::ast::raw_expr::RawExpr;
@@ -9,13 +7,10 @@ use ef3r::debugging::NoOpDebugger;
 use ef3r::executable::load_efrs_source;
 use ef3r::interpreter::interpret;
 use ef3r::stdlib::ef3r_stdlib;
-use parking_lot::RwLock;
 
 #[test]
 fn variable_assignment() {
-    let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
-
-    let cloned_ctx = context.clone();
+    let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
     let expression = RawExpr::int(3);
     let statement = Statement {
@@ -40,7 +35,7 @@ fn variable_assignment() {
 
 #[test]
 fn reassignment_of_statement() {
-    let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+    let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
     let statement1 = Statement {
         location: None,
@@ -76,9 +71,9 @@ fn execute_example_program() {
         concat = { xs -> fold(xs, "", { x, y -> x + y }) };
 
         join_to_string = { strs, sep ->
-            strs
-                .intersperse(sep)
-                .concat()
+            concat(
+                intersperse(strs, sep)
+            )
         };
 
         print(join_to_string(list("hello", "world"), ", "));
@@ -103,7 +98,10 @@ fn execute_example_program() {
         reactive(Type, Int);
         reactive(Float, 4.2);
         reactive(Unit, ());
-        reactive(Pair(Int, Int), pair(2, 3));
+
+        stream = reactive(Pair(Int, Int), pair(2, 3));
+
+        mapped = stream.map { x -> x };
 
         // Test list processing
         xs = list(1, 2, 3);

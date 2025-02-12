@@ -22,14 +22,12 @@ fn test_map_node() {
 
     // Setup our FRP graph with two nodes: An input node and a mapped node.
 
-    let context =
-        Arc::new(RwLock::new(ef3r_stdlib(NoOpDebugger::new(), BiMap::new())));
-
-    let mut context_lock = context.write();
+    let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+    let mut context = context;
 
     let node_index = Node::new(
         Arc::new(on_update),
-        &mut context_lock.graph.lock(),
+        &mut context.graph.lock(),
         ExprType::Int,
         TracedExprRec::Int(20).traced(),
     );
@@ -38,7 +36,7 @@ fn test_map_node() {
 
     let mapped_node_index = map_node(
         Arc::new(on_update),
-        &mut context_lock,
+        &mut context,
         node_index,
         ExprType::Int,
         Arc::new(Mutex::new(move |ctx: &Context<NoOpDebugger>, x| {
@@ -53,15 +51,11 @@ fn test_map_node() {
 
     println!("After mapped node");
 
-    Node::update(
-        node_index,
-        &mut context_lock,
-        TracedExprRec::Int(21).traced(),
-    );
+    Node::update(node_index, &mut context, TracedExprRec::Int(21).traced());
 
     // Check the initial state of the mapped node is what we expect
 
-    let graph = context_lock.graph.lock();
+    let graph = context.graph.lock();
 
     let mapped_node = graph.node_weight(mapped_node_index);
 
@@ -74,11 +68,11 @@ fn test_map_node() {
 
     // Update the input value and step through a single frame of the event loop.
 
-    process_event_frame(&mut context_lock);
+    process_event_frame(&context);
 
     // Check that the mapped node has updated.
 
-    let graph = &mut context_lock.graph.lock();
+    let graph = &mut context.graph.lock();
     let mapped_node = graph.node_weight(mapped_node_index);
 
     assert_eq!(
@@ -95,7 +89,7 @@ fn test_filter_node() {
 
     // Setup our FRP graph with two nodes: An input node and a mapped node.
 
-    let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+    let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
     let node_index = Node::new(
         Arc::new(on_update),
@@ -166,7 +160,7 @@ fn test_combined_node() {
 
     // Setup our FRP graph with three nodes: Two input nodes, and a combined output node.
 
-    let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+    let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
     let first_node_index = Node::new(
         Arc::new(on_update),
@@ -226,7 +220,7 @@ fn test_fold_node() {
 
     // Setup our FRP graph with an input node and a folded node
 
-    let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+    let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
     let event_node_index = Node::new(
         Arc::new(on_update),

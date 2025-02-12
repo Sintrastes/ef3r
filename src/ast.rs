@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 use traced_expr::TracedExprRec;
 
 use crate::{
-    debugging::NoOpDebugger, parser::CodeLocation, stdlib::ef3r_stdlib,
+    debugging::NoOpDebugger,
+    modules::{ModuleName, QualifiedName},
+    parser::CodeLocation,
+    stdlib::ef3r_stdlib,
 };
 
 ///
@@ -25,9 +28,32 @@ pub struct Statement<V> {
     pub expr: RawExpr<V>,
 }
 
+impl<V: Clone> Statement<V> {
+    pub fn map<T>(self, f: impl Fn(V) -> T) -> Statement<T> {
+        Statement {
+            location: self.location,
+            var: self.var.map(&f),
+            expr: self.expr.map(&f),
+        }
+    }
+}
+
 impl Statement<String> {
+    pub fn qualified(&self, module: ModuleName) -> Statement<QualifiedName> {
+        Statement {
+            location: self.location,
+            var: self.var.clone().map(|name| QualifiedName {
+                module: module.clone(),
+                name: name.to_string(),
+            }),
+            expr: self.expr.qualified(module),
+        }
+    }
+}
+
+impl Statement<QualifiedName> {
     fn arbitrary_with_depth(g: &mut Gen, depth: usize) -> Self {
-        let context = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
+        let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
         Statement {
             location: None,
@@ -60,12 +86,11 @@ mod tests {
 
     #[test]
     fn evaluation_keeps_trace() {
-        let context_ref = Arc::new(RwLock::new(ef3r_stdlib(
-            NoOpDebugger::new(),
-            BiMap::new(),
-        )));
+        let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
-        let mut context = context_ref.write();
+        let context_ref = Arc::new(RwLock::new(context));
+
+        let context = context_ref.write();
 
         // Example expression.
         let expression = TracedExpr::apply(
@@ -88,12 +113,11 @@ mod tests {
 
     #[test]
     fn evaluating_twice_keeps_entire_trace() {
-        let context_ref = Arc::new(RwLock::new(ef3r_stdlib(
-            NoOpDebugger::new(),
-            BiMap::new(),
-        )));
+        let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
-        let mut context = context_ref.write();
+        let context_ref = Arc::new(RwLock::new(context));
+
+        let context = context_ref.write();
 
         // Example expression. 2 * (1 + 2)
         let expression = RawExpr::apply(

@@ -3,7 +3,6 @@ use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::*,
-    frp::with_lock,
     interpreter::{
         evaluate_function_application, EvaluationError, FunctionDefinition,
     },
@@ -11,12 +10,12 @@ use crate::{
     types::ExprType,
 };
 
-use super::Module;
+use super::{Module, ModuleName};
 
 pub fn lists_module<T: Debugger>() -> Module<11, T> {
     Module {
         package: "stdlib".to_string(),
-        file_name: "lists.rs".to_string(),
+        name: ModuleName::new("list"),
         definitions: [
             build_function!(
                 T,

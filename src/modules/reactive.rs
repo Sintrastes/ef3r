@@ -17,12 +17,12 @@ use crate::{
     types::ExprType,
 };
 
-use super::Module;
+use super::{Module, ModuleName};
 
 pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
     Module {
         package: "stdlib".to_string(),
-        file_name: "reactive.rs".to_string(),
+        name: ModuleName::new("reactive"),
         definitions: [
             build_function!(
                 T,

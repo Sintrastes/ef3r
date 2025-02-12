@@ -36,11 +36,11 @@ pub fn type_of<T: Debugger + 'static, V, Lookup: TypingLookup<T, V>>(
             Box::new(type_of::<T, V, Lookup>(ctx, &traced_expr1.evaluated)?),
         )),
         TracedExprRec::BuiltinFunction(fn_id) => Some(ExprType::Func(
-            ctx.functions[*fn_id].argument_types.to_vec(),
+            ctx.functions[*fn_id].1.argument_types.to_vec(),
             Box::new(
                 ctx.functions
                     .get(*fn_id)
-                    .map(|f| f.result_type.clone())
+                    .map(|f| f.1.result_type.clone())
                     .unwrap_or(ExprType::Any),
             ),
         )),

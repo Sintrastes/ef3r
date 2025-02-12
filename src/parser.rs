@@ -1,10 +1,12 @@
 use crate::ast::raw_expr::{RawExpr, RawExprRec};
 use crate::ast::Statement;
+use crate::modules::{ModuleName, QualifiedName};
 use crate::types::ExprType;
 use color_eyre::eyre::{eyre, Result};
 use nom::bytes::streaming::take_while;
 use nom::character::complete::satisfy;
 use nom::error::Error;
+use nom::multi::{many1, separated_list1};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
@@ -46,7 +48,7 @@ impl From<Span<'_>> for CodeLocation {
     }
 }
 
-fn lambda_params(input: Span) -> IResult<Span, Vec<String>> {
+fn lambda_params(input: Span) -> IResult<Span, Vec<QualifiedName>> {
     map(
         opt(terminated(
             separated_list0(ws(char(',')), identifier),
@@ -56,7 +58,7 @@ fn lambda_params(input: Span) -> IResult<Span, Vec<String>> {
     )(input)
 }
 
-fn lambda_body(input: Span) -> IResult<Span, Vec<Statement<String>>> {
+fn lambda_body(input: Span) -> IResult<Span, Vec<Statement<QualifiedName>>> {
     terminated(
         separated_list0(
             ws(char(';')),
@@ -73,7 +75,7 @@ fn lambda_body(input: Span) -> IResult<Span, Vec<Statement<String>>> {
     )(input)
 }
 
-fn lambda_expr(input: Span) -> IResult<Span, RawExpr<String>> {
+fn lambda_expr(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     map(
         loc(delimited(
             ws(char('{')),
@@ -178,13 +180,30 @@ fn block_comment(input: Span) -> IResult<Span, ()> {
 }
 
 // Identifier parser
-fn identifier(input: Span) -> IResult<Span, String> {
+fn identifier(input: Span) -> IResult<Span, QualifiedName> {
     map(
-        recognize(pair(
-            satisfy(|c| c.is_ascii_lowercase()),
-            many0(alt((alphanumeric1, tag("_")))),
-        )),
-        |s: Span| s.fragment().to_string(),
+        separated_list1(
+            tag("::"),
+            map(
+                recognize(pair(
+                    satisfy(|c| c.is_ascii_lowercase()),
+                    many0(alt((alphanumeric1, tag("_")))),
+                )),
+                |s: Span| s.fragment().to_string(),
+            ),
+        ),
+        |strings: Vec<String>| {
+            let last = strings.last().unwrap().clone();
+            let package = if strings.len() > 1 {
+                strings[..strings.len() - 1].join(".")
+            } else {
+                "".to_string()
+            };
+            QualifiedName {
+                module: ModuleName::new(&package),
+                name: last,
+            }
+        },
     )(input)
 }
 
@@ -256,17 +275,17 @@ pub fn char_in<const N: usize>(
 }
 
 // Symbol parser
-fn symbol(input: Span) -> IResult<Span, String> {
+fn symbol(input: Span) -> IResult<Span, QualifiedName> {
     alt((
         delimited(char('`'), identifier, char('`')),
         map(recognize(many0(char_in(ALLOWABLE_SYMBOLS))), |s: Span| {
-            s.fragment().to_string()
+            QualifiedName::unqualified(s.fragment().to_string())
         }),
     ))(input)
 }
 
 // Literal parsers
-fn float(input: Span) -> IResult<Span, RawExpr<String>> {
+fn float(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     map(
         tuple((recognize(digit1), char('.'), recognize(digit1))),
         |(int_digits, _, frac_digits): (Span, char, Span)| {
@@ -282,20 +301,20 @@ fn float(input: Span) -> IResult<Span, RawExpr<String>> {
     )(input)
 }
 
-fn integer(input: Span) -> IResult<Span, RawExpr<String>> {
+fn integer(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     map(recognize(digit1), |digits: Span| {
         RawExprRec::Int(digits.parse().unwrap()).at_loc(input.into())
     })(input)
 }
 
-fn string_literal(input: Span) -> IResult<Span, RawExpr<String>> {
+fn string_literal(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     map(
         delimited(char('"'), take_while(|c| c != '"'), char('"')),
         |s: Span| RawExprRec::String(s.to_string()).at_loc(input.into()),
     )(input)
 }
 
-fn boolean(input: Span) -> IResult<Span, RawExpr<String>> {
+fn boolean(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     alt((
         map(tag("true"), |_| RawExprRec::Bool(true).at_loc(input.into())),
         map(tag("false"), |_| {
@@ -304,7 +323,7 @@ fn boolean(input: Span) -> IResult<Span, RawExpr<String>> {
     ))(input)
 }
 
-fn literal(input: Span) -> IResult<Span, RawExpr<String>> {
+fn literal(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     alt((
         float,
         integer,
@@ -316,7 +335,7 @@ fn literal(input: Span) -> IResult<Span, RawExpr<String>> {
 }
 
 // Expression parsers
-fn primary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
+fn primary_expr(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     alt((
         ws(literal),
         map(ws(type_expr), |x| RawExprRec::Type(x).at_loc(input.into())),
@@ -325,7 +344,7 @@ fn primary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
     ))(input)
 }
 
-fn function_call(input: Span) -> IResult<Span, RawExpr<String>> {
+fn function_call(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     let (input, func) = identifier(input)?;
 
     let func_exp = RawExprRec::Var(func).at_loc(input.into());
@@ -339,7 +358,9 @@ fn function_call(input: Span) -> IResult<Span, RawExpr<String>> {
     ))
 }
 
-fn function_invocation(input: Span) -> IResult<Span, Vec<RawExpr<String>>> {
+fn function_invocation(
+    input: Span,
+) -> IResult<Span, Vec<RawExpr<QualifiedName>>> {
     let (input, (args, trailing_lambda)) = alt((
         // Case 1: f(arg1, arg2) { ... }
         map(
@@ -366,7 +387,7 @@ fn function_invocation(input: Span) -> IResult<Span, Vec<RawExpr<String>>> {
     Ok((input, final_args))
 }
 
-fn binary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
+fn binary_expr(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     let (input, first) = non_binary_expression(input)?;
 
     let (input, rest) =
@@ -377,7 +398,7 @@ fn binary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
         rest.into_iter()
             .fold(first, |acc, ((location, sym), right)| {
                 RawExprRec::Apply(
-                    Box::new(RawExprRec::Var(sym.to_string()).at_loc(location)),
+                    Box::new(RawExprRec::Var(sym).at_loc(location)),
                     vec![acc, right].into_boxed_slice(),
                 )
                 .at_loc(location)
@@ -388,7 +409,8 @@ fn binary_expr(input: Span) -> IResult<Span, RawExpr<String>> {
 
 fn method_call(
     input: Span,
-) -> IResult<Span, (CodeLocation, (String, Vec<RawExpr<String>>))> {
+) -> IResult<Span, (CodeLocation, (QualifiedName, Vec<RawExpr<QualifiedName>>))>
+{
     let (input, result) = tuple((
         preceded(ws(char('.')), identifier),
         function_invocation,
@@ -397,7 +419,7 @@ fn method_call(
     Ok((input, (input.into(), result)))
 }
 
-fn method_calls(input: Span) -> IResult<Span, RawExpr<String>> {
+fn method_calls(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     let (input, initial) = primary_expr(input)?;
 
     // Parse zero or more method calls
@@ -423,16 +445,16 @@ fn method_calls(input: Span) -> IResult<Span, RawExpr<String>> {
     Ok((input, result))
 }
 
-fn expression(input: Span) -> IResult<Span, RawExpr<String>> {
+fn expression(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     alt((binary_expr, non_binary_expression))(input)
 }
 
-fn non_binary_expression(input: Span) -> IResult<Span, RawExpr<String>> {
+fn non_binary_expression(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
     alt((lambda_expr, function_call, method_calls, primary_expr))(input)
 }
 
 // Statement parsers
-fn let_statement(input: Span) -> IResult<Span, Statement<String>> {
+fn let_statement(input: Span) -> IResult<Span, Statement<QualifiedName>> {
     map(
         tuple((ws(identifier), ws(char('=')), expression)),
         |(id, _, expr)| Statement {
@@ -443,12 +465,27 @@ fn let_statement(input: Span) -> IResult<Span, Statement<String>> {
     )(input)
 }
 
-pub fn parse_program(input: Span) -> IResult<Span, Vec<Statement<String>>> {
-    // A full program is basically a top-level lambda we're executing.
-    lambda_body(input)
+fn import_statement(input: Span) -> IResult<Span, ModuleName> {
+    map(
+        tuple((ws(tag("import")), ws(identifier), ws(char(';')))),
+        |(_, id, _)| ModuleName::new(id.to_string().as_str()),
+    )(input)
 }
 
-pub fn parse(input: &str) -> Result<Vec<Statement<String>>> {
+fn import_statements(input: Span) -> IResult<Span, Vec<ModuleName>> {
+    many0(import_statement)(input)
+}
+
+pub fn parse_program(
+    input: Span,
+) -> IResult<Span, (Vec<ModuleName>, Vec<Statement<QualifiedName>>)> {
+    // A full program is basically a top-level lambda we're executing.
+    tuple((import_statements, lambda_body))(input)
+}
+
+pub fn parse(
+    input: &str,
+) -> Result<(Vec<ModuleName>, Vec<Statement<QualifiedName>>)> {
     match parse_program(Span::new(input)) {
         Ok((remaining, program)) => {
             if remaining.trim().is_empty() {

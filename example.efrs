@@ -45,6 +45,6 @@ w = z + 3;
 
 dbg_trace_full(w);
 
-print(2 / (w - node.current_value()));
+print(2 / (0 - node.current_value()));
 
 delay(10000);

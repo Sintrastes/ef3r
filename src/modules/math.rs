@@ -1,22 +1,19 @@
-use bincode::de::read;
-
 use crate::typechecking::RuntimeLookup;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::*,
-    frp::with_lock,
     interpreter::{EvaluationError, FunctionDefinition},
     typechecking::type_of,
     types::ExprType,
 };
 
-use super::Module;
+use super::{Module, ModuleName};
 
 pub fn math_module<T: Debugger>() -> Module<19, T> {
     Module {
         package: "stdlib".to_string(),
-        file_name: "math.rs".to_string(),
+        name: ModuleName::new("math"),
         definitions: [
             build_function!(T, "*", ExprType::Int, |_cx, x: i32, y: i32| {
                 Ok(x * y)

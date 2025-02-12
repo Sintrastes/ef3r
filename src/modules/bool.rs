@@ -3,18 +3,17 @@ use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::*,
-    frp::with_lock,
     interpreter::{EvaluationError, FunctionDefinition},
     typechecking::type_of,
     types::ExprType,
 };
 
-use super::Module;
+use super::{Module, ModuleName};
 
 pub fn bool_module<T: Debugger>() -> Module<4, T> {
     Module {
         package: "stdlib".to_string(),
-        file_name: "bool.rs".to_string(),
+        name: ModuleName::new("bool"),
         definitions: [
             build_function!(T, "==", ExprType::Bool, |_cx,
 

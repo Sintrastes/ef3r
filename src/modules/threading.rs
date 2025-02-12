@@ -1,6 +1,5 @@
 use std::{sync::Arc, thread};
 
-use color_eyre::owo_colors::OwoColorize;
 use daggy::NodeIndex;
 
 use crate::{
@@ -15,12 +14,12 @@ use crate::{
     types::ExprType,
 };
 
-use super::Module;
+use super::{Module, ModuleName};
 
 pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
     Module {
         package: "stdlib".to_string(),
-        file_name: "threading.rs".to_string(),
+        name: ModuleName::new("threading"),
         definitions: [
             build_function!(
                 T,

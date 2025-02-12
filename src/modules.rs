@@ -9,16 +9,66 @@ pub mod reactive;
 pub mod strings;
 pub mod threading;
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+};
+
+use quickcheck::Arbitrary;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 use crate::{
     debugging::Debugger,
     interpreter::{Context, FunctionDefinition, PolymorphicIndex},
 };
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct QualifiedName {
+    pub module: ModuleName,
+    pub name: String,
+}
+
+impl QualifiedName {
+    pub fn unqualified(name: String) -> QualifiedName {
+        QualifiedName {
+            module: ModuleName::new(""),
+            name,
+        }
+    }
+}
+
+impl Display for QualifiedName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !self.module.0.is_empty() {
+            f.write_str(&self.module.0)?;
+            f.write_str("::")?;
+        }
+        f.write_str(&self.name)
+    }
+}
+
+impl Arbitrary for QualifiedName {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        Self {
+            module: ModuleName(String::arbitrary(g)),
+            name: String::arbitrary(g),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ModuleName(String);
+
+impl ModuleName {
+    pub fn new(name: &str) -> ModuleName {
+        ModuleName(name.to_string())
+    }
+}
+
 pub struct Module<const N: usize, T: Debugger + 'static> {
     pub package: String,
-    pub file_name: String,
+    pub name: ModuleName,
     pub definitions: [FunctionDefinition<T>; N],
 }
 
@@ -26,15 +76,15 @@ impl<const N: usize, T: Debugger> Module<N, T> {
     pub fn load_into(self, context: &Context<T>) {
         // Add the polymorphic index and function definitions from the module
         // to the context.
-        context
-            .expression_context
-            .write()
-            .functions
-            .extend(self.definitions);
+        context.expression_context.write().functions.extend(
+            self.definitions.map(|definition| {
+                (ModuleName::new(self.name.clone().0.as_str()), definition)
+            }),
+        );
 
         // Update the polymorphic functions map
         let new_index = build_polymorphic_index(
-            &context.expression_context.write().functions,
+            &context.expression_context.read().functions,
         )
         .unwrap();
 
@@ -44,7 +94,7 @@ impl<const N: usize, T: Debugger> Module<N, T> {
 }
 
 fn build_polymorphic_index<T: Debugger + 'static>(
-    functions: &[FunctionDefinition<T>],
+    functions: &[(ModuleName, FunctionDefinition<T>)],
 ) -> Result<HashMap<PolymorphicIndex, usize>, String> {
     // Needs to be stable, otherwise the IDs will be nondeterministic.
     let mut name_buckets: BTreeMap<
@@ -55,9 +105,9 @@ fn build_polymorphic_index<T: Debugger + 'static>(
     for id in 0..functions.len() - 1 {
         let func = &functions[id];
         name_buckets
-            .entry(func.name.clone())
+            .entry(func.1.name.clone())
             .or_default()
-            .push((id, func));
+            .push((id, &func.1));
     }
 
     let mut polymorphic_id = 0;
@@ -87,4 +137,46 @@ fn build_polymorphic_index<T: Debugger + 'static>(
     }
 
     Ok(result)
+}
+
+impl<const N: usize, T: Debugger> Module<N, T> {
+    ///
+    /// Get the names of all functions associated with a module.
+    ///
+    pub fn function_names(&self) -> HashSet<String> {
+        self.definitions
+            .iter()
+            .map(|def| def.name.clone())
+            .collect()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct ModuleData {
+    pub name: ModuleName,
+    pub symbols: HashSet<String>,
+}
+
+///
+/// Try find the first module which includes the given name, and
+///  use that to return a qualified name with the appropriate
+///  module resolved.
+///
+pub fn resolve_imports(
+    modules: &Vec<ModuleData>,
+    name: QualifiedName,
+) -> QualifiedName {
+    for module in modules {
+        let found = module.symbols.contains(&name.name);
+
+        if found {
+            return QualifiedName {
+                module: module.name.clone(),
+                name: name.name.clone(),
+            };
+        }
+    }
+
+    // If no match found, return original name
+    name
 }
