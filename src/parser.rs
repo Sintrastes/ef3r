@@ -457,11 +457,16 @@ fn non_binary_expression(input: Span) -> IResult<Span, RawExpr<QualifiedName>> {
 // Statement parsers
 fn let_statement(input: Span) -> IResult<Span, Statement<QualifiedName>> {
     map(
-        tuple((ws(identifier), ws(char('=')), expression)),
-        |(id, _, expr)| Statement {
+        tuple((
+            ws(identifier),
+            opt(preceded(ws(char(':')), type_expr)),
+            ws(char('=')),
+            expression,
+        )),
+        |(id, typ, _, expr)| Statement {
             location: Some(input.into()),
             var: Some(id),
-            type_annotation: None,
+            type_annotation: typ,
             expr: expr,
         },
     )(input)

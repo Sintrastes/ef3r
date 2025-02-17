@@ -1,5 +1,13 @@
 print("Hello, world!");
 
+// Two styles of type annotations.
+n : Int
+= 42;
+
+m : Int = 21;
+
+print(n);
+
 p = ({ x, y -> x + (y * 2) }).with(2);
 
 print(p(1));
