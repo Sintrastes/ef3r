@@ -6,7 +6,7 @@ use color_eyre::eyre::{eyre, Result};
 use nom::bytes::streaming::take_while;
 use nom::character::complete::satisfy;
 use nom::error::Error;
-use nom::multi::{many1, separated_list1};
+use nom::multi::separated_list1;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},

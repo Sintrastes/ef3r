@@ -3,15 +3,10 @@ use std::sync::{
     Arc,
 };
 
-use parking_lot::{lock_api::MutexGuard, Mutex, RawMutex, RwLock};
+use parking_lot::{Mutex, RwLock};
 
 use daggy::{
-    petgraph::{
-        adj::Neighbors,
-        algo::toposort,
-        visit::{GraphBase, GraphRef, IntoNeighbors, IntoNeighborsDirected},
-        Direction,
-    },
+    petgraph::{algo::toposort, visit::IntoNeighbors},
     Dag, NodeIndex,
 };
 

@@ -1,8 +1,6 @@
 use crate::{
-    ast::traced_expr::{TracedExpr, TracedExprRec},
-    debugging::Debugger,
-    interpreter::ExpressionContext,
-    types::ExprType,
+    ast::traced_expr::TracedExprRec, debugging::Debugger,
+    interpreter::ExpressionContext, types::ExprType,
 };
 
 /// Attempts to infer the type of expressions.
@@ -78,7 +76,7 @@ pub fn type_of<T: Debugger + 'static, V, Lookup: TypingLookup<T, V>>(
 ///
 /// Trait for different techniques for looking up type information.
 ///
-trait TypingLookup<T: Debugger + 'static, V> {
+pub trait TypingLookup<T: Debugger + 'static, V> {
     fn lookup_var_type(ctx: &ExpressionContext<T>, var: &V)
         -> Option<ExprType>;
 }

@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, sync::Arc, thread::JoinHandle};
+use std::{collections::HashMap, sync::Arc, thread::JoinHandle};
 
 use bimap::{BiHashMap, BiMap};
 use daggy::Dag;
