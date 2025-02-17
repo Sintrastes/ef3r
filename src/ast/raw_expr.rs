@@ -424,7 +424,58 @@ impl<V: Display> Display for RawExpr<V> {
     }
 }
 
-// Question: How would this work with traced expressions?
+pub fn substitute_traced<V: Clone + PartialEq + Eq>(
+    variable: &V,
+    with: &TracedExpr<V>,
+    in_expr: TracedExpr<V>,
+) -> TracedExpr<V> {
+    TracedExpr {
+        location: in_expr.location,
+        evaluated: substitute_traced_rec(variable, with, in_expr.evaluated),
+        stored_trace: in_expr
+            .stored_trace
+            .map(|expr| substitute_traced_rec(variable, with, expr)),
+    }
+}
+
+fn substitute_traced_rec<V: Clone + PartialEq + Eq>(
+    variable: &V,
+    with: &TracedExpr<V>,
+    in_expr: TracedExprRec<V>,
+) -> TracedExprRec<V> {
+    match in_expr {
+        TracedExprRec::Pair(x, y) => TracedExprRec::Pair(
+            Box::new(substitute_traced(variable, with, *x)),
+            Box::new(substitute_traced(variable, with, *y)),
+        ),
+        TracedExprRec::Apply(f, xs) => TracedExprRec::Apply(
+            Box::new(substitute_traced(variable, with, *f)),
+            xs.into_vec()
+                .into_iter()
+                .map(|x| substitute_traced(variable, with, x))
+                .collect(),
+        ),
+        TracedExprRec::Var(x) => {
+            if *variable == x {
+                with.clone().evaluated
+            } else {
+                TracedExprRec::Var(x)
+            }
+        }
+        TracedExprRec::Lambda(vars, statements, expr) => TracedExprRec::Lambda(
+            vars,
+            statements
+                .into_iter()
+                .map(|statement| {
+                    substitute_statement(variable, &with.untraced(), statement)
+                })
+                .collect(),
+            Box::new(substitute_traced(variable, with, *expr)),
+        ),
+        _ => in_expr,
+    }
+}
+
 pub fn substitute<V: Clone + PartialEq + Eq>(
     variable: &V,
     with: &RawExpr<V>,

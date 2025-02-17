@@ -1,3 +1,4 @@
+use crate::ast::raw_expr::{substitute_statement, substitute_traced};
 use crate::typechecking::RuntimeLookup;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
@@ -12,7 +13,7 @@ use crate::{
 
 use super::{Module, ModuleName};
 
-pub fn base_module<T: Debugger>() -> Module<9, T> {
+pub fn base_module<T: Debugger>() -> Module<10, T> {
     Module {
         package: "stdlib".to_string(),
         name: ModuleName::new("base"),
@@ -166,6 +167,12 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
             build_function!(T, "%", ExprType::Int, |_cx, x: i32, y: i32| {
                 Ok(x % y)
             }),
+            FunctionDefinition {
+                name: "with".to_string(),
+                argument_types: vec![],
+                result_type: ExprType::Any,
+                definition: |_, args| partial_application::<T>(args),
+            },
             build_function!(
                 T,
                 "dbg_trace",
@@ -185,5 +192,59 @@ pub fn base_module<T: Debugger>() -> Module<9, T> {
                 }
             ),
         ],
+    }
+}
+
+fn partial_application<T: Debugger>(
+    args: &[TracedExpr<usize>],
+) -> Result<TracedExprRec<usize>, EvaluationError> {
+    let function = ensure_eta_expanded(args[0].clone());
+
+    let args_to_apply = &args[1..];
+
+    match &function.evaluated {
+        TracedExprRec::Lambda(lambda_args, stmts, body) => {
+            if lambda_args.len() <= args_to_apply.len() {
+                panic!("Cannot partially apply. Too many arguments.");
+            }
+
+            let subst = lambda_args.iter().zip(args_to_apply.iter());
+
+            let new_args = lambda_args
+                .into_iter()
+                .skip(args_to_apply.len())
+                .map(|x| *x)
+                .collect::<Vec<usize>>();
+
+            let new_body = Box::new(
+                subst.clone().fold(*body.to_owned(), |expr, (var, with)| {
+                    substitute_traced(var, with, expr)
+                }),
+            );
+
+            let new_stmts = stmts
+                .into_iter()
+                .map(|stmt| {
+                    subst.clone().fold(stmt.clone(), |stmt, (var, with)| {
+                        substitute_statement(var, &with.untraced(), stmt)
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            Result::Ok(TracedExprRec::Lambda(new_args, new_stmts, new_body))
+        }
+        // Impossible because ensure_eta_expanded only outputs lambdas.
+        _ => unreachable!(),
+    }
+}
+
+///
+/// Ensures that a function expression is eta-expanded.
+///
+fn ensure_eta_expanded(expr: TracedExpr<usize>) -> TracedExpr<usize> {
+    match &expr.evaluated {
+        TracedExprRec::Lambda(_, _, _) => expr,
+        TracedExprRec::Apply(_f, _x) => todo!(),
+        _ => expr, // Not a function, so leave alone.
     }
 }

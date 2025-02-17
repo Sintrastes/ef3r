@@ -1,5 +1,9 @@
 print("Hello, world!");
 
+p = ({ x, y -> x + (y * 2) }).with(2);
+
+print(p(1));
+
 time = {
     value = reactive(Int, 0);
     launch {
