@@ -16,6 +16,7 @@ fn variable_assignment() {
     let statement = Statement {
         location: None,
         var: Some(0),
+        type_annotation: None,
         expr: expression.clone(),
     };
 
@@ -40,11 +41,13 @@ fn reassignment_of_statement() {
     let statement1 = Statement {
         location: None,
         var: Some(0),
+        type_annotation: None,
         expr: RawExpr::int(2),
     };
     let statement2 = Statement {
         location: None,
         var: Some(0),
+        type_annotation: None,
         expr: RawExpr::int(3),
     };
 

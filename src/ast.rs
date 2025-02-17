@@ -13,6 +13,7 @@ use crate::{
     modules::{ModuleName, QualifiedName},
     parser::CodeLocation,
     stdlib::ef3r_stdlib,
+    types::ExprType,
 };
 
 ///
@@ -25,6 +26,7 @@ use crate::{
 pub struct Statement<V> {
     pub location: Option<CodeLocation>,
     pub var: Option<V>,
+    pub type_annotation: Option<ExprType>,
     pub expr: RawExpr<V>,
 }
 
@@ -33,6 +35,7 @@ impl<V: Clone> Statement<V> {
         Statement {
             location: self.location,
             var: self.var.map(&f),
+            type_annotation: self.type_annotation,
             expr: self.expr.map(&f),
         }
     }
@@ -46,6 +49,7 @@ impl Statement<String> {
                 module: module.clone(),
                 name: name.to_string(),
             }),
+            type_annotation: self.type_annotation.clone(),
             expr: self.expr.qualified(module),
         }
     }
@@ -58,6 +62,7 @@ impl Statement<QualifiedName> {
         Statement {
             location: None,
             var: Option::arbitrary(g),
+            type_annotation: None,
             expr: TracedExprRec::untraced(
                 &TracedExprRec::arbitrary_with_depth(&context, g, depth),
             )

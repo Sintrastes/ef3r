@@ -96,6 +96,7 @@ impl RawExprRec<String> {
                             module: module.clone(),
                             name: var,
                         }),
+                        type_annotation: stmt.type_annotation.clone(),
                         expr: RawExpr {
                             expr: stmt.expr.expr.qualified(module.clone()),
                             location: stmt.expr.location,
@@ -163,6 +164,7 @@ impl<V: Clone> RawExprRec<V> {
                     .map(|stmt| Statement {
                         location: stmt.location,
                         var: stmt.var.map(&f),
+                        type_annotation: stmt.type_annotation,
                         expr: RawExpr {
                             expr: stmt.expr.expr.map(f.clone()),
                             location: stmt.expr.location,
@@ -525,6 +527,7 @@ pub fn substitute_statement<V: Clone + PartialEq + Eq>(
     Statement {
         location: statement.location,
         var: statement.var,
+        type_annotation: statement.type_annotation,
         expr: substitute(variable, with, statement.expr),
     }
 }

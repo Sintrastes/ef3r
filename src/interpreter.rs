@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, thread::JoinHandle};
+use std::{any::Any, collections::HashMap, sync::Arc, thread::JoinHandle};
 
 use bimap::{BiHashMap, BiMap};
 use daggy::Dag;
@@ -270,6 +270,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                     }
                 }
             }),
+            type_annotation: statement.type_annotation,
             expr: self.strip_symbols_raw(statement.expr),
         }
     }
@@ -450,6 +451,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                     )))
                     .clone()
             }),
+            type_annotation: statement.type_annotation,
             expr: self.restore_symbols_raw(statement.expr),
         }
     }
@@ -910,6 +912,7 @@ fn function_from_expression<T: Debugger + 'static>(
                         Statement {
                             location: statement.location,
                             var: statement.var.clone(),
+                            type_annotation: statement.type_annotation.clone(),
                             expr: substituted_expr,
                         }
                     })

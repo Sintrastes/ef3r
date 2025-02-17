@@ -67,6 +67,7 @@ fn lambda_body(input: Span) -> IResult<Span, Vec<Statement<QualifiedName>>> {
                 map(expression, |expr| Statement {
                     location: Some(input.into()),
                     var: None,
+                    type_annotation: None,
                     expr: expr,
                 }),
             )),
@@ -460,6 +461,7 @@ fn let_statement(input: Span) -> IResult<Span, Statement<QualifiedName>> {
         |(id, _, expr)| Statement {
             location: Some(input.into()),
             var: Some(id),
+            type_annotation: None,
             expr: expr,
         },
     )(input)

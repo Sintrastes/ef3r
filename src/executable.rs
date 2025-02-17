@@ -184,6 +184,7 @@ fn resolve_functions_in_statement(
     Statement {
         location: stmt.location,
         var: stmt.var,
+        type_annotation: stmt.type_annotation,
         expr: resolve_functions_in_expr_raw(
             stmt.expr,
             polymorphic_functions,

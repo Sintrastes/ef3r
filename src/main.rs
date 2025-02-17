@@ -208,6 +208,7 @@ fn strip_line_numbers(
     ef3r::ast::Statement {
         location: None,
         var: statement.var,
+        type_annotation: None,
         expr: strip_line_numbers_raw_expr(statement.expr),
     }
 }
