@@ -1,4 +1,4 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::Arc;
 
 use bimap::BiMap;
 use ef3r::{
@@ -6,13 +6,13 @@ use ef3r::{
     debugging::NoOpDebugger,
     frp::{
         combined_node, filter_node, fold_node, map_node, process_event_frame,
-        with_lock, Node,
+        Node,
     },
     interpreter::{apply_traced, Context},
     stdlib::ef3r_stdlib,
     types::ExprType,
 };
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 
 #[test]
 fn test_map_node() {
@@ -175,8 +175,6 @@ fn test_combined_node() {
         ExprType::Int,
         TracedExprRec::Int(3).traced(),
     );
-
-    let cloned_ctx = context.clone();
 
     let combined_node_index = combined_node(
         Arc::new(on_update),
