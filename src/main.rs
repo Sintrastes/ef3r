@@ -7,6 +7,7 @@ use ef3r::executable::{load_efrs_file, load_efrs_or_ef3r, Executable};
 use ef3r::interpreter::{self};
 use ef3r::node_visualization::node_visualizer_server::NodeVisualizerServer;
 use ef3r::node_visualization::{node_visualization, NodeVisualizerState};
+use ef3r::typechecking;
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::{fs::File, io::Write};
@@ -25,6 +26,11 @@ enum Commands {
     #[command(about = "Execute an ef3r bytecode or source file")]
     Execute {
         #[arg(help = "Path to the ef3r bytecode or source file")]
+        file: String,
+    },
+    #[command(about = "Typecheck an ef3r source file")]
+    Check {
+        #[arg(help = "Path to the ef3r source file")]
         file: String,
     },
     #[command(about = "Debug an ef3r program")]
@@ -88,6 +94,21 @@ async fn main() -> color_eyre::eyre::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Check { file } => {
+            let (context, program) =
+                load_efrs_or_ef3r(NoOpDebugger::new(), file)?;
+
+            let result = typechecking::typecheck(
+                &context.expression_context.read(),
+                program,
+            );
+
+            if result.is_empty() {
+                println!("Successfully typechecked program");
+            } else {
+                println!("Found errors while typechecking program.");
+            }
+        }
         Commands::Execute { file } => {
             let (context, program) =
                 load_efrs_or_ef3r(NoOpDebugger::new(), file)?;
@@ -157,7 +178,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
                 } else {
                     parsed_program
                         .into_iter()
-                        .map(|stmt| strip_line_numbers(stmt))
+                        .map(|stmt| strip_statement_metadata(stmt))
                         .collect()
                 },
             };
@@ -202,7 +223,10 @@ fn start_visualizer(state: NodeVisualizerState) {
     macroquad::Window::new("ef3r", node_visualization(state));
 }
 
-fn strip_line_numbers(
+///
+/// Strips line numbers and type annotations from statements.
+///
+fn strip_statement_metadata(
     statement: ef3r::ast::Statement<usize>,
 ) -> ef3r::ast::Statement<usize> {
     ef3r::ast::Statement {
@@ -219,7 +243,10 @@ fn strip_line_numbers_raw_expr(expr: RawExpr<usize>) -> RawExpr<usize> {
         expr: match expr.expr {
             RawExprRec::Lambda(vars, statements, body) => RawExprRec::Lambda(
                 vars,
-                statements.into_iter().map(strip_line_numbers).collect(),
+                statements
+                    .into_iter()
+                    .map(strip_statement_metadata)
+                    .collect(),
                 Box::new(strip_line_numbers_raw_expr(*body)),
             ),
             RawExprRec::Apply(func, args) => RawExprRec::Apply(

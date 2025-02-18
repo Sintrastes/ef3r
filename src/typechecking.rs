@@ -1,6 +1,9 @@
 use crate::{
-    ast::traced_expr::TracedExprRec, debugging::Debugger,
-    interpreter::ExpressionContext, types::ExprType,
+    ast::{traced_expr::TracedExprRec, Statement},
+    debugging::Debugger,
+    interpreter::ExpressionContext,
+    parser::CodeLocation,
+    types::ExprType,
 };
 
 /// Attempts to infer the type of expressions.
@@ -111,4 +114,57 @@ fn union_type(t1: &ExprType, t2: &ExprType) -> ExprType {
     } else {
         ExprType::Any
     }
+}
+
+pub enum TypeError {
+    ExpectedButActual {
+        expected: ExprType,
+        actual: ExprType,
+        reason: ExpectationReason,
+    },
+    // TODO: Probably refine this error in the future
+    MalformedExpression,
+}
+
+pub enum ExpectationReason {
+    BecauseOfTypeAnnotation { loc: Option<CodeLocation> },
+}
+
+///
+/// Typecheck an entire program, returning any type errors encountered.
+///
+pub fn typecheck<T: Debugger>(
+    ctx: &ExpressionContext<T>,
+    program: Vec<Statement<usize>>,
+) -> Vec<TypeError> {
+    let mut errors = vec![];
+
+    for statement in program {
+        let statement_type = if let Some(t) = type_of::<_, _, RuntimeLookup>(
+            ctx,
+            &statement.expr.from_raw().evaluated,
+        ) {
+            t
+        } else {
+            errors.push(TypeError::MalformedExpression);
+            break;
+        };
+
+        if let Some(expected) = statement.type_annotation {
+            if statement_type != expected {
+                errors.push(TypeError::ExpectedButActual {
+                    expected,
+                    actual: statement_type,
+                    reason: ExpectationReason::BecauseOfTypeAnnotation {
+                        loc: None,
+                    },
+                });
+            }
+        }
+
+        // Add the type to the typing context.
+        // TODO
+    }
+
+    errors
 }
