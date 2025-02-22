@@ -4,7 +4,7 @@ use color_eyre::eyre::eyre;
 use ef3r::ast::raw_expr::{RawExpr, RawExprRec};
 use ef3r::debugging::{GrpcDebugger, NoOpDebugger, StepDebugger};
 use ef3r::executable::{load_efrs_file, load_efrs_or_ef3r, Executable};
-use ef3r::interpreter::{self};
+use ef3r::interpreter::{self, VariableId};
 use ef3r::node_visualization::node_visualizer_server::NodeVisualizerServer;
 use ef3r::node_visualization::{node_visualization, NodeVisualizerState};
 use ef3r::typechecking;
@@ -106,7 +106,11 @@ async fn main() -> color_eyre::eyre::Result<()> {
             if result.is_empty() {
                 println!("Successfully typechecked program");
             } else {
-                println!("Found errors while typechecking program.");
+                println!("Found errors while typechecking program:");
+
+                for error in result {
+                    println!("{:?}", error)
+                }
             }
         }
         Commands::Execute { file } => {
@@ -227,8 +231,8 @@ fn start_visualizer(state: NodeVisualizerState) {
 /// Strips line numbers and type annotations from statements.
 ///
 fn strip_statement_metadata(
-    statement: ef3r::ast::Statement<usize>,
-) -> ef3r::ast::Statement<usize> {
+    statement: ef3r::ast::Statement<VariableId>,
+) -> ef3r::ast::Statement<VariableId> {
     ef3r::ast::Statement {
         location: None,
         var: statement.var,
@@ -237,7 +241,9 @@ fn strip_statement_metadata(
     }
 }
 
-fn strip_line_numbers_raw_expr(expr: RawExpr<usize>) -> RawExpr<usize> {
+fn strip_line_numbers_raw_expr(
+    expr: RawExpr<VariableId>,
+) -> RawExpr<VariableId> {
     RawExpr {
         location: expr.location,
         expr: match expr.expr {

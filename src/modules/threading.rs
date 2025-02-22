@@ -8,9 +8,9 @@ use crate::{
     extern_utils::*,
     interpreter::{
         evaluate_function_application, Context, EvaluationError,
-        FunctionDefinition,
+        FunctionDefinition, VariableId,
     },
-    typechecking::{type_of, RuntimeLookup},
+    typechecking::type_of,
     types::ExprType,
 };
 
@@ -72,7 +72,7 @@ pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
                             let old_update = on_update.clone();
 
                             *on_update = Arc::new(
-                                move |ctx: &Context<T>, value: TracedExpr<usize>| {
+                                move |ctx: &Context<T>, value: TracedExpr<VariableId>| {
                                     old_update(ctx, value.clone());
 
                                     evaluate_function_application(
@@ -134,7 +134,7 @@ pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
                         }
                         _ => Err(EvaluationError::TypeError {
                             expected: ExprType::Int,
-                            actual: type_of::<_, _, RuntimeLookup>(
+                            actual: type_of(
                                 &ctx.expression_context.read(),
                                 &first.evaluated,
                             )

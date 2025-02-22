@@ -1,10 +1,10 @@
-use crate::typechecking::RuntimeLookup;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::*,
     interpreter::{
         evaluate_function_application, EvaluationError, FunctionDefinition,
+        VariableId,
     },
     typechecking::type_of,
     types::ExprType,
@@ -21,7 +21,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 T,
                 "drop",
                 ExprType::List(Box::new(ExprType::Any)),
-                |_cx, list: Vec<TracedExpr<usize>>, n: i32| {
+                |_cx, list: Vec<TracedExpr<VariableId>>, n: i32| {
                     Ok(if n <= 0 {
                         list
                     } else {
@@ -33,7 +33,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 T,
                 "drop_last",
                 ExprType::List(Box::new(ExprType::Any)),
-                |_cx, list: Vec<TracedExpr<usize>>, n: i32| {
+                |_cx, list: Vec<TracedExpr<VariableId>>, n: i32| {
                     Ok(if n <= 0 {
                         list
                     } else {
@@ -50,8 +50,8 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 ExprType::List(Box::new(ExprType::Any)),
                 |_cx,
 
-                 list1: Vec<TracedExpr<usize>>,
-                 list2: Vec<TracedExpr<usize>>| {
+                 list1: Vec<TracedExpr<VariableId>>,
+                 list2: Vec<TracedExpr<VariableId>>| {
                     let mut result = list1;
                     result.extend(list2);
                     Ok(result)
@@ -165,7 +165,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
             build_function!(T, "first", ExprType::Any, |_cx,
 
                                                         list: Vec<
-                TracedExpr<usize>,
+                TracedExpr<VariableId>,
             >| {
                 Ok(list
                     .first()
@@ -175,7 +175,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
             build_function!(T, "last", ExprType::Any, |_cx,
 
                                                        list: Vec<
-                TracedExpr<usize>,
+                TracedExpr<VariableId>,
             >| {
                 Ok(list
                     .last()
@@ -186,7 +186,7 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 name: "list".to_string(),
                 argument_types: vec![], // Vararg function
                 result_type: ExprType::List(Box::new(ExprType::Any)),
-                definition: |_, xs: &[TracedExpr<usize>]| {
+                definition: |_, xs: &[TracedExpr<VariableId>]| {
                     Ok(TracedExprRec::List(xs.to_vec()))
                 },
             },
@@ -213,8 +213,8 @@ pub fn lists_module<T: Debugger>() -> Module<11, T> {
                 "intersperse",
                 ExprType::List(Box::new(ExprType::Any)),
                 |_cx,
-                 list: Vec<TracedExpr<usize>>,
-                 separator: TracedExprRec<usize>| {
+                 list: Vec<TracedExpr<VariableId>>,
+                 separator: TracedExprRec<VariableId>| {
                     if list.is_empty() {
                         return Ok(TracedExprRec::List(list));
                     }

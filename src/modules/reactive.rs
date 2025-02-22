@@ -11,9 +11,9 @@ use crate::{
     frp::{filter_node, fold_node, map_node, Node},
     interpreter::{
         evaluate_function_application, Context, EvaluationError,
-        FunctionDefinition,
+        FunctionDefinition, VariableId,
     },
-    typechecking::{type_of, RuntimeLookup},
+    typechecking::type_of,
     types::ExprType,
 };
 
@@ -32,7 +32,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                 |ctx, first, second| {
                     match first.evaluated {
                         TracedExprRec::Type(x) => {
-                            if type_of::<_, _, RuntimeLookup>(
+                            if type_of(
                                 &ctx.expression_context.read(),
                                 &second.evaluated,
                             ) == Some(x.clone())
@@ -56,7 +56,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                             } else {
                                 Err(EvaluationError::TypeError {
                                     expected: x,
-                                    actual: type_of::<_, _, RuntimeLookup>(
+                                    actual: type_of(
                                         &ctx.expression_context.read(),
                                         &second.evaluated,
                                     )
@@ -67,7 +67,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Type,
-                            actual: type_of::<_, _, RuntimeLookup>(
+                            actual: type_of(
                                 &ctx.expression_context.read(),
                                 &actual,
                             )
@@ -91,7 +91,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
-                            actual: type_of::<_, _, RuntimeLookup>(
+                            actual: type_of(
                                 &ctx.expression_context.read(),
                                 &actual,
                             )
@@ -120,7 +120,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
-                            actual: type_of::<_, _, RuntimeLookup>(
+                            actual: type_of(
                                 &ctx.expression_context.read(),
                                 &actual,
                             )
@@ -148,7 +148,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         TracedExprRec::Node(node_id) => {
                             let second_clone = second.clone();
                             let transform = Arc::new(Mutex::new(
-                                move |ctx: &Context<T>, expr: TracedExpr<usize>| {
+                                move |ctx: &Context<T>, expr: TracedExpr<VariableId>| {
                                     evaluate_function_application(
                                         ctx,
                                         &TracedExprRec::Apply(
@@ -181,7 +181,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
-                            actual: type_of::<_, _, RuntimeLookup>(
+                            actual: type_of(
                                 &ctx.expression_context.read(),
                                 &actual,
                             )
@@ -207,7 +207,10 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         TracedExprRec::Node(node_id) => {
                             let second_clone = second.clone();
 
-                            let transform = move |ctx: &Context<T>, expr: TracedExpr<usize>| {
+                            let transform = move |ctx: &Context<T>,
+                                                  expr: TracedExpr<
+                                VariableId,
+                            >| {
                                 let result = evaluate_function_application(
                                     ctx,
                                     &TracedExprRec::Apply(
@@ -243,7 +246,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
-                            actual: type_of::<_, _, RuntimeLookup>(
+                            actual: type_of(
                                 &ctx.expression_context.read(),
                                 &actual,
                             )
@@ -269,7 +272,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         TracedExprRec::Node(node_id) => {
                             let second_clone = second.clone();
                             let transform = Box::new(
-                                    move |ctx: &Context<T>, expr: TracedExpr<usize>, acc: TracedExpr<usize>| {
+                                    move |ctx: &Context<T>, expr: TracedExpr<VariableId>, acc: TracedExpr<VariableId>| {
                                         evaluate_function_application(
                                             &ctx.clone(),
                                             &TracedExprRec::Apply(
@@ -301,7 +304,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         }
                         actual => Err(EvaluationError::TypeError {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
-                            actual: type_of::<_, _, RuntimeLookup>(
+                            actual: type_of(
                                 &ctx.expression_context.read(),
                                 &actual,
                             )

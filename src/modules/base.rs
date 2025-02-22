@@ -1,5 +1,7 @@
+use std::env::Vars;
+
 use crate::ast::raw_expr::{substitute_statement, substitute_traced};
-use crate::typechecking::RuntimeLookup;
+use crate::interpreter::VariableId;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
@@ -34,7 +36,7 @@ pub fn base_module<T: Debugger>() -> Module<10, T> {
                                 Box::new(ExprType::Any),
                                 Box::new(ExprType::Any),
                             ),
-                            actual: type_of::<_, _, RuntimeLookup>(
+                            actual: type_of(
                                 &ctx.expression_context.read(),
                                 &actual,
                             )
@@ -60,7 +62,7 @@ pub fn base_module<T: Debugger>() -> Module<10, T> {
                                 Box::new(ExprType::Any),
                                 Box::new(ExprType::Any),
                             ),
-                            actual: type_of::<_, _, RuntimeLookup>(
+                            actual: type_of(
                                 &ctx.expression_context.read(),
                                 &actual,
                             )
@@ -108,7 +110,7 @@ pub fn base_module<T: Debugger>() -> Module<10, T> {
                 vec![ExprType::Any],
                 |ctx, first| {
                     Ok(
-                        match type_of::<_, _, RuntimeLookup>(
+                        match type_of(
                             &ctx.expression_context.read(),
                             &first.evaluated,
                         ) {
@@ -122,7 +124,7 @@ pub fn base_module<T: Debugger>() -> Module<10, T> {
                 name: "assert".to_string(),
                 argument_types: vec![ExprType::Bool],
                 result_type: ExprType::Unit,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let condition = match args[0].evaluated {
                         TracedExprRec::Bool(b) => b,
                         _ => unreachable!(),
@@ -196,8 +198,8 @@ pub fn base_module<T: Debugger>() -> Module<10, T> {
 }
 
 fn partial_application<T: Debugger>(
-    args: &[TracedExpr<usize>],
-) -> Result<TracedExprRec<usize>, EvaluationError> {
+    args: &[TracedExpr<VariableId>],
+) -> Result<TracedExprRec<VariableId>, EvaluationError> {
     let function = ensure_eta_expanded(args[0].clone());
 
     let args_to_apply = &args[1..];
@@ -214,7 +216,7 @@ fn partial_application<T: Debugger>(
                 .into_iter()
                 .skip(args_to_apply.len())
                 .map(|x| *x)
-                .collect::<Vec<usize>>();
+                .collect::<Vec<VariableId>>();
 
             let new_body = Box::new(
                 subst.clone().fold(*body.to_owned(), |expr, (var, with)| {
@@ -241,7 +243,7 @@ fn partial_application<T: Debugger>(
 ///
 /// Ensures that a function expression is eta-expanded.
 ///
-fn ensure_eta_expanded(expr: TracedExpr<usize>) -> TracedExpr<usize> {
+fn ensure_eta_expanded(expr: TracedExpr<VariableId>) -> TracedExpr<VariableId> {
     match &expr.evaluated {
         TracedExprRec::Lambda(_, _, _) => expr,
         TracedExprRec::Apply(_f, _x) => todo!(),

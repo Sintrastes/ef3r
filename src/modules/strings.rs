@@ -1,9 +1,8 @@
-use crate::typechecking::RuntimeLookup;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::*,
-    interpreter::{EvaluationError, FunctionDefinition},
+    interpreter::{EvaluationError, FunctionDefinition, VariableId},
     typechecking::type_of,
     types::ExprType,
 };

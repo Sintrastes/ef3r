@@ -1,10 +1,8 @@
 use rayon::prelude::*;
 
 use crate::{
-    debugging::Debugger,
-    interpreter::Context,
-    parser::parse,
-    typechecking::{type_of, NoLookup},
+    debugging::Debugger, interpreter::Context, parser::parse,
+    typechecking::type_of,
 };
 
 ///
@@ -27,8 +25,15 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
         return vec![];
     }
 
-    let expr = statements[0].expr.clone();
-    let expr_type = type_of::<_, _, NoLookup>(
+    let statement = statements[0].clone();
+
+    let expr = context
+        .expression_context
+        .write()
+        .strip_symbols_statement(statement)
+        .expr;
+
+    let expr_type = type_of(
         &context.expression_context.read(),
         &expr.from_raw().evaluated,
     );

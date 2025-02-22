@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     debugging::{Debugger, NoOpDebugger},
-    interpreter::{Context, PolymorphicFunctionID},
+    interpreter::{Context, PolymorphicFunctionID, VariableId},
     modules::{ModuleName, QualifiedName},
     parser::CodeLocation,
     stdlib::ef3r_stdlib,
@@ -273,7 +273,7 @@ impl<V: Clone> RawExpr<V> {
     }
 }
 
-impl RawExpr<usize> {
+impl RawExpr<VariableId> {
     ///
     /// Utility to help build an expression for a function
     ///  resolving it by name.
@@ -281,7 +281,7 @@ impl RawExpr<usize> {
     pub fn resolve<T: Debugger + 'static>(
         context: &Context<T>,
         name: &str,
-    ) -> RawExpr<usize> {
+    ) -> RawExpr<VariableId> {
         let poly_id = context
             .expression_context
             .read()
@@ -532,8 +532,8 @@ pub fn substitute_statement<V: Clone + PartialEq + Eq>(
     }
 }
 
-impl Expr for RawExpr<usize> {
-    fn evaluated(self) -> RawExpr<usize> {
+impl Expr for RawExpr<VariableId> {
+    fn evaluated(self) -> RawExpr<VariableId> {
         self
     }
 
@@ -622,8 +622,8 @@ impl Expr for RawExpr<usize> {
     }
 
     fn lambda(
-        vars: Vec<usize>,
-        stmts: Vec<Statement<usize>>,
+        vars: Vec<VariableId>,
+        stmts: Vec<Statement<VariableId>>,
         body: Self,
     ) -> Self {
         RawExpr {
@@ -639,7 +639,7 @@ impl Expr for RawExpr<usize> {
         }
     }
 
-    fn var(value: usize) -> Self {
+    fn var(value: VariableId) -> Self {
         RawExpr {
             location: None,
             expr: RawExprRec::Var(value),
