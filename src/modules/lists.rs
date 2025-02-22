@@ -7,6 +7,7 @@ use crate::{
         VariableId,
     },
     typechecking::type_of,
+    typechecking::TypingContext,
     types::ExprType,
 };
 

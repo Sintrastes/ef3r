@@ -4,6 +4,7 @@ use crate::{
     extern_utils::*,
     interpreter::{EvaluationError, FunctionDefinition, VariableId},
     typechecking::type_of,
+    typechecking::TypingContext,
     types::ExprType,
 };
 

@@ -10,7 +10,7 @@ use crate::{
         evaluate_function_application, Context, EvaluationError,
         FunctionDefinition, VariableId,
     },
-    typechecking::type_of,
+    typechecking::{type_of, TypingContext},
     types::ExprType,
 };
 
@@ -136,6 +136,7 @@ pub fn threading_module<T: Debugger + Sync>() -> Module<4, T> {
                             expected: ExprType::Int,
                             actual: type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &first.evaluated,
                             )
                             .unwrap(),

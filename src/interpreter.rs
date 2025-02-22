@@ -16,7 +16,7 @@ use crate::{
     debugging::Debugger,
     frp::Node,
     modules::{Module, ModuleData, ModuleName, QualifiedName},
-    typechecking::type_of,
+    typechecking::{type_of, TypingContext},
     types::ExprType,
 };
 
@@ -149,7 +149,6 @@ impl Display for VariableId {
     }
 }
 
-#[derive(Clone)]
 pub struct ExpressionContext<T: Debugger + 'static> {
     pub symbol_table: BiMap<VariableId, QualifiedName>,
     pub functions: Vec<(ModuleName, FunctionDefinition<T>)>,
@@ -811,7 +810,11 @@ fn function_from_expression<T: Debugger + 'static>(
             let arg_types: Vec<_> = evaluated_args
                 .iter()
                 .map(|arg| {
-                    type_of(&ctx.expression_context.read(), &arg.evaluated)
+                    type_of(
+                        &ctx.expression_context.read(),
+                        &TypingContext::new(),
+                        &arg.evaluated,
+                    )
                 })
                 .collect();
 

@@ -5,6 +5,7 @@ use crate::{
     debugging::Debugger,
     extern_utils::*,
     interpreter::{EvaluationError, FunctionDefinition, VariableId},
+    typechecking::TypingContext,
     types::ExprType,
 };
 

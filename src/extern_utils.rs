@@ -1,6 +1,7 @@
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     interpreter::VariableId,
+    typechecking::TypingContext,
     types::ExprType,
 };
 
@@ -143,6 +144,7 @@ macro_rules! build_function {
                         expected: <$type>::expr_type(),
                         actual: type_of(
                             &$ctx.expression_context.read(),
+                            &TypingContext::new(),
                             &expr.evaluated,
                         )
                         .unwrap_or(ExprType::Any),
@@ -183,6 +185,7 @@ macro_rules! build_function {
                         expected: <$type1>::expr_type(),
                         actual: type_of(
                             &$ctx.expression_context.read(),
+                            &TypingContext::new(),
                             &expr1.evaluated,
                         )
                         .unwrap_or(ExprType::Any),
@@ -195,6 +198,7 @@ macro_rules! build_function {
                         expected: <$type2>::expr_type(),
                         actual: type_of(
                             &$ctx.expression_context.read(),
+                            &TypingContext::new(),
                             &expr2.evaluated,
                         )
                         .unwrap_or(ExprType::Any),

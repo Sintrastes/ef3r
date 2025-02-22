@@ -1,8 +1,10 @@
 use rayon::prelude::*;
 
 use crate::{
-    debugging::Debugger, interpreter::Context, parser::parse,
-    typechecking::type_of,
+    debugging::Debugger,
+    interpreter::Context,
+    parser::parse,
+    typechecking::{type_of, TypingContext},
 };
 
 ///
@@ -35,10 +37,11 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
 
     let expr_type = type_of(
         &context.expression_context.read(),
+        &TypingContext::new(),
         &expr.from_raw().evaluated,
     );
 
-    if expr_type.is_none() {
+    if expr_type.is_err() {
         return vec![];
     }
 

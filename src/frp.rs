@@ -14,7 +14,7 @@ use crate::{
     ast::traced_expr::TracedExpr,
     debugging::Debugger,
     interpreter::{Context, VariableId},
-    typechecking::type_of,
+    typechecking::{type_of, TypingContext},
     types::ExprType,
 };
 
@@ -380,6 +380,7 @@ pub fn fold_node<'a, T: Debugger + Send + Sync + 'static>(
     let new_node = Node {
         expr_type: type_of(
             &ctx.expression_context.read(),
+            &TypingContext::new(),
             &initial_clone.evaluated,
         )
         .unwrap(),

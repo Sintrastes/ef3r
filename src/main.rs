@@ -7,7 +7,7 @@ use ef3r::executable::{load_efrs_file, load_efrs_or_ef3r, Executable};
 use ef3r::interpreter::{self, VariableId};
 use ef3r::node_visualization::node_visualizer_server::NodeVisualizerServer;
 use ef3r::node_visualization::{node_visualization, NodeVisualizerState};
-use ef3r::typechecking;
+use ef3r::typechecking::{self, TypingContext};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::{fs::File, io::Write};
@@ -100,6 +100,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
             let result = typechecking::typecheck(
                 &context.expression_context.read(),
+                &mut TypingContext::new(),
                 program,
             );
 

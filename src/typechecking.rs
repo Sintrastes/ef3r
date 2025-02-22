@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     ast::{traced_expr::TracedExprRec, Statement},
     debugging::Debugger,
@@ -6,36 +8,60 @@ use crate::{
     types::ExprType,
 };
 
+#[derive(Clone)] // Maybe we can do better in the future, but for MVP
+                 // we can just clone to create a derived context
+pub struct TypingContext {
+    pub scope_variables: HashMap<VariableId, ExprType>,
+}
+
+impl TypingContext {
+    pub fn new() -> TypingContext {
+        TypingContext {
+            scope_variables: HashMap::new(),
+        }
+    }
+}
+
 /// Attempts to infer the type of expressions.
 pub fn type_of<T: Debugger>(
     ctx: &ExpressionContext<T>,
+    typing_context: &TypingContext,
     term: &TracedExprRec<VariableId>,
-) -> Option<ExprType> {
+) -> Result<ExprType, Vec<TypeError>> {
     match term {
-        TracedExprRec::None => Some(ExprType::Any),
-        TracedExprRec::Unit => Some(ExprType::Unit),
-        TracedExprRec::Int(_) => Some(ExprType::Int),
-        TracedExprRec::String(_) => Some(ExprType::String),
-        TracedExprRec::Float(_) => Some(ExprType::Float),
-        TracedExprRec::Bool(_) => Some(ExprType::Bool),
-        TracedExprRec::Type(_) => Some(ExprType::Type),
+        TracedExprRec::None => Ok(ExprType::Any),
+        TracedExprRec::Unit => Ok(ExprType::Unit),
+        TracedExprRec::Int(_) => Ok(ExprType::Int),
+        TracedExprRec::String(_) => Ok(ExprType::String),
+        TracedExprRec::Float(_) => Ok(ExprType::Float),
+        TracedExprRec::Bool(_) => Ok(ExprType::Bool),
+        TracedExprRec::Type(_) => Ok(ExprType::Type),
         TracedExprRec::List(xs) => {
             let element_types = xs
                 .iter()
                 .map(|x| {
-                    type_of::<T>(ctx, &x.evaluated).unwrap_or(ExprType::Any)
+                    type_of::<T>(ctx, typing_context, &x.evaluated)
+                        .unwrap_or(ExprType::Any)
                 })
                 .collect::<Vec<_>>();
             let unified_type = element_types
                 .into_iter()
                 .fold(ExprType::Any, |acc, t| union_type(&acc, &t));
-            Some(ExprType::List(Box::new(unified_type)))
+            Ok(ExprType::List(Box::new(unified_type)))
         }
-        TracedExprRec::Pair(traced_expr, traced_expr1) => Some(ExprType::Pair(
-            Box::new(type_of::<T>(ctx, &traced_expr.evaluated)?),
-            Box::new(type_of::<T>(ctx, &traced_expr1.evaluated)?),
+        TracedExprRec::Pair(traced_expr, traced_expr1) => Ok(ExprType::Pair(
+            Box::new(type_of::<T>(
+                ctx,
+                typing_context,
+                &traced_expr.evaluated,
+            )?),
+            Box::new(type_of::<T>(
+                ctx,
+                typing_context,
+                &traced_expr1.evaluated,
+            )?),
         )),
-        TracedExprRec::BuiltinFunction(fn_id) => Some(ExprType::Func(
+        TracedExprRec::BuiltinFunction(fn_id) => Ok(ExprType::Func(
             ctx.functions[*fn_id].1.argument_types.to_vec(),
             Box::new(
                 ctx.functions
@@ -44,35 +70,59 @@ pub fn type_of<T: Debugger>(
                     .unwrap_or(ExprType::Any),
             ),
         )),
-        TracedExprRec::JoinHandle(_) => None,
-        TracedExprRec::Node(_) => Some(ExprType::Node(Box::new(ExprType::Any))),
-        TracedExprRec::Lambda(args, _, traced_expr) => {
+        TracedExprRec::JoinHandle(_) => Err(vec![]),
+        TracedExprRec::Node(_) => Ok(ExprType::Node(Box::new(ExprType::Any))),
+        TracedExprRec::Lambda(args, stmts, traced_expr) => {
             // Note: In order to properly typecheck this, we need to
             // enter a new typechecking context to be able to account for local
             // variables.
             let arg_types: Vec<ExprType> = args
                 .iter()
                 .map(|_| ExprType::Any) // All args are assumed to be any type
+                // unless annotated otherwise.
                 .collect();
-            let return_type = type_of::<T>(ctx, &traced_expr.evaluated)?;
 
-            Some(ExprType::Func(arg_types, Box::new(return_type)))
+            // Create a new typing context for the lambda that we can add
+            // local variables to.
+            let mut local_context = typing_context.clone();
+
+            let errors = typecheck(ctx, &mut local_context, stmts.to_vec());
+
+            if !errors.is_empty() {
+                return Err(errors);
+            }
+
+            let return_type =
+                type_of::<T>(ctx, typing_context, &traced_expr.evaluated)?;
+
+            Ok(ExprType::Func(arg_types, Box::new(return_type)))
         }
         // Note: This may need to be refined if we ever add implicit partial application.
         TracedExprRec::Apply(f, _) => {
-            type_of::<T>(ctx, &f.evaluated).and_then(|f_type| match f_type {
-                ExprType::Func(_, return_type) => Some(*return_type),
-                _ => None,
+            type_of::<T>(ctx, typing_context, &f.evaluated).and_then(|f_type| {
+                match f_type {
+                    ExprType::Func(_, return_type) => Ok(*return_type),
+                    _ => Err(vec![TypeError::MalformedExpression {
+                        loc: f.location,
+                    }]),
+                }
             })
         }
-        TracedExprRec::Var(var) => ctx
-            .variables
-            .get(&var)
-            .and_then(|expr| type_of::<T>(ctx, &expr.evaluated)),
+        TracedExprRec::Var(var) => {
+            match typing_context.scope_variables.get(&var) {
+                Some(typ) => Ok(typ.clone()),
+                None => match ctx.variables.get(&var) {
+                    Some(expr) => {
+                        type_of::<T>(ctx, typing_context, &expr.evaluated)
+                    }
+                    None => Err(vec![]),
+                },
+            }
+        }
         // We do not currently assign a type to polymorphic functions.
         // But maybe we could assign something like Any -> Any based on
         // the arity of the function?
-        TracedExprRec::PolymorphicFunction(_) => None,
+        TracedExprRec::PolymorphicFunction(_) => Err(vec![]),
     }
 }
 
@@ -84,7 +134,7 @@ fn union_type(t1: &ExprType, t2: &ExprType) -> ExprType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TypeError {
     ExpectedButActual {
         expected: ExprType,
@@ -97,23 +147,25 @@ pub enum TypeError {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ExpectationReason {
     BecauseOfTypeAnnotation { loc: Option<CodeLocation> },
 }
 
 ///
-/// Typecheck an entire program, returning any type errors encountered.
+/// Typecheck an entire program, returning any type errors encountered,
+///  and adding any typechecked variables into the typing context.
 ///
 pub fn typecheck<T: Debugger>(
     ctx: &ExpressionContext<T>,
+    typing_context: &mut TypingContext,
     program: Vec<Statement<VariableId>>,
 ) -> Vec<TypeError> {
     let mut errors = vec![];
 
     for statement in program {
-        let statement_type = if let Some(t) =
-            type_of(ctx, &statement.expr.from_raw().evaluated)
+        let statement_type = if let Ok(t) =
+            type_of(ctx, &typing_context, &statement.expr.from_raw().evaluated)
         {
             t
         } else {
@@ -127,7 +179,7 @@ pub fn typecheck<T: Debugger>(
             if statement_type != expected {
                 errors.push(TypeError::ExpectedButActual {
                     expected,
-                    actual: statement_type,
+                    actual: statement_type.clone(),
                     reason: ExpectationReason::BecauseOfTypeAnnotation {
                         loc: None,
                     },
@@ -136,7 +188,9 @@ pub fn typecheck<T: Debugger>(
         }
 
         // Add the type to the typing context.
-        // TODO
+        if let Some(var) = statement.var {
+            typing_context.scope_variables.insert(var, statement_type);
+        }
     }
 
     errors

@@ -13,7 +13,7 @@ use crate::{
         evaluate_function_application, Context, EvaluationError,
         FunctionDefinition, VariableId,
     },
-    typechecking::type_of,
+    typechecking::{type_of, TypingContext},
     types::ExprType,
 };
 
@@ -34,8 +34,9 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                         TracedExprRec::Type(x) => {
                             if type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &second.evaluated,
-                            ) == Some(x.clone())
+                            ) == Ok(x.clone())
                             {
                                 let fresh_id = Node::new(
                                     Arc::new(|_, _| {}),
@@ -58,6 +59,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                                     expected: x,
                                     actual: type_of(
                                         &ctx.expression_context.read(),
+                                        &TypingContext::new(),
                                         &second.evaluated,
                                     )
                                     .unwrap(),
@@ -69,6 +71,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                             expected: ExprType::Type,
                             actual: type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &actual,
                             )
                             .unwrap(),
@@ -93,6 +96,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &actual,
                             )
                             .unwrap(),
@@ -122,6 +126,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &actual,
                             )
                             .unwrap(),
@@ -183,6 +188,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &actual,
                             )
                             .unwrap(),
@@ -248,6 +254,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &actual,
                             )
                             .unwrap(),
@@ -306,6 +313,7 @@ pub fn reactive_module<T: Debugger + Send + Sync>() -> Module<6, T> {
                             expected: ExprType::Node(Box::new(ExprType::Any)),
                             actual: type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &actual,
                             )
                             .unwrap(),

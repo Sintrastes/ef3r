@@ -2,6 +2,7 @@ use std::env::Vars;
 
 use crate::ast::raw_expr::{substitute_statement, substitute_traced};
 use crate::interpreter::VariableId;
+use crate::typechecking::TypingContext;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
@@ -38,6 +39,7 @@ pub fn base_module<T: Debugger>() -> Module<10, T> {
                             ),
                             actual: type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &actual,
                             )
                             .unwrap(),
@@ -64,6 +66,7 @@ pub fn base_module<T: Debugger>() -> Module<10, T> {
                             ),
                             actual: type_of(
                                 &ctx.expression_context.read(),
+                                &TypingContext::new(),
                                 &actual,
                             )
                             .unwrap(),
@@ -112,10 +115,11 @@ pub fn base_module<T: Debugger>() -> Module<10, T> {
                     Ok(
                         match type_of(
                             &ctx.expression_context.read(),
+                            &TypingContext::new(),
                             &first.evaluated,
                         ) {
-                            Some(x) => TracedExprRec::Type(x),
-                            None => TracedExprRec::None,
+                            Ok(x) => TracedExprRec::Type(x),
+                            Err(_errs) => TracedExprRec::None,
                         },
                     )
                 }
