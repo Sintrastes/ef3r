@@ -4,23 +4,15 @@ use std::sync::{Arc, RwLock};
 
 use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LspService, Server};
 
-use crate::{
-    debugging::NoOpDebugger, interpreter::Context, stdlib::ef3r_stdlib,
-};
+use crate::{debugging::NoOpDebugger, executable::load_efrs_source};
 
 pub struct LspBackend {
     client: Client,
-    context: Arc<RwLock<Context<NoOpDebugger>>>,
 }
 
 impl LspBackend {
     pub fn new(client: Client) -> Self {
-        Self {
-            client,
-            context: Arc::new(RwLock::new(
-                ef3r_stdlib(NoOpDebugger::new(), bimap::BiMap::new()).1,
-            )),
-        }
+        Self { client }
     }
 }
 
@@ -60,17 +52,14 @@ impl tower_lsp::LanguageServer for LspBackend {
 
         // Read document content
         let content = std::fs::read_to_string(uri.path()).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
 
-        // Extract current line up to cursor
-        let current_line = lines
-            .get(position.line as usize)
-            .map(|line| &line[..position.character as usize])
-            .unwrap_or("");
+        // Interpret the source.
+        let (context, statements) =
+            load_efrs_source(NoOpDebugger {}, content).unwrap();
 
         // Get completions
-        let context = &self.context.read().unwrap();
-        let completions = autocomplete::autocomplete(context, current_line);
+        let completions =
+            autocomplete::autocomplete_at(&context, &statements, position);
 
         Ok(Some(CompletionResponse::Array(
             completions

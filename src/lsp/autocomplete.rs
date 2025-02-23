@@ -1,39 +1,39 @@
 use rayon::prelude::*;
+use tower_lsp::lsp_types::Position;
 
 use crate::{
+    ast::{raw_expr::RawExpr, Statement},
     debugging::Debugger,
-    interpreter::Context,
-    parser::parse,
+    interpreter::{Context, VariableId},
+    parser::{parse, CodeLocation},
     typechecking::{type_of, TypingContext},
 };
 
 ///
-/// Attempts to parse the expression and (if it is valid and
+/// Attempts to get a list of autocompletions in the current source file,
+///  given a parricular cursor location.
+///
+pub fn autocomplete_at<'a, T: Debugger + 'static>(
+    context: &Context<T>,
+    statements: &Vec<Statement<VariableId>>,
+    cursor: Position,
+) -> Vec<String> {
+    // TODO: Traverse through the statements until arriving at the correct line,
+    // then traverse through the statement to try to find the correct column.
+    // In the future we may want to build an index to speed this process up.
+    todo!()
+}
+
+///
+/// Attempts to autocomplete on an expression (if it is valid and
 /// typechecks), returns a list of potential string completions
 /// based on the types of the functions.
 ///
 pub fn autocomplete<'a, T: Debugger + 'static>(
     context: &Context<T>,
-    expression: &str,
+    expr: &RawExpr<VariableId>,
 ) -> Vec<String> {
-    let parsed = parse(expression);
-
-    if parsed.is_err() {
-        return vec![];
-    }
-
-    let (_imports, statements) = parsed.unwrap();
-    if statements.len() != 1 {
-        return vec![];
-    }
-
-    let statement = statements[0].clone();
-
-    let expr = context
-        .expression_context
-        .write()
-        .strip_symbols_statement(statement)
-        .expr;
+    println!("Attempting to typecheck {:?}", &expr.from_raw().evaluated);
 
     let expr_type = type_of(
         &context.expression_context.read(),
@@ -42,10 +42,13 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
     );
 
     if expr_type.is_err() {
+        println!("Could not typecheck expression");
         return vec![];
     }
 
     let expr_type = expr_type.unwrap();
+
+    println!("Got expr type: {}", &expr_type);
 
     context
         .expression_context
@@ -59,6 +62,8 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
             if f.1.argument_types.is_empty() {
                 return false;
             }
+
+            println!("Checking argument types: {}", &f.1.argument_types[0]);
 
             f.1.argument_types[0] == expr_type
         })

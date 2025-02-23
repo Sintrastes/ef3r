@@ -140,8 +140,7 @@ fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
         .flat_map(|(id, func_id)| {
             let polymorphic_function = &expression_context.functions[*func_id];
             let module = &polymorphic_function.0;
-            let polymorhpic_fn_name =
-                &polymorphic_function.1.name.as_str().clone();
+            let polymorhpic_fn_name = &polymorphic_function.1.name.as_str();
 
             let symbol_id = expression_context.symbol_table.get_by_right(
                 &QualifiedName {

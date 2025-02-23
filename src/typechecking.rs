@@ -61,15 +61,21 @@ pub fn type_of<T: Debugger>(
                 &traced_expr1.evaluated,
             )?),
         )),
-        TracedExprRec::BuiltinFunction(fn_id) => Ok(ExprType::Func(
-            ctx.functions[*fn_id].1.argument_types.to_vec(),
-            Box::new(
-                ctx.functions
-                    .get(*fn_id)
-                    .map(|f| f.1.result_type.clone())
-                    .unwrap_or(ExprType::Any),
-            ),
-        )),
+        TracedExprRec::BuiltinFunction(fn_id) => {
+            let result = Ok(ExprType::Func(
+                ctx.functions[*fn_id].1.argument_types.to_vec(),
+                Box::new(
+                    ctx.functions
+                        .get(*fn_id)
+                        .map(|f| f.1.result_type.clone())
+                        .unwrap_or(ExprType::Any),
+                ),
+            ));
+
+            println!("Type of {:?} is {:?}", &fn_id, &result);
+
+            result
+        }
         TracedExprRec::JoinHandle(_) => Err(vec![]),
         TracedExprRec::Node(_) => Ok(ExprType::Node(Box::new(ExprType::Any))),
         TracedExprRec::Lambda(args, stmts, traced_expr) => {
@@ -104,6 +110,7 @@ pub fn type_of<T: Debugger>(
         // Note: This may need to be refined if we ever add implicit partial application.
         TracedExprRec::Apply(f, args) => {
             type_of::<T>(ctx, typing_context, &f.evaluated).and_then(|f_type| {
+                println!("Typechecked apply: {}", f_type);
                 match f_type {
                     ExprType::Func(_, return_type) => Ok(*return_type),
                     ExprType::Union(types) => {
