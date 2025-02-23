@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     debugging::{Debugger, NoOpDebugger},
-    interpreter::{Context, PolymorphicFunctionID},
+    interpreter::{Context, PolymorphicFunctionID, VariableId},
     modules::{ModuleName, QualifiedName},
     parser::CodeLocation,
     stdlib::ef3r_stdlib,
@@ -104,7 +104,7 @@ impl<V: Clone> TracedExpr<V> {
     }
 }
 
-impl TracedExpr<usize> {
+impl TracedExpr<VariableId> {
     ///
     /// Utility to help build an expression for a function
     ///  resolving it by name.
@@ -112,7 +112,7 @@ impl TracedExpr<usize> {
     pub fn resolve<T: Debugger + 'static>(
         context: &Context<T>,
         name: &str,
-    ) -> TracedExpr<usize> {
+    ) -> TracedExpr<VariableId> {
         let poly_id = &context
             .expression_context
             .read()
@@ -130,8 +130,8 @@ impl TracedExpr<usize> {
     }
 }
 
-impl Expr for TracedExpr<usize> {
-    fn evaluated(self) -> RawExpr<usize> {
+impl Expr for TracedExpr<VariableId> {
+    fn evaluated(self) -> RawExpr<VariableId> {
         self.untraced()
     }
 
@@ -184,8 +184,8 @@ impl Expr for TracedExpr<usize> {
     }
 
     fn lambda(
-        vars: Vec<usize>,
-        stmts: Vec<Statement<usize>>,
+        vars: Vec<VariableId>,
+        stmts: Vec<Statement<VariableId>>,
         body: Self,
     ) -> Self {
         TracedExpr::new(TracedExprRec::Lambda(vars, stmts, Box::new(body)))
@@ -195,7 +195,7 @@ impl Expr for TracedExpr<usize> {
         TracedExpr::new(TracedExprRec::Apply(Box::new(fun), Box::new(args)))
     }
 
-    fn var(value: usize) -> Self {
+    fn var(value: VariableId) -> Self {
         TracedExpr::new(TracedExprRec::Var(value))
     }
 }
@@ -342,7 +342,7 @@ impl TracedExprRec<QualifiedName> {
                 } else {
                     usize::arbitrary(g) % keys
                 };
-                TracedExprRec::BuiltinFunction(key)
+                TracedExprRec::BuiltinFunction(FunctionID::new(key))
             }
             5 => TracedExprRec::Lambda(
                 Vec::arbitrary(g),

@@ -5,17 +5,23 @@ use ef3r::ast::traced_expr::TracedExprRec;
 use ef3r::ast::Statement;
 use ef3r::debugging::NoOpDebugger;
 use ef3r::executable::load_efrs_source;
-use ef3r::interpreter::interpret;
+use ef3r::interpreter::{interpret, VariableId};
+use ef3r::modules::QualifiedName;
 use ef3r::stdlib::ef3r_stdlib;
 
 #[test]
 fn variable_assignment() {
     let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
+    let x = VariableId::new(
+        &mut context.expression_context.write(),
+        QualifiedName::unqualified("x".to_string()),
+    );
+
     let expression = RawExpr::int(3);
     let statement = Statement {
         location: None,
-        var: Some(0),
+        var: Some(x),
         type_annotation: None,
         expr: expression.clone(),
     };
@@ -27,7 +33,7 @@ fn variable_assignment() {
             .expression_context
             .read()
             .variables
-            .get(&0)
+            .get(&x)
             .unwrap()
             .evaluated,
         expression.from_raw().evaluated
@@ -38,15 +44,21 @@ fn variable_assignment() {
 fn reassignment_of_statement() {
     let (_, context) = ef3r_stdlib(NoOpDebugger::new(), BiMap::new());
 
+    let x = VariableId::new(
+        &mut context.expression_context.write(),
+        QualifiedName::unqualified("x".to_string()),
+    );
+
     let statement1 = Statement {
         location: None,
-        var: Some(0),
+        var: Some(x),
         type_annotation: None,
         expr: RawExpr::int(2),
     };
+
     let statement2 = Statement {
         location: None,
-        var: Some(0),
+        var: Some(x),
         type_annotation: None,
         expr: RawExpr::int(3),
     };
@@ -58,7 +70,7 @@ fn reassignment_of_statement() {
             .expression_context
             .read()
             .variables
-            .get(&0)
+            .get(&x)
             .unwrap()
             .evaluated,
         TracedExprRec::Int(3)

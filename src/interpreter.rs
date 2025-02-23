@@ -1,9 +1,11 @@
-use std::{collections::HashMap, sync::Arc, thread::JoinHandle};
+use std::{collections::HashMap, fmt::Display, sync::Arc, thread::JoinHandle};
 
 use bimap::{BiHashMap, BiMap};
 use daggy::Dag;
 use parking_lot::{Mutex, RwLock};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use typed_index_collections::TiVec;
 
 use crate::{
     ast::{
@@ -15,7 +17,7 @@ use crate::{
     debugging::Debugger,
     frp::Node,
     modules::{Module, ModuleData, ModuleName, QualifiedName},
-    typechecking::{type_of, RuntimeLookup},
+    typechecking::{type_of, TypingContext},
     types::ExprType,
 };
 
@@ -69,7 +71,7 @@ impl<T: Debugger> Context<T> {
             graph: Arc::new(Mutex::new(Dag::new())),
             expression_context: Arc::new(RwLock::new(ExpressionContext {
                 symbol_table: BiHashMap::new(),
-                functions: vec![],
+                functions: vec![].into(),
                 polymorphic_functions: HashMap::new(),
                 variables: HashMap::new(),
             })),
@@ -112,8 +114,9 @@ pub struct FunctionDefinition<T: Debugger + 'static> {
     pub result_type: ExprType,
     pub definition: fn(
         &Context<T>,
-        &[TracedExpr<usize>],
-    ) -> Result<TracedExprRec<usize>, EvaluationError>,
+        &[TracedExpr<VariableId>],
+    )
+        -> Result<TracedExprRec<VariableId>, EvaluationError>,
     pub name: String,
 }
 
@@ -125,22 +128,43 @@ pub struct PolymorphicIndex {
     pub arg_types: Vec<ExprType>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct VariableId(usize);
+
+impl VariableId {
+    pub fn new<T: Debugger>(
+        ctx: &mut ExpressionContext<T>,
+        x: QualifiedName,
+    ) -> VariableId {
+        let id = VariableId(ctx.symbol_table.len());
+
+        ctx.symbol_table.insert(id, x);
+
+        id
+    }
+}
+
+impl Display for VariableId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 pub struct ExpressionContext<T: Debugger + 'static> {
-    pub symbol_table: BiMap<usize, QualifiedName>,
-    pub functions: Vec<(ModuleName, FunctionDefinition<T>)>,
+    pub symbol_table: BiMap<VariableId, QualifiedName>,
+    pub functions: TiVec<FunctionID, (ModuleName, FunctionDefinition<T>)>,
     pub polymorphic_functions: HashMap<PolymorphicIndex, FunctionID>,
-    pub variables: HashMap<usize, TracedExpr<usize>>,
+    pub variables: HashMap<VariableId, TracedExpr<VariableId>>,
 }
 
 impl<T: Debugger + 'static> ExpressionContext<T> {
     ///
     /// Resolve the function ID corresponding to the passed name.
     ///
-    pub fn resolve_function(&self, name: &str) -> Option<usize> {
+    pub fn resolve_function(&self, name: &str) -> Option<FunctionID> {
         for (index, function) in self.functions.iter().enumerate() {
             if function.1.name == name {
-                return Some(index);
+                return Some(FunctionID::new(index));
             }
         }
 
@@ -170,7 +194,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     pub fn strip_symbols(
         &mut self,
         expr: TracedExprRec<QualifiedName>,
-    ) -> TracedExprRec<usize> {
+    ) -> TracedExprRec<VariableId> {
         match expr {
             TracedExprRec::None => TracedExprRec::None,
             TracedExprRec::Unit => TracedExprRec::Unit,
@@ -201,11 +225,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                     .into_iter()
                     .map(|var| match self.symbol_table.get_by_right(&var) {
                         Some(id) => *id,
-                        None => {
-                            let id = self.symbol_table.len();
-                            self.symbol_table.insert(id, var);
-                            id
-                        }
+                        None => VariableId::new(self, var),
                     })
                     .collect();
 
@@ -229,11 +249,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
             TracedExprRec::Var(x) => {
                 TracedExprRec::Var(match self.symbol_table.get_by_right(&x) {
                     Some(id) => *id,
-                    None => {
-                        let id = self.symbol_table.len();
-                        self.symbol_table.insert(id, x);
-                        id
-                    }
+                    None => VariableId::new(self, x),
                 })
             }
         }
@@ -244,7 +260,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     pub fn strip_symbols_traced(
         &mut self,
         expr: TracedExpr<QualifiedName>,
-    ) -> TracedExpr<usize> {
+    ) -> TracedExpr<VariableId> {
         TracedExpr {
             location: expr.location,
             evaluated: self.strip_symbols(expr.evaluated),
@@ -257,17 +273,13 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     pub fn strip_symbols_statement(
         &mut self,
         statement: Statement<QualifiedName>,
-    ) -> Statement<usize> {
+    ) -> Statement<VariableId> {
         Statement {
             location: statement.location,
             var: statement.var.map(|var| {
                 match self.symbol_table.get_by_right(&var) {
                     Some(id) => *id,
-                    None => {
-                        let id = self.symbol_table.len();
-                        self.symbol_table.insert(id, var);
-                        id
-                    }
+                    None => VariableId::new(self, var),
                 }
             }),
             type_annotation: statement.type_annotation,
@@ -278,7 +290,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     pub fn strip_symbols_raw(
         &mut self,
         expr: RawExpr<QualifiedName>,
-    ) -> RawExpr<usize> {
+    ) -> RawExpr<VariableId> {
         RawExpr {
             location: expr.location,
             expr: match expr.expr {
@@ -309,11 +321,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                         .into_iter()
                         .map(|var| match self.symbol_table.get_by_right(&var) {
                             Some(id) => *id,
-                            None => {
-                                let id = self.symbol_table.len();
-                                self.symbol_table.insert(id, var);
-                                id
-                            }
+                            None => VariableId::new(self, var),
                         })
                         .collect();
 
@@ -337,11 +345,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
                 RawExprRec::Var(x) => {
                     RawExprRec::Var(match self.symbol_table.get_by_right(&x) {
                         Some(id) => *id,
-                        None => {
-                            let id = self.symbol_table.len();
-                            self.symbol_table.insert(id, x);
-                            id
-                        }
+                        None => VariableId::new(self, x),
                     })
                 }
             },
@@ -352,7 +356,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     /// in the symbol table.
     pub fn restore_symbols(
         &self,
-        expr: TracedExprRec<usize>,
+        expr: TracedExprRec<VariableId>,
     ) -> TracedExprRec<QualifiedName> {
         match expr {
             TracedExprRec::None => TracedExprRec::None,
@@ -425,7 +429,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     /// in the symbol table.
     pub fn restore_symbols_traced(
         &self,
-        expr: TracedExpr<usize>,
+        expr: TracedExpr<VariableId>,
     ) -> TracedExpr<QualifiedName> {
         TracedExpr {
             location: expr.location,
@@ -438,7 +442,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     /// in the symbol table.
     pub fn restore_symbols_statement(
         &self,
-        statement: Statement<usize>,
+        statement: Statement<VariableId>,
     ) -> Statement<QualifiedName> {
         Statement {
             location: statement.location,
@@ -460,7 +464,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     /// in the symbol table.
     pub fn restore_symbols_raw(
         &self,
-        expr: RawExpr<usize>,
+        expr: RawExpr<VariableId>,
     ) -> RawExpr<QualifiedName> {
         RawExpr {
             location: expr.location,
@@ -559,9 +563,9 @@ mod tests_for_symbols {
 /// Apply an expression to a list of arguments in a traced manner.
 pub fn apply_traced<T: Debugger + 'static>(
     ctx: &Context<T>,
-    expr: TracedExpr<usize>,
-    args: &[TracedExpr<usize>],
-) -> Result<TracedExpr<usize>, EvaluationError> {
+    expr: TracedExpr<VariableId>,
+    args: &[TracedExpr<VariableId>],
+) -> Result<TracedExpr<VariableId>, EvaluationError> {
     let evaluated = evaluate::<T>(
         ctx,
         TracedExprRec::Apply(
@@ -571,7 +575,7 @@ pub fn apply_traced<T: Debugger + 'static>(
     );
 
     // Before building the trace, expand variables in args
-    let expanded_args: Vec<TracedExpr<usize>> = args
+    let expanded_args: Vec<TracedExpr<VariableId>> = args
         .iter()
         .map(|arg| match &arg.evaluated {
             TracedExprRec::Var(var_name) => {
@@ -601,8 +605,8 @@ pub fn apply_traced<T: Debugger + 'static>(
 
 pub fn evaluate_traced<T: Debugger + 'static>(
     ctx: &Context<T>,
-    expr: TracedExpr<usize>,
-) -> Result<TracedExpr<usize>, EvaluationError> {
+    expr: TracedExpr<VariableId>,
+) -> Result<TracedExpr<VariableId>, EvaluationError> {
     evaluate_traced_rec::<T>(ctx, expr.evaluated.clone())
 }
 
@@ -632,15 +636,15 @@ mod tests {
 
 pub fn evaluate<T: Debugger + 'static>(
     ctx: &Context<T>,
-    expr: TracedExprRec<usize>,
-) -> Result<TracedExpr<usize>, EvaluationError> {
+    expr: TracedExprRec<VariableId>,
+) -> Result<TracedExpr<VariableId>, EvaluationError> {
     evaluate_traced_rec::<T>(ctx, expr)
 }
 
 fn evaluate_traced_rec<T: Debugger + 'static>(
     ctx: &Context<T>,
-    expr: TracedExprRec<usize>,
-) -> Result<TracedExpr<usize>, EvaluationError> {
+    expr: TracedExprRec<VariableId>,
+) -> Result<TracedExpr<VariableId>, EvaluationError> {
     match expr {
         // Literals evaluate to themselves.
         TracedExprRec::None => Ok(expr.traced()),
@@ -688,7 +692,7 @@ fn evaluate_traced_rec<T: Debugger + 'static>(
 ///  and executes them.
 pub fn interpret<T>(
     ctx: &Context<T>,
-    statements: &[Statement<usize>],
+    statements: &[Statement<VariableId>],
 ) -> Result<(), EvaluationError>
 where
     T: Debugger + 'static,
@@ -711,11 +715,11 @@ where
 
 pub fn evaluate_function_application<T: Debugger + 'static>(
     ctx: &Context<T>,
-    action_expr: &TracedExprRec<usize>,
-) -> Result<TracedExpr<usize>, EvaluationError> {
+    action_expr: &TracedExprRec<VariableId>,
+) -> Result<TracedExpr<VariableId>, EvaluationError> {
     match &action_expr {
         TracedExprRec::Apply(action, args) => {
-            let evaluated_args: Result<Vec<TracedExpr<usize>>, _> = args
+            let evaluated_args: Result<Vec<TracedExpr<VariableId>>, _> = args
                 .into_iter()
                 .map(|arg| evaluate_traced::<T>(ctx, arg.clone()))
                 .collect();
@@ -726,7 +730,7 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
                 .evaluated
                 .clone();
 
-            let expanded_args: Vec<TracedExpr<usize>> = args
+            let expanded_args: Vec<TracedExpr<VariableId>> = args
                 .into_iter()
                 .map(|arg| {
                     if let TracedExprRec::Var(var_name) = &arg.evaluated {
@@ -773,14 +777,14 @@ pub fn evaluate_function_application<T: Debugger + 'static>(
 
 fn function_from_expression<T: Debugger + 'static>(
     ctx: &Context<T>,
-    evaluated_args: &Vec<TracedExpr<usize>>,
-    resolved: TracedExprRec<usize>,
+    evaluated_args: &Vec<TracedExpr<VariableId>>,
+    resolved: TracedExprRec<VariableId>,
 ) -> Result<
     Box<
         dyn Fn(
             &Context<T>,
-            &[TracedExpr<usize>],
-        ) -> Result<TracedExprRec<usize>, EvaluationError>,
+            &[TracedExpr<VariableId>],
+        ) -> Result<TracedExprRec<VariableId>, EvaluationError>,
     >,
     EvaluationError,
 > {
@@ -807,8 +811,9 @@ fn function_from_expression<T: Debugger + 'static>(
             let arg_types: Vec<_> = evaluated_args
                 .iter()
                 .map(|arg| {
-                    type_of::<_, _, RuntimeLookup>(
+                    type_of(
                         &ctx.expression_context.read(),
+                        &TypingContext::new(),
                         &arg.evaluated,
                     )
                 })
@@ -881,7 +886,7 @@ fn function_from_expression<T: Debugger + 'static>(
             let vars = vars.clone();
             let statements = statements.clone();
             let result = result.clone();
-            Box::new(move |ctx, var_values: &[TracedExpr<usize>]| {
+            Box::new(move |ctx, var_values: &[TracedExpr<VariableId>]| {
                 if vars.len() != var_values.len() {
                     return Err(EvaluationError::WrongNumberOfArguments {
                         expected: vars.len(),
@@ -891,32 +896,35 @@ fn function_from_expression<T: Debugger + 'static>(
                 }
 
                 // Substitute variables in statements with their corresponding values
-                let substituted_statements: Vec<Statement<usize>> = statements
-                    .iter()
-                    .map(|statement| {
-                        let substituted_expr =
-                            vars.iter().zip(var_values.iter()).fold(
-                                statement.expr.clone(),
-                                |acc, (var, var_value)| {
-                                    substitute(
-                                        var,
-                                        &var_value
-                                            .evaluated
-                                            .clone()
-                                            .untraced()
-                                            .as_expr(),
-                                        acc,
-                                    )
-                                },
-                            );
-                        Statement {
-                            location: statement.location,
-                            var: statement.var.clone(),
-                            type_annotation: statement.type_annotation.clone(),
-                            expr: substituted_expr,
-                        }
-                    })
-                    .collect();
+                let substituted_statements: Vec<Statement<VariableId>> =
+                    statements
+                        .iter()
+                        .map(|statement| {
+                            let substituted_expr =
+                                vars.iter().zip(var_values.iter()).fold(
+                                    statement.expr.clone(),
+                                    |acc, (var, var_value)| {
+                                        substitute(
+                                            var,
+                                            &var_value
+                                                .evaluated
+                                                .clone()
+                                                .untraced()
+                                                .as_expr(),
+                                            acc,
+                                        )
+                                    },
+                                );
+                            Statement {
+                                location: statement.location,
+                                var: statement.var.clone(),
+                                type_annotation: statement
+                                    .type_annotation
+                                    .clone(),
+                                expr: substituted_expr,
+                            }
+                        })
+                        .collect();
 
                 // Run the substituted statements
                 interpret::<T>(ctx, &substituted_statements)?;
@@ -931,7 +939,7 @@ fn function_from_expression<T: Debugger + 'static>(
                     .from_raw();
 
                 // Run the result to get the return value
-                let result: Result<TracedExprRec<usize>, EvaluationError> =
+                let result: Result<TracedExprRec<VariableId>, EvaluationError> =
                     evaluate_traced::<T>(ctx, substituted_result_expr)
                         .map(|x| x.evaluated);
 

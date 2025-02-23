@@ -1,10 +1,10 @@
-use crate::typechecking::RuntimeLookup;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::*,
-    interpreter::{EvaluationError, FunctionDefinition},
+    interpreter::{EvaluationError, FunctionDefinition, VariableId},
     typechecking::type_of,
+    typechecking::TypingContext,
     types::ExprType,
 };
 
@@ -25,7 +25,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "/".to_string(),
                 argument_types: vec![ExprType::Int, ExprType::Int],
                 result_type: ExprType::Int,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Int(i) => i,
                         _ => unreachable!(),
@@ -67,7 +67,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "/".to_string(),
                 argument_types: vec![ExprType::Float, ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -157,7 +157,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "asin".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -185,7 +185,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "acos".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -213,7 +213,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "tan".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -241,7 +241,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "cot".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -269,7 +269,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "tanh".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |_ctx, args: &[TracedExpr<usize>]| {
+                definition: |_ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -282,7 +282,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "cosh".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |_ctx, args: &[TracedExpr<usize>]| {
+                definition: |_ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -295,7 +295,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "acosh".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -322,7 +322,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "atanh".to_string(),
                 argument_types: vec![ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let x = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),
@@ -349,7 +349,7 @@ pub fn math_module<T: Debugger>() -> Module<19, T> {
                 name: "pow".to_string(),
                 argument_types: vec![ExprType::Float, ExprType::Float],
                 result_type: ExprType::Float,
-                definition: |ctx, args: &[TracedExpr<usize>]| {
+                definition: |ctx, args: &[TracedExpr<VariableId>]| {
                     let base = match args[0].evaluated {
                         TracedExprRec::Float(i) => i,
                         _ => unreachable!(),

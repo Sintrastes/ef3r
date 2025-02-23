@@ -4,7 +4,7 @@ use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::*,
-    interpreter::{EvaluationError, FunctionDefinition},
+    interpreter::{EvaluationError, FunctionDefinition, VariableId},
     types::ExprType,
 };
 
@@ -43,7 +43,7 @@ pub fn io_module<T: Debugger>() -> Module<2, T> {
                 name: "readln".to_string(),
                 argument_types: vec![],
                 result_type: ExprType::String,
-                definition: |_, _: &[TracedExpr<usize>]| {
+                definition: |_, _: &[TracedExpr<VariableId>]| {
                     let stdin = io::stdin();
                     let result = stdin.lock().lines().next().unwrap().unwrap();
 

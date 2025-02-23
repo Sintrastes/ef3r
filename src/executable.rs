@@ -9,11 +9,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ast::{
+        expr::FunctionID,
         raw_expr::{RawExpr, RawExprRec},
         Statement,
     },
     debugging::Debugger,
-    interpreter::Context,
+    interpreter::{Context, VariableId},
     modules::{resolve_imports, QualifiedName},
     parser::parse,
     stdlib::ef3r_stdlib,
@@ -21,8 +22,8 @@ use crate::{
 
 #[derive(Serialize, Deserialize)]
 pub struct Executable {
-    pub symbol_table: BiMap<usize, QualifiedName>,
-    pub instructions: Vec<Statement<usize>>,
+    pub symbol_table: BiMap<VariableId, QualifiedName>,
+    pub instructions: Vec<Statement<VariableId>>,
 }
 
 ///
@@ -32,7 +33,7 @@ pub struct Executable {
 pub fn load_efrs_or_ef3r<'a, T: Debugger + Send + Sync + 'static>(
     debugger: T,
     file_path: String,
-) -> Result<(Context<T>, Vec<Statement<usize>>)> {
+) -> Result<(Context<T>, Vec<Statement<VariableId>>)> {
     if file_path.ends_with(".efrs") {
         load_efrs_file(debugger, file_path.as_str())
     } else {
@@ -53,7 +54,7 @@ pub fn load_efrs_or_ef3r<'a, T: Debugger + Send + Sync + 'static>(
 pub fn load_efrs_file<T: Debugger + Send + Sync + 'static>(
     debugger: T,
     file_path: &str,
-) -> Result<(Context<T>, Vec<Statement<usize>>)> {
+) -> Result<(Context<T>, Vec<Statement<VariableId>>)> {
     let source = read_to_string(file_path).unwrap();
     load_efrs_source(debugger, source)
 }
@@ -61,8 +62,8 @@ pub fn load_efrs_file<T: Debugger + Send + Sync + 'static>(
 pub fn load_efrs_source<T: Debugger + Send + Sync + 'static>(
     debugger: T,
     source: String,
-) -> Result<(Context<T>, Vec<Statement<usize>>)> {
-    let (imports, parsed_program) = parse(&source)?;
+) -> Result<(Context<T>, Vec<Statement<VariableId>>)> {
+    let (_imports, parsed_program) = parse(&source)?;
 
     let (loaded_modules, stdlib) = ef3r_stdlib(debugger, BiMap::new());
 
@@ -80,7 +81,7 @@ pub fn load_efrs_source<T: Debugger + Send + Sync + 'static>(
         resolved_program.push(resolved);
     }
 
-    let resolved_program: Vec<Statement<usize>> = resolved_program
+    let resolved_program: Vec<Statement<VariableId>> = resolved_program
         .into_iter()
         .map(|stmt| {
             stdlib
@@ -104,13 +105,12 @@ pub fn load_efrs_source<T: Debugger + Send + Sync + 'static>(
 
 fn get_stdlib_functions<'a, T: Debugger + 'static>(
     stdlib: &'a Context<T>,
-) -> HashMap<usize, usize> {
+) -> HashMap<VariableId, FunctionID> {
     stdlib
         .expression_context
         .read()
         .functions
-        .iter()
-        .enumerate()
+        .iter_enumerated()
         .flat_map(|(id, invokable)| {
             let module = &invokable.0;
             let name = &QualifiedName {
@@ -131,7 +131,7 @@ fn get_stdlib_functions<'a, T: Debugger + 'static>(
 
 fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
     stdlib: &'a Context<T>,
-) -> HashMap<usize, usize> {
+) -> HashMap<VariableId, usize> {
     let expression_context = stdlib.expression_context.read();
 
     expression_context
@@ -140,8 +140,7 @@ fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
         .flat_map(|(id, func_id)| {
             let polymorphic_function = &expression_context.functions[*func_id];
             let module = &polymorphic_function.0;
-            let polymorhpic_fn_name =
-                &polymorphic_function.1.name.as_str().clone();
+            let polymorhpic_fn_name = &polymorphic_function.1.name.as_str();
 
             let symbol_id = expression_context.symbol_table.get_by_right(
                 &QualifiedName {
@@ -160,10 +159,10 @@ fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
 ///  with their corresponding function IDs.
 ///
 fn resolve_builtin_functions(
-    statements: Vec<Statement<usize>>,
-    polymorphic_functions: &HashMap<usize, usize>,
-    stdlib_functions: &HashMap<usize, usize>,
-) -> Vec<Statement<usize>> {
+    statements: Vec<Statement<VariableId>>,
+    polymorphic_functions: &HashMap<VariableId, usize>,
+    stdlib_functions: &HashMap<VariableId, FunctionID>,
+) -> Vec<Statement<VariableId>> {
     statements
         .into_iter()
         .map(|stmt| {
@@ -177,10 +176,10 @@ fn resolve_builtin_functions(
 }
 
 fn resolve_functions_in_statement(
-    stmt: Statement<usize>,
-    polymorphic_functions: &HashMap<usize, usize>,
-    stdlib_functions: &HashMap<usize, usize>,
-) -> Statement<usize> {
+    stmt: Statement<VariableId>,
+    polymorphic_functions: &HashMap<VariableId, usize>,
+    stdlib_functions: &HashMap<VariableId, FunctionID>,
+) -> Statement<VariableId> {
     Statement {
         location: stmt.location,
         var: stmt.var,
@@ -194,10 +193,10 @@ fn resolve_functions_in_statement(
 }
 
 fn resolve_functions_in_expr_raw(
-    expr: RawExpr<usize>,
-    polymorphic_functions: &HashMap<usize, usize>,
-    stdlib_functions: &HashMap<usize, usize>,
-) -> RawExpr<usize> {
+    expr: RawExpr<VariableId>,
+    polymorphic_functions: &HashMap<VariableId, usize>,
+    stdlib_functions: &HashMap<VariableId, FunctionID>,
+) -> RawExpr<VariableId> {
     RawExpr {
         location: expr.location,
         expr: match expr.expr {

@@ -8,7 +8,7 @@ use ef3r::{
         combined_node, filter_node, fold_node, map_node, process_event_frame,
         Node,
     },
-    interpreter::{apply_traced, Context},
+    interpreter::{apply_traced, Context, VariableId},
     stdlib::ef3r_stdlib,
     types::ExprType,
 };
@@ -227,21 +227,22 @@ fn test_fold_node() {
         TracedExprRec::None.traced(),
     );
 
-    let folded_node_index =
-        fold_node(
-            &context,
-            Arc::new(on_update),
-            event_node_index,
-            TracedExprRec::Int(2).traced(),
-            Box::new(|_, acc: TracedExpr<usize>, event: TracedExpr<usize>| {
+    let folded_node_index = fold_node(
+        &context,
+        Arc::new(on_update),
+        event_node_index,
+        TracedExprRec::Int(2).traced(),
+        Box::new(
+            |_, acc: TracedExpr<VariableId>, event: TracedExpr<VariableId>| {
                 match (acc.evaluated, event.evaluated) {
                     (TracedExprRec::Int(a), TracedExprRec::Int(b)) => {
                         TracedExprRec::Int(a + b).traced()
                     }
                     _ => panic!("Expected integers"),
                 }
-            }),
-        );
+            },
+        ),
+    );
 
     let graph = context.graph.lock();
 

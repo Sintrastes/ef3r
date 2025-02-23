@@ -1,10 +1,10 @@
-use crate::typechecking::RuntimeLookup;
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     debugging::Debugger,
     extern_utils::*,
-    interpreter::{EvaluationError, FunctionDefinition},
+    interpreter::{EvaluationError, FunctionDefinition, VariableId},
     typechecking::type_of,
+    typechecking::TypingContext,
     types::ExprType,
 };
 
@@ -18,10 +18,10 @@ pub fn bool_module<T: Debugger>() -> Module<4, T> {
             build_function!(T, "==", ExprType::Bool, |_cx,
 
                                                       x: TracedExprRec<
-                usize,
+                VariableId,
             >,
                                                       y: TracedExprRec<
-                usize,
+                VariableId,
             >| {
                 Ok(x == y)
             }),

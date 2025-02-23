@@ -2,7 +2,7 @@ use bimap::BiMap;
 
 use crate::{
     debugging::Debugger,
-    interpreter::Context,
+    interpreter::{Context, VariableId},
     modules::{
         base::base_module, bool::bool_module, io::io_module,
         lists::lists_module, math::math_module, reactive::reactive_module,
@@ -18,7 +18,7 @@ use crate::{
 ///
 pub fn ef3r_stdlib<T: Debugger + Send + Sync + 'static>(
     debugger: T,
-    symbol_table: BiMap<usize, QualifiedName>,
+    symbol_table: BiMap<VariableId, QualifiedName>,
 ) -> (Vec<ModuleData>, Context<T>) {
     // Lookup table for the interpreter
     let mut context = Context::init(debugger);

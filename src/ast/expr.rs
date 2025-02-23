@@ -1,17 +1,30 @@
-use crate::{interpreter::PolymorphicFunctionID, types::ExprType};
+use crate::{
+    interpreter::{PolymorphicFunctionID, VariableId},
+    types::ExprType,
+};
+
+use derive_more::{From, Into};
+use serde::{Deserialize, Serialize};
 
 use super::{raw_expr::RawExpr, Statement};
 
-pub type FunctionID = usize;
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, From, Into, Serialize, Deserialize,
+)]
+pub struct FunctionID(usize);
 
-pub type VariableID = String;
+impl FunctionID {
+    pub fn new(raw_id: usize) -> FunctionID {
+        FunctionID(raw_id)
+    }
+}
 
 ///
 /// A trait defining the contract for implementing a concrete expression
 ///  type. For instance, RawExpr or TracedExpr.
 ///
 pub trait Expr: Sized {
-    fn evaluated(self) -> RawExpr<usize>;
+    fn evaluated(self) -> RawExpr<VariableId>;
 
     fn none() -> Self;
 
@@ -38,12 +51,12 @@ pub trait Expr: Sized {
     fn polymorphic_function(value: PolymorphicFunctionID) -> Self;
 
     fn lambda(
-        vars: Vec<usize>,
-        stmts: Vec<Statement<usize>>,
+        vars: Vec<VariableId>,
+        stmts: Vec<Statement<VariableId>>,
         body: Self,
     ) -> Self;
 
     fn apply<const N: usize>(fun: Self, args: [Self; N]) -> Self;
 
-    fn var(value: usize) -> Self;
+    fn var(value: VariableId) -> Self;
 }
