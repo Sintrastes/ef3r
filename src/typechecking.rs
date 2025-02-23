@@ -175,9 +175,14 @@ pub fn type_of<T: Debugger>(
     }
 }
 
+///
+/// Constrcut the union of two types.
+///
 fn union_type(t1: &ExprType, t2: &ExprType) -> ExprType {
     if t1 == t2 {
         t1.clone()
+    } else if *t1 == ExprType::Any || *t2 == ExprType::Any {
+        ExprType::Any
     } else {
         ExprType::Union(vec![t1.clone(), t2.clone()])
     }
