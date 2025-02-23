@@ -3,9 +3,21 @@ use crate::{
     types::ExprType,
 };
 
+use derive_more::{From, Into};
+use serde::{Deserialize, Serialize};
+
 use super::{raw_expr::RawExpr, Statement};
 
-pub type FunctionID = usize;
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, From, Into, Serialize, Deserialize,
+)]
+pub struct FunctionID(usize);
+
+impl FunctionID {
+    pub fn new(raw_id: usize) -> FunctionID {
+        FunctionID(raw_id)
+    }
+}
 
 ///
 /// A trait defining the contract for implementing a concrete expression

@@ -1,7 +1,6 @@
 use crate::{
     ast::traced_expr::{TracedExpr, TracedExprRec},
     interpreter::VariableId,
-    typechecking::TypingContext,
     types::ExprType,
 };
 

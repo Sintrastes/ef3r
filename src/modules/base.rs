@@ -1,5 +1,3 @@
-use std::env::Vars;
-
 use crate::ast::raw_expr::{substitute_statement, substitute_traced};
 use crate::interpreter::VariableId;
 use crate::typechecking::TypingContext;

@@ -342,7 +342,7 @@ impl TracedExprRec<QualifiedName> {
                 } else {
                     usize::arbitrary(g) % keys
                 };
-                TracedExprRec::BuiltinFunction(key)
+                TracedExprRec::BuiltinFunction(FunctionID::new(key))
             }
             5 => TracedExprRec::Lambda(
                 Vec::arbitrary(g),

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ast::{
+        expr::FunctionID,
         raw_expr::{RawExpr, RawExprRec},
         Statement,
     },
@@ -62,7 +63,7 @@ pub fn load_efrs_source<T: Debugger + Send + Sync + 'static>(
     debugger: T,
     source: String,
 ) -> Result<(Context<T>, Vec<Statement<VariableId>>)> {
-    let (imports, parsed_program) = parse(&source)?;
+    let (_imports, parsed_program) = parse(&source)?;
 
     let (loaded_modules, stdlib) = ef3r_stdlib(debugger, BiMap::new());
 
@@ -104,13 +105,12 @@ pub fn load_efrs_source<T: Debugger + Send + Sync + 'static>(
 
 fn get_stdlib_functions<'a, T: Debugger + 'static>(
     stdlib: &'a Context<T>,
-) -> HashMap<VariableId, usize> {
+) -> HashMap<VariableId, FunctionID> {
     stdlib
         .expression_context
         .read()
         .functions
-        .iter()
-        .enumerate()
+        .iter_enumerated()
         .flat_map(|(id, invokable)| {
             let module = &invokable.0;
             let name = &QualifiedName {
@@ -162,7 +162,7 @@ fn get_stdlib_polymorphic_functions<'a, T: Debugger + 'static>(
 fn resolve_builtin_functions(
     statements: Vec<Statement<VariableId>>,
     polymorphic_functions: &HashMap<VariableId, usize>,
-    stdlib_functions: &HashMap<VariableId, usize>,
+    stdlib_functions: &HashMap<VariableId, FunctionID>,
 ) -> Vec<Statement<VariableId>> {
     statements
         .into_iter()
@@ -179,7 +179,7 @@ fn resolve_builtin_functions(
 fn resolve_functions_in_statement(
     stmt: Statement<VariableId>,
     polymorphic_functions: &HashMap<VariableId, usize>,
-    stdlib_functions: &HashMap<VariableId, usize>,
+    stdlib_functions: &HashMap<VariableId, FunctionID>,
 ) -> Statement<VariableId> {
     Statement {
         location: stmt.location,
@@ -196,7 +196,7 @@ fn resolve_functions_in_statement(
 fn resolve_functions_in_expr_raw(
     expr: RawExpr<VariableId>,
     polymorphic_functions: &HashMap<VariableId, usize>,
-    stdlib_functions: &HashMap<VariableId, usize>,
+    stdlib_functions: &HashMap<VariableId, FunctionID>,
 ) -> RawExpr<VariableId> {
     RawExpr {
         location: expr.location,

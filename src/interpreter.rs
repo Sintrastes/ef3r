@@ -5,6 +5,7 @@ use daggy::Dag;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use typed_index_collections::TiVec;
 
 use crate::{
     ast::{
@@ -70,7 +71,7 @@ impl<T: Debugger> Context<T> {
             graph: Arc::new(Mutex::new(Dag::new())),
             expression_context: Arc::new(RwLock::new(ExpressionContext {
                 symbol_table: BiHashMap::new(),
-                functions: vec![],
+                functions: vec![].into(),
                 polymorphic_functions: HashMap::new(),
                 variables: HashMap::new(),
             })),
@@ -151,7 +152,7 @@ impl Display for VariableId {
 
 pub struct ExpressionContext<T: Debugger + 'static> {
     pub symbol_table: BiMap<VariableId, QualifiedName>,
-    pub functions: Vec<(ModuleName, FunctionDefinition<T>)>,
+    pub functions: TiVec<FunctionID, (ModuleName, FunctionDefinition<T>)>,
     pub polymorphic_functions: HashMap<PolymorphicIndex, FunctionID>,
     pub variables: HashMap<VariableId, TracedExpr<VariableId>>,
 }
@@ -163,7 +164,7 @@ impl<T: Debugger + 'static> ExpressionContext<T> {
     pub fn resolve_function(&self, name: &str) -> Option<FunctionID> {
         for (index, function) in self.functions.iter().enumerate() {
             if function.1.name == name {
-                return Some(index);
+                return Some(FunctionID::new(index));
             }
         }
 

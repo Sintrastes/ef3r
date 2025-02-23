@@ -17,8 +17,10 @@ use std::{
 use quickcheck::Arbitrary;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use typed_index_collections::TiVec;
 
 use crate::{
+    ast::expr::FunctionID,
     debugging::Debugger,
     interpreter::{Context, FunctionDefinition, PolymorphicIndex},
 };
@@ -94,15 +96,15 @@ impl<const N: usize, T: Debugger> Module<N, T> {
 }
 
 fn build_polymorphic_index<T: Debugger + 'static>(
-    functions: &[(ModuleName, FunctionDefinition<T>)],
-) -> Result<HashMap<PolymorphicIndex, usize>, String> {
+    functions: &TiVec<FunctionID, (ModuleName, FunctionDefinition<T>)>,
+) -> Result<HashMap<PolymorphicIndex, FunctionID>, String> {
     // Needs to be stable, otherwise the IDs will be nondeterministic.
     let mut name_buckets: BTreeMap<
         String,
-        Vec<(usize, &FunctionDefinition<T>)>,
+        Vec<(FunctionID, &FunctionDefinition<T>)>,
     > = BTreeMap::new();
 
-    for id in 0..functions.len() - 1 {
+    for id in functions.keys() {
         let func = &functions[id];
         name_buckets
             .entry(func.1.name.clone())

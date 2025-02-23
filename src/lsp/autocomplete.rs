@@ -22,7 +22,7 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
         return vec![];
     }
 
-    let (imports, statements) = parsed.unwrap();
+    let (_imports, statements) = parsed.unwrap();
     if statements.len() != 1 {
         return vec![];
     }
@@ -53,6 +53,7 @@ pub fn autocomplete<'a, T: Debugger + 'static>(
         .functions
         // In most applications there will be a large amount of functions
         //  to sift through, so parallelize.
+        .raw
         .par_iter()
         .filter(|f| {
             if f.1.argument_types.is_empty() {

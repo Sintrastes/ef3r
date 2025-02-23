@@ -12,8 +12,23 @@ pub enum ExprType {
     Type,
     List(Box<ExprType>),
     Node(Box<ExprType>),
+    Union(Vec<ExprType>),
     Func(Vec<ExprType>, Box<ExprType>),
     Pair(Box<ExprType>, Box<ExprType>),
+}
+
+impl ExprType {
+    pub fn subtype_of(&self, other: &ExprType) -> bool {
+        match (self, other) {
+            (_, ExprType::Any) => true,
+            (typ, ExprType::Union(types)) => types.contains(typ),
+            (typ1, typ2) => typ1 == typ2,
+        }
+    }
+
+    pub fn compatible_with(&self, other: &ExprType) -> bool {
+        self.subtype_of(other) || other.subtype_of(self)
+    }
 }
 
 impl std::fmt::Display for ExprType {
@@ -37,6 +52,15 @@ impl std::fmt::Display for ExprType {
                     write!(f, "{}", arg)?;
                 }
                 write!(f, ") -> {}", ret)
+            }
+            ExprType::Union(types) => {
+                for (i, typ) in types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " | ")?;
+                    }
+                    write!(f, "{}", typ)?;
+                }
+                Ok(())
             }
             ExprType::Pair(a, b) => write!(f, "Pair({}, {})", a, b),
         }

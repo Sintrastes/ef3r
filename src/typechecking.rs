@@ -86,6 +86,10 @@ pub fn type_of<T: Debugger>(
             // local variables to.
             let mut local_context = typing_context.clone();
 
+            for (arg, arg_type) in args.iter().zip(&arg_types) {
+                local_context.scope_variables.insert(*arg, arg_type.clone());
+            }
+
             let errors = typecheck(ctx, &mut local_context, stmts.to_vec());
 
             if !errors.is_empty() {
@@ -93,15 +97,47 @@ pub fn type_of<T: Debugger>(
             }
 
             let return_type =
-                type_of::<T>(ctx, typing_context, &traced_expr.evaluated)?;
+                type_of::<T>(ctx, &mut local_context, &traced_expr.evaluated)?;
 
             Ok(ExprType::Func(arg_types, Box::new(return_type)))
         }
         // Note: This may need to be refined if we ever add implicit partial application.
-        TracedExprRec::Apply(f, _) => {
+        TracedExprRec::Apply(f, args) => {
             type_of::<T>(ctx, typing_context, &f.evaluated).and_then(|f_type| {
                 match f_type {
                     ExprType::Func(_, return_type) => Ok(*return_type),
+                    ExprType::Union(types) => {
+                        let arg_types = args
+                            .iter()
+                            .map(|arg| {
+                                type_of(ctx, typing_context, &arg.evaluated)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+
+                        for typ in types {
+                            if let ExprType::Func(
+                                possible_arg_types,
+                                return_type,
+                            ) = typ.clone()
+                            {
+                                let args_match = possible_arg_types
+                                    .iter()
+                                    .zip(&arg_types)
+                                    // Note: This is a pretty weak test for right now.
+                                    // Ideally we should be doing some more sophisticated
+                                    // type inference.
+                                    .all(|(x, y)| x.compatible_with(y));
+
+                                if args_match {
+                                    return Ok(*return_type);
+                                }
+                            }
+                        }
+
+                        Err(vec![TypeError::MalformedExpression {
+                            loc: f.location,
+                        }])
+                    }
                     _ => Err(vec![TypeError::MalformedExpression {
                         loc: f.location,
                     }]),
@@ -119,10 +155,23 @@ pub fn type_of<T: Debugger>(
                 },
             }
         }
-        // We do not currently assign a type to polymorphic functions.
-        // But maybe we could assign something like Any -> Any based on
-        // the arity of the function?
-        TracedExprRec::PolymorphicFunction(_) => Err(vec![]),
+        TracedExprRec::PolymorphicFunction(id) => {
+            let fn_types = ctx
+                .polymorphic_functions
+                .iter()
+                .filter(|(x, _)| x.id == *id)
+                .map(|(poly_index, fn_index)| {
+                    let result_type =
+                        ctx.functions[*fn_index].1.result_type.clone();
+
+                    let arg_types = poly_index.arg_types.clone();
+
+                    ExprType::Func(arg_types, Box::new(result_type))
+                })
+                .collect::<Vec<_>>();
+
+            Ok(ExprType::Union(fn_types))
+        }
     }
 }
 
@@ -130,7 +179,7 @@ fn union_type(t1: &ExprType, t2: &ExprType) -> ExprType {
     if t1 == t2 {
         t1.clone()
     } else {
-        ExprType::Any
+        ExprType::Union(vec![t1.clone(), t2.clone()])
     }
 }
 
